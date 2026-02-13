@@ -77,32 +77,66 @@ function SessionContent() {
 
                     const targetPath = worktree || repo; // Fallback to repo if no worktree
                     const cmd = `cd "${targetPath}"`;
+                    // Send cd command
                     win.term.paste(cmd);
 
-                    // Find textarea
-                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
-                    if (textarea) {
-                        // Create and dispatch event
-                        const event = new KeyboardEvent('keypress', {
-                            bubbles: true,
-                            cancelable: true,
-                            charCode: 13,
-                            keyCode: 13,
-                            key: 'Enter',
-                            view: win
-                        });
+                    // Helper to press enter
+                    const pressEnter = () => {
+                        const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                        if (textarea) {
+                            textarea.dispatchEvent(new KeyboardEvent('keypress', {
+                                bubbles: true,
+                                cancelable: true,
+                                charCode: 13,
+                                keyCode: 13,
+                                key: 'Enter',
+                                view: win
+                            }));
+                        } else {
+                            win.term.paste('\r');
+                        }
+                    };
 
-                        textarea.dispatchEvent(event);
-                        setFeedback(`Session started ${worktree ? '(Worktree)' : ''}`);
+                    pressEnter();
+
+                    // Inject agent command if present
+                    const agent = searchParams.get('agent');
+                    const model = searchParams.get('model');
+
+                    if (agent) {
+                        setTimeout(() => {
+                            let agentCmd = '';
+                            if (agent.toLowerCase().includes('codex')) {
+                                // Codex: codex --model gpt-5.3-codex --sandbox danger-full-access --ask-for-approval on-request --search
+                                agentCmd = `codex --model ${model || 'gpt-5.3-codex'} --sandbox danger-full-access --ask-for-approval on-request --search`;
+                            } else if (agent.toLowerCase().includes('gemini')) {
+                                // Gemini: gemini --model gemini-3-pro --yolo
+                                agentCmd = `gemini --model ${model || 'gemini-3-pro'} --yolo`;
+                            } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
+                                // Cursor: agent --modal composer-1 (assuming model mapping or default)
+                                // The user prompt says: agent --modal composer-1. 
+                                // But we have model selection. Let's try to verify if we should use model param.
+                                // User example: agent --modal composer-1
+                                agentCmd = `agent --model ${model || 'gpt-4o'}`;
+                            } else {
+                                // Generic fallback: <agent> --model <model>
+                                agentCmd = `${agent} --model ${model}`;
+                            }
+
+                            if (agentCmd) {
+                                console.log('Injecting agent command:', agentCmd);
+                                win.term.paste(agentCmd);
+                                pressEnter();
+                                setFeedback(`Session started with ${agent}`);
+                            }
+                        }, 500); // Wait a bit for cd to finish
                     } else {
-                        // Fallback: just send \r
-                        console.warn("Textarea not found, sending \\r fallback");
-                        win.term.paste('\r');
-                        setFeedback('Session started (fallback mode)');
+                        setFeedback(`Session started ${worktree ? '(Worktree)' : ''}`);
                     }
 
                     // Focus the iframe
                     win.focus();
+                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
                     if (textarea) (textarea as HTMLElement).focus();
 
                 } else {

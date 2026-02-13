@@ -400,7 +400,9 @@ export default function GitRepoSelector() {
                     repo: selectedRepo, // Keep original repo for context if needed
                     worktree: wtResult.worktreePath,
                     branch: wtResult.branchName,
-                    session: wtResult.sessionName || ''
+                    session: wtResult.sessionName || '',
+                    agent: selectedProvider?.cli || '',
+                    model: selectedModel || ''
                   });
 
                   router.push(`/session?${params.toString()}`);

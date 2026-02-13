@@ -117,6 +117,11 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
     const child = spawn('ttyd', ['-p', '7681', '-W', 'bash'], {
       stdio: 'ignore', // or 'pipe' if we want to log output
       detached: false, // Keep attached to parent so it dies when parent dies (mostly)
+      env: {
+        ...process.env,
+        TERM: 'xterm-256color',
+        COLORTERM: 'truecolor',
+      },
     });
 
     child.on('error', (err) => {
