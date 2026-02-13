@@ -13,8 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Viba - Next.js + DaisyUI",
-  description: "A premium Next.js starter with Tailwind CSS and DaisyUI",
+  title: "Viba",
 };
 
 export default function RootLayout({
