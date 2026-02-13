@@ -140,3 +140,75 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
     return { success: false, error: 'Failed to start ttyd. Make sure ttyd is installed and in your PATH.' };
   }
 }
+
+export async function createSessionWorktree(repoPath: string, baseBranch: string): Promise<{ success: boolean; sessionName?: string; worktreePath?: string; branchName?: string; error?: string }> {
+  try {
+    const { v4: uuidv4 } = await import('uuid');
+    const shortUuid = uuidv4().split('-')[0]; // first part of uuid enough?
+
+    const date = new Date();
+    // YYYYMMDD-HHMM
+    const timestamp = date.toISOString().replace(/[-:]/g, '').slice(0, 8) + '-' + date.getHours().toString().padStart(2, '0') + date.getMinutes().toString().padStart(2, '0');
+    const sessionName = `${timestamp}-${shortUuid}`;
+
+    const branchName = `viba/${sessionName}`;
+
+    // Parent directory of the repo
+    const repoName = path.basename(repoPath);
+    const parentDir = path.dirname(repoPath);
+
+    // ../.viba/<repo-name>/<session-name>
+    const vibaDir = path.join(parentDir, '.viba', repoName);
+    const worktreePath = path.join(vibaDir, sessionName);
+
+    // Ensure .viba directory exists
+    await fs.mkdir(vibaDir, { recursive: true });
+
+    const git = simpleGit(repoPath);
+
+    // Create worktree
+    // git worktree add -b <new-branch> <path> <start-point>
+    console.log(`Creating worktree at ${worktreePath} based on ${baseBranch}`);
+    await git.raw(['worktree', 'add', '-b', branchName, worktreePath, baseBranch]);
+
+    return {
+      success: true,
+      sessionName,
+      worktreePath,
+      branchName
+    };
+  } catch (e: any) {
+    console.error("Failed to create worktree:", e);
+    return { success: false, error: e.message || String(e) };
+  }
+}
+
+export async function cleanUpSessionWorktree(repoPath: string, worktreePath: string, branchName: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const git = simpleGit(repoPath);
+
+    console.log(`Removing worktree at ${worktreePath}...`);
+
+    // Remove worktree
+    // force remove if needed? user might have uncommitted changes but this is a cleanup request.
+    // git worktree remove --force <path>
+    await git.raw(['worktree', 'remove', '--force', worktreePath]);
+
+    // Remove branch
+    // git branch -D <branch>
+    console.log(`Deleting branch ${branchName}...`);
+    await git.deleteLocalBranch(branchName, true); // true = force delete
+
+    // Try to verify if folder is gone, sometimes worktree remove leaves empty dir
+    try {
+      await fs.rm(worktreePath, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+
+    return { success: true };
+  } catch (e: any) {
+    console.error("Failed to cleanup worktree:", e);
+    return { success: false, error: e.message || String(e) };
+  }
+}

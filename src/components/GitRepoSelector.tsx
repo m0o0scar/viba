@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog, Bot, Cpu } from 'lucide-react';
 import FileBrowser from './FileBrowser';
-import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess } from '@/app/actions/git';
+import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, createSessionWorktree } from '@/app/actions/git';
 import { useRouter } from 'next/navigation';
 
 import agentProvidersData from '@/data/agent-providers.json';
@@ -380,16 +380,38 @@ export default function GitRepoSelector() {
             onClick={async () => {
               setLoading(true);
               try {
-                const result = await startTtydProcess();
-                if (result.success) {
-                  router.push(`/session?repo=${encodeURIComponent(selectedRepo)}`);
-                } else {
-                  setError(result.error || "Failed to start ttyd");
+                // 1. Start TTYD if needed
+                const ttydResult = await startTtydProcess();
+                if (!ttydResult.success) {
+                  setError(ttydResult.error || "Failed to start ttyd");
+                  setLoading(false);
+                  return;
                 }
+
+                // 2. Create Session Worktree
+                // Use current selected branch as base
+                const baseBranch = currentBranchName || 'main'; // Fallback to main if empty, though shouldn't happen
+
+                const wtResult = await createSessionWorktree(selectedRepo, baseBranch);
+
+                if (wtResult.success && wtResult.worktreePath && wtResult.branchName) {
+                  // 3. Navigate to session page with new params
+                  const params = new URLSearchParams({
+                    repo: selectedRepo, // Keep original repo for context if needed
+                    worktree: wtResult.worktreePath,
+                    branch: wtResult.branchName,
+                    session: wtResult.sessionName || ''
+                  });
+
+                  router.push(`/session?${params.toString()}`);
+                } else {
+                  setError(wtResult.error || "Failed to create session worktree");
+                  setLoading(false);
+                }
+
               } catch (e) {
                 console.error(e);
                 setError("Failed to start session");
-              } finally {
                 setLoading(false);
               }
             }}

@@ -2,18 +2,45 @@
 
 import React, { useRef, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { cleanUpSessionWorktree } from '@/app/actions/git';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 
 function SessionContent() {
     const searchParams = useSearchParams();
     const repo = searchParams.get('repo');
+    const worktree = searchParams.get('worktree');
+    const branch = searchParams.get('branch');
+    const sessionName = searchParams.get('session');
+
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [feedback, setFeedback] = useState<string>('Initializing...');
+    const [isCleaningUp, setIsCleaningUp] = useState(false);
     const router = useRouter();
 
     const handleBack = () => {
         // Navigating away will destroy the iframe component
         router.push('/');
+    };
+
+    const handleCleanup = async () => {
+        if (!repo || !worktree || !branch) return;
+        if (!confirm('Are you sure you want to delete this session? This will remove the branch and worktree.')) return;
+
+        setIsCleaningUp(true);
+        setFeedback('Cleaning up session...');
+
+        try {
+            const result = await cleanUpSessionWorktree(repo, worktree, branch);
+            if (result.success) {
+                router.push('/');
+            } else {
+                setFeedback('Cleanup failed: ' + result.error);
+                setIsCleaningUp(false);
+            }
+        } catch (e) {
+            setFeedback('Cleanup error');
+            setIsCleaningUp(false);
+        }
     };
 
     const handleIframeLoad = () => {
@@ -48,7 +75,8 @@ function SessionContent() {
                     // 1. paste cd command
                     // 2. dispatch keypress 13
 
-                    const cmd = `cd "${repo}"`;
+                    const targetPath = worktree || repo; // Fallback to repo if no worktree
+                    const cmd = `cd "${targetPath}"`;
                     win.term.paste(cmd);
 
                     // Find textarea
@@ -65,7 +93,7 @@ function SessionContent() {
                         });
 
                         textarea.dispatchEvent(event);
-                        setFeedback('Session started');
+                        setFeedback(`Session started ${worktree ? '(Worktree)' : ''}`);
                     } else {
                         // Fallback: just send \r
                         console.warn("Textarea not found, sending \\r fallback");
@@ -95,8 +123,8 @@ function SessionContent() {
 
     return (
         <div className="w-full h-screen flex flex-col bg-base-100">
-            <div className="bg-base-300 p-2 text-xs flex justify-between px-4 font-mono select-none">
-                <div className="flex items-center gap-2">
+            <div className="bg-base-300 p-2 text-xs flex justify-between px-4 font-mono select-none items-center">
+                <div className="flex items-center gap-4">
                     <button
                         onClick={handleBack}
                         className="btn btn-ghost btn-xs btn-square"
@@ -104,12 +132,37 @@ function SessionContent() {
                     >
                         <ArrowLeft className="w-4 h-4" />
                     </button>
-                    <span className="opacity-50">Repository:</span>
-                    <span className="font-bold">{repo}</span>
+
+                    <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                            <span className="opacity-50">Repo:</span>
+                            <span className="font-bold">{repo.split('/').pop()}</span>
+                        </div>
+                        {sessionName && (
+                            <div className="flex items-center gap-2 text-[10px] opacity-70">
+                                <span>Session:</span>
+                                <span>{sessionName}</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') ? 'bg-error' : feedback.includes('started') ? 'bg-success' : 'bg-warning'}`}></span>
-                    <span>{feedback}</span>
+
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') ? 'bg-success' : 'bg-warning'}`}></span>
+                        <span>{feedback}</span>
+                    </div>
+
+                    {worktree && (
+                        <button
+                            className="btn btn-error btn-xs gap-1"
+                            onClick={handleCleanup}
+                            disabled={isCleaningUp}
+                        >
+                            {isCleaningUp ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="w-3 h-3" />}
+                            Clean Up & Exit
+                        </button>
+                    )}
                 </div>
             </div>
             <iframe
