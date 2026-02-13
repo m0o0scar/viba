@@ -12,11 +12,12 @@ interface FileSystemItem {
 }
 
 interface FileBrowserProps {
+  initialPath?: string;
   onSelect: (path: string) => void;
   onCancel: () => void;
 }
 
-export default function FileBrowser({ onSelect, onCancel }: FileBrowserProps) {
+export default function FileBrowser({ initialPath, onSelect, onCancel }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [items, setItems] = useState<FileSystemItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -24,11 +25,15 @@ export default function FileBrowser({ onSelect, onCancel }: FileBrowserProps) {
 
   useEffect(() => {
     const init = async () => {
-      const home = await getHomeDirectory();
-      setCurrentPath(home);
+      if (initialPath) {
+        setCurrentPath(initialPath);
+      } else {
+        const home = await getHomeDirectory();
+        setCurrentPath(home);
+      }
     };
     init();
-  }, []);
+  }, [initialPath]);
 
   useEffect(() => {
     if (!currentPath) return;

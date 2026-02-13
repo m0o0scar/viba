@@ -1,15 +1,17 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check } from 'lucide-react';
+import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch } from '@/app/actions/git';
 
 export default function GitRepoSelector() {
   const [view, setView] = useState<'list' | 'details'>('list');
   const [isBrowsing, setIsBrowsing] = useState(false);
+  const [isSelectingRoot, setIsSelectingRoot] = useState(false);
   const [recentRepos, setRecentRepos] = useState<string[]>([]);
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  const [defaultRoot, setDefaultRoot] = useState<string>('');
   
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [currentBranchName, setCurrentBranchName] = useState<string>('');
@@ -17,7 +19,7 @@ export default function GitRepoSelector() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load recent repos on mount
+  // Load recent repos and default root on mount
   useEffect(() => {
     const savedRepos = localStorage.getItem('viba_recent_repos');
     if (savedRepos) {
@@ -26,6 +28,11 @@ export default function GitRepoSelector() {
       } catch (e) {
         console.error('Failed to parse recent repos', e);
       }
+    }
+    
+    const savedRoot = localStorage.getItem('viba_default_root');
+    if (savedRoot) {
+      setDefaultRoot(savedRoot);
     }
   }, []);
 
@@ -69,6 +76,12 @@ export default function GitRepoSelector() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSetDefaultRoot = (path: string) => {
+      setDefaultRoot(path);
+      localStorage.setItem('viba_default_root', path);
+      setIsSelectingRoot(false);
   };
 
   const loadBranches = async (repoPath: string) => {
@@ -147,7 +160,15 @@ export default function GitRepoSelector() {
 
           {view === 'list' && (
             <div className="mt-4 space-y-4">
-               <div className="flex justify-end">
+               <div className="flex justify-end gap-2">
+                  <button 
+                    className="btn btn-ghost btn-sm gap-2" 
+                    onClick={() => setIsSelectingRoot(true)}
+                    title={defaultRoot ? `Default: ${defaultRoot}` : "Set default browsing folder"}
+                  >
+                     <FolderCog className="w-4 h-4" />
+                     {defaultRoot ? "Change Default" : "Set Default Root"}
+                  </button>
                   <button className="btn btn-primary btn-sm gap-2" onClick={() => setIsBrowsing(true)}>
                      <Plus className="w-4 h-4" /> Open Local Repo
                   </button>
@@ -236,8 +257,17 @@ export default function GitRepoSelector() {
       
       {isBrowsing && (
         <FileBrowser 
+          initialPath={defaultRoot || undefined}
           onSelect={(path) => handleSelectRepo(path)} 
           onCancel={() => setIsBrowsing(false)} 
+        />
+      )}
+
+      {isSelectingRoot && (
+        <FileBrowser
+            initialPath={defaultRoot || undefined}
+            onSelect={handleSetDefaultRoot}
+            onCancel={() => setIsSelectingRoot(false)}
         />
       )}
     </>
