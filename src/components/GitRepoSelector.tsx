@@ -1,9 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog } from 'lucide-react';
+import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog, Bot, Cpu } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch } from '@/app/actions/git';
+import agentProvidersData from '@/data/agent-providers.json';
+
+type AgentProvider = {
+  name: string;
+  cli: string;
+  models: string[];
+};
 
 export default function GitRepoSelector() {
   const [view, setView] = useState<'list' | 'details'>('list');
@@ -16,6 +23,9 @@ export default function GitRepoSelector() {
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [currentBranchName, setCurrentBranchName] = useState<string>('');
   
+  const [selectedProvider, setSelectedProvider] = useState<AgentProvider | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +77,9 @@ export default function GitRepoSelector() {
       setIsBrowsing(false);
       setView('details');
       
+      // Load saved provider/model
+      loadSavedAgentSettings(path);
+
       // Load branches
       await loadBranches(path);
 
@@ -76,6 +89,31 @@ export default function GitRepoSelector() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadSavedAgentSettings = (repoPath: string) => {
+      const savedProviderCli = localStorage.getItem(`viba_agent_provider_${repoPath}`);
+      const savedModel = localStorage.getItem(`viba_agent_model_${repoPath}`);
+
+      if (savedProviderCli) {
+          const provider = agentProvidersData.find(p => p.cli === savedProviderCli);
+          if (provider) {
+              setSelectedProvider(provider);
+              if (savedModel && provider.models.includes(savedModel)) {
+                  setSelectedModel(savedModel);
+              } else {
+                  setSelectedModel(provider.models[0]);
+              }
+          } else {
+              // Default if saved one is invalid
+              setSelectedProvider(agentProvidersData[0]);
+              setSelectedModel(agentProvidersData[0].models[0]);
+          }
+      } else {
+          // Default
+          setSelectedProvider(agentProvidersData[0]);
+          setSelectedModel(agentProvidersData[0].models[0]);
+      }
   };
 
   const handleSetDefaultRoot = (path: string) => {
@@ -133,6 +171,28 @@ export default function GitRepoSelector() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const cli = e.target.value;
+      const provider = agentProvidersData.find(p => p.cli === cli);
+      if (provider && selectedRepo) {
+          setSelectedProvider(provider);
+          // Default to first model
+          const defaultModel = provider.models[0];
+          setSelectedModel(defaultModel);
+          
+          localStorage.setItem(`viba_agent_provider_${selectedRepo}`, provider.cli);
+          localStorage.setItem(`viba_agent_model_${selectedRepo}`, defaultModel);
+      }
+  };
+
+  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const model = e.target.value;
+      setSelectedModel(model);
+      if (selectedRepo) {
+          localStorage.setItem(`viba_agent_model_${selectedRepo}`, model);
+      }
   };
   
  const handleRemoveRecent = (e: React.MouseEvent, repo: string) => {
@@ -223,31 +283,81 @@ export default function GitRepoSelector() {
                     </div>
                 </div>
                 
-                <div className="space-y-2">
-                     <div className="flex justify-between items-center">
-                          <label className="text-sm font-medium opacity-70">Current Branch</label>
-                          {loading && <span className="loading loading-spinner loading-xs"></span>}
-                     </div>
-                     
-                     <div className="join w-full">
-                         <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
-                             <GitBranchIcon className="w-4 h-4" />
+                <div className="space-y-4">
+                     {/* Branch Selection */}
+                     <div className="space-y-2">
+                         <div className="flex justify-between items-center">
+                              <label className="text-sm font-medium opacity-70">Current Branch</label>
+                              {loading && <span className="loading loading-spinner loading-xs"></span>}
                          </div>
-                         <select 
-                            className="select select-bordered join-item w-full font-mono focus:outline-none"
-                            value={currentBranchName}
-                            onChange={handleBranchChange}
-                            disabled={loading}
-                          >
-                              {branches.map(branch => (
-                                  <option key={branch.name} value={branch.name}>
-                                      {branch.name} {branch.current ? '(checked out)' : ''}
-                                  </option>
-                              ))}
-                          </select>
+                         
+                         <div className="join w-full">
+                             <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
+                                 <GitBranchIcon className="w-4 h-4" />
+                             </div>
+                             <select 
+                                className="select select-bordered join-item w-full font-mono focus:outline-none"
+                                value={currentBranchName}
+                                onChange={handleBranchChange}
+                                disabled={loading}
+                              >
+                                  {branches.map(branch => (
+                                      <option key={branch.name} value={branch.name}>
+                                          {branch.name} {branch.current ? '(checked out)' : ''}
+                                      </option>
+                                  ))}
+                              </select>
+                         </div>
+                         <div className="text-xs opacity-50 px-1">
+                             Switching branches will update your working directory.
+                         </div>
                      </div>
-                     <div className="text-xs opacity-50 px-1">
-                         Switching branches will update your working directory.
+
+                     <div className="divider"></div>
+
+                     {/* Agent Selection */}
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                             <label className="text-sm font-medium opacity-70">Agent Provider</label>
+                             <div className="join w-full">
+                                 <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
+                                     <Bot className="w-4 h-4" />
+                                 </div>
+                                 <select 
+                                    className="select select-bordered join-item w-full focus:outline-none"
+                                    value={selectedProvider?.cli || ''}
+                                    onChange={handleProviderChange}
+                                    disabled={loading}
+                                  >
+                                      {agentProvidersData.map(provider => (
+                                          <option key={provider.cli} value={provider.cli}>
+                                              {provider.name}
+                                          </option>
+                                      ))}
+                                  </select>
+                             </div>
+                         </div>
+
+                         <div className="space-y-2">
+                             <label className="text-sm font-medium opacity-70">Model</label>
+                             <div className="join w-full">
+                                 <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
+                                     <Cpu className="w-4 h-4" />
+                                 </div>
+                                 <select 
+                                    className="select select-bordered join-item w-full focus:outline-none"
+                                    value={selectedModel}
+                                    onChange={handleModelChange}
+                                    disabled={loading || !selectedProvider}
+                                  >
+                                      {selectedProvider?.models.map(model => (
+                                          <option key={model} value={model}>
+                                              {model}
+                                          </option>
+                                      ))}
+                                  </select>
+                             </div>
+                         </div>
                      </div>
                 </div>
              </div>

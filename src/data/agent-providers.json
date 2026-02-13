@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Codex",
+    "cli": "codex",
+    "models": ["gpt-5.3-codex", "gpt-5.2-codex"]
+  },
+  {
+    "name": "Gemini",
+    "cli": "gemini",
+    "models": ["gemini-3-pro", "gemini-3-flash"]
+  },
+  {
+    "name": "Cursor",
+    "cli": "agent",
+    "models": ["composer-1", "gpt-5.3-codex", "sonnet-4.5-thinking"]
+  }
+]
