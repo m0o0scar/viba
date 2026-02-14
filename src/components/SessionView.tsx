@@ -1,25 +1,77 @@
 'use client';
 
-import React, { useRef, useState, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+// import { useRouter } from 'next/navigation';
 import { cleanUpSessionWorktree } from '@/app/actions/git';
-import { Trash2, Terminal } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
-function SessionContent() {
-    const searchParams = useSearchParams();
-    const repo = searchParams.get('repo');
-    const worktree = searchParams.get('worktree');
-    const branch = searchParams.get('branch');
-    const sessionName = searchParams.get('session');
+export interface SessionViewProps {
+    repo: string;
+    worktree: string;
+    branch: string;
+    sessionName: string;
+    agent?: string;
+    model?: string;
+    startupScript?: string;
+    onExit: () => void;
+}
 
+export function SessionView({
+    repo,
+    worktree,
+    branch,
+    sessionName,
+    agent,
+    model,
+    startupScript,
+    onExit
+}: SessionViewProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const terminalRef = useRef<HTMLIFrameElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+
     const [feedback, setFeedback] = useState<string>('Initializing...');
     const [isCleaningUp, setIsCleaningUp] = useState(false);
-    const [showTerminal, setShowTerminal] = useState(false);
-    const router = useRouter();
 
+    // Resize state
+    const [agentWidth, setAgentWidth] = useState(66.666);
+    const [isResizing, setIsResizing] = useState(false);
 
+    useEffect(() => {
+        const savedWidth = localStorage.getItem('session_agent_width');
+        if (savedWidth) {
+            setAgentWidth(parseFloat(savedWidth));
+        }
+    }, []);
+
+    const startResizing = useCallback(() => {
+        setIsResizing(true);
+    }, []);
+
+    const stopResizing = useCallback(() => {
+        setIsResizing(false);
+    }, []);
+
+    const resize = useCallback((e: MouseEvent) => {
+        if (isResizing && containerRef.current) {
+            const containerRect = containerRef.current.getBoundingClientRect();
+            const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+            const clamped = Math.min(Math.max(newWidth, 20), 80);
+            setAgentWidth(clamped);
+            localStorage.setItem('session_agent_width', clamped.toString());
+        }
+    }, [isResizing]);
+
+    useEffect(() => {
+        if (isResizing) {
+            window.addEventListener('mousemove', resize);
+            window.addEventListener('mouseup', stopResizing);
+        }
+        return () => {
+            window.removeEventListener('mousemove', resize);
+            window.removeEventListener('mouseup', stopResizing);
+        };
+    }, [isResizing, resize, stopResizing]);
 
     const handleCleanup = async () => {
         if (!repo || !worktree || !branch) return;
@@ -31,7 +83,7 @@ function SessionContent() {
         try {
             const result = await cleanUpSessionWorktree(repo, worktree, branch);
             if (result.success) {
-                router.push('/');
+                onExit();
             } else {
                 setFeedback('Cleanup failed: ' + result.error);
                 setIsCleaningUp(false);
@@ -99,9 +151,6 @@ function SessionContent() {
                     pressEnter();
 
                     // Inject agent command if present
-                    const agent = searchParams.get('agent');
-                    const model = searchParams.get('model');
-
                     if (agent) {
                         setTimeout(() => {
                             let agentCmd = '';
@@ -194,6 +243,15 @@ function SessionContent() {
                     };
                     pressEnter();
 
+                    // Check for startup script
+                    if (startupScript) {
+                        setTimeout(() => {
+                            console.log('Injecting startup script:', startupScript);
+                            win.term.paste(startupScript);
+                            pressEnter();
+                        }, 500);
+                    }
+
                     // Focus
                     win.focus();
                     const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
@@ -215,8 +273,6 @@ function SessionContent() {
         <div className="w-full h-screen flex flex-col bg-base-100">
             <div className="bg-base-300 p-2 text-xs flex justify-between px-4 font-mono select-none items-center shadow-md z-10">
                 <div className="flex items-center gap-4">
-
-
                     <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                             <span className="opacity-50">Repo:</span>
@@ -232,14 +288,6 @@ function SessionContent() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <button
-                        className={`btn btn-xs gap-1 ${showTerminal ? 'btn-primary' : 'btn-ghost'}`}
-                        onClick={() => setShowTerminal(!showTerminal)}
-                    >
-                        <Terminal className="w-3 h-3" />
-                        Terminal
-                    </button>
-
                     <div className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') ? 'bg-success' : 'bg-warning'}`}></span>
                         <span>{feedback}</span>
@@ -258,39 +306,50 @@ function SessionContent() {
                 </div>
             </div>
 
-            <div className="flex flex-row w-full flex-grow overflow-hidden">
+            <div
+                className={`flex flex-row w-full flex-grow overflow-hidden ${isResizing ? 'select-none cursor-col-resize' : ''}`}
+                ref={containerRef}
+            >
                 {/* coding agent iframe */}
-                <div className={`h-full ${showTerminal ? 'w-2/3' : 'w-full'}`}>
+                <div
+                    className="h-full relative"
+                    style={{ width: `${agentWidth}%` }}
+                >
                     <iframe
                         ref={iframeRef}
                         src="/terminal"
-                        className="w-full h-full border-none dark:invert dark:brightness-90"
+                        className={`w-full h-full border-none dark:invert dark:brightness-90 ${isResizing ? 'pointer-events-none' : ''}`}
                         allow="clipboard-read; clipboard-write"
                         onLoad={handleIframeLoad}
                     />
+                    {isResizing && <div className="absolute inset-0 z-50 bg-transparent" />}
+                </div>
+
+                {/* Resizer Handle */}
+                <div
+                    className="w-1 h-full cursor-col-resize bg-base-300 hover:bg-primary transition-colors flex items-center justify-center z-20"
+                    onMouseDown={startResizing}
+                >
+                    <div className="w-[1px] h-4 bg-base-content opacity-20" />
                 </div>
 
                 {/* terminal iframe */}
-                {showTerminal && (
-                    <div className="h-full w-1/3 border-l border-base-300">
-                        <iframe
-                            ref={terminalRef}
-                            src="/terminal"
-                            className="w-full h-full border-none dark:invert dark:brightness-90"
-                            allow="clipboard-read; clipboard-write"
-                            onLoad={handleTerminalLoad}
-                        />
-                    </div>
-                )}
+                <div
+                    className="h-full relative border-l border-base-300"
+                    style={{ width: `${100 - agentWidth}%` }}
+                >
+                    <iframe
+                        ref={terminalRef}
+                        src="/terminal"
+                        className={`w-full h-full border-none dark:invert dark:brightness-90 ${isResizing ? 'pointer-events-none' : ''}`}
+                        allow="clipboard-read; clipboard-write"
+                        onLoad={handleTerminalLoad}
+                    />
+                    {isResizing && <div className="absolute inset-0 z-50 bg-transparent" />}
+                </div>
             </div>
         </div>
     );
 }
 
-export default function SessionPage() {
-    return (
-        <Suspense fallback={<div className="p-4">Loading session...</div>}>
-            <SessionContent />
-        </Suspense>
-    );
-}
+

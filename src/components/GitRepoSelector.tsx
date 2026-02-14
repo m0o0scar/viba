@@ -23,7 +23,19 @@ type AgentProvider = {
 
 const agentProvidersData = agentProvidersDataRaw as unknown as AgentProvider[];
 
-export default function GitRepoSelector() {
+interface GitRepoSelectorProps {
+  onStartSession?: (sessionDetails: {
+    repo: string;
+    worktree: string;
+    branch: string;
+    sessionName: string;
+    agent: string;
+    model: string;
+    startupScript: string;
+  }) => void;
+}
+
+export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps) {
   const [view, setView] = useState<'list' | 'details'>('list');
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
@@ -38,6 +50,7 @@ export default function GitRepoSelector() {
 
   const [selectedProvider, setSelectedProvider] = useState<AgentProvider | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>('');
+  const [startupScript, setStartupScript] = useState<string>('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +124,7 @@ export default function GitRepoSelector() {
   const loadSavedAgentSettings = (repoPath: string) => {
     const savedProviderCli = localStorage.getItem(`viba_agent_provider_${repoPath}`);
     const savedModel = localStorage.getItem(`viba_agent_model_${repoPath}`);
+    const savedStartupScript = localStorage.getItem(`viba_startup_script_${repoPath}`);
 
     if (savedProviderCli) {
       const provider = agentProvidersData.find(p => p.cli === savedProviderCli);
@@ -130,6 +144,11 @@ export default function GitRepoSelector() {
       // Default
       setSelectedProvider(agentProvidersData[0]);
       setSelectedModel(agentProvidersData[0].models[0].id);
+    }
+    if (savedStartupScript) {
+      setStartupScript(savedStartupScript);
+    } else {
+      setStartupScript('');
     }
   };
 
@@ -209,6 +228,14 @@ export default function GitRepoSelector() {
     setSelectedModel(model);
     if (selectedRepo) {
       localStorage.setItem(`viba_agent_model_${selectedRepo}`, model);
+    }
+  };
+
+  const handleStartupScriptChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const script = e.target.value;
+    setStartupScript(script);
+    if (selectedRepo) {
+      localStorage.setItem(`viba_startup_script_${selectedRepo}`, script);
     }
   };
 
@@ -386,6 +413,21 @@ export default function GitRepoSelector() {
                     )}
                   </div>
                 </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium opacity-70">Start up script (Optional)</label>
+                  <input
+                    type="text"
+                    className="input input-bordered w-full font-mono text-sm"
+                    placeholder="npm i"
+                    value={startupScript}
+                    onChange={handleStartupScriptChange}
+                    disabled={loading}
+                  />
+                  <div className="text-xs opacity-50 px-1">
+                    Script to run in the terminal agent iframe upon startup.
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -414,17 +456,30 @@ export default function GitRepoSelector() {
                 const wtResult = await createSessionWorktree(selectedRepo, baseBranch);
 
                 if (wtResult.success && wtResult.worktreePath && wtResult.branchName) {
-                  // 3. Navigate to session page with new params
-                  const params = new URLSearchParams({
-                    repo: selectedRepo, // Keep original repo for context if needed
-                    worktree: wtResult.worktreePath,
-                    branch: wtResult.branchName,
-                    session: wtResult.sessionName || '',
-                    agent: selectedProvider?.cli || '',
-                    model: selectedModel || ''
-                  });
+                  // 3. Navigate to session page with new params OR call onStartSession
+                  if (onStartSession) {
+                    onStartSession({
+                      repo: selectedRepo,
+                      worktree: wtResult.worktreePath,
+                      branch: wtResult.branchName,
+                      sessionName: wtResult.sessionName || '',
+                      agent: selectedProvider?.cli || '',
+                      model: selectedModel || '',
+                      startupScript: startupScript || ''
+                    });
+                  } else {
+                    const params = new URLSearchParams({
+                      repo: selectedRepo, // Keep original repo for context if needed
+                      worktree: wtResult.worktreePath,
+                      branch: wtResult.branchName,
+                      session: wtResult.sessionName || '',
+                      agent: selectedProvider?.cli || '',
+                      model: selectedModel || '',
+                      startup_script: startupScript || ''
+                    });
 
-                  router.push(`/session?${params.toString()}`);
+                    router.push(`/session?${params.toString()}`);
+                  }
                 } else {
                   setError(wtResult.error || "Failed to create session worktree");
                   setLoading(false);
