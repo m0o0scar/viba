@@ -3,7 +3,7 @@
 import React, { useRef, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { cleanUpSessionWorktree } from '@/app/actions/git';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { Trash2, Terminal } from 'lucide-react';
 
 function SessionContent() {
     const searchParams = useSearchParams();
@@ -13,14 +13,13 @@ function SessionContent() {
     const sessionName = searchParams.get('session');
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
+    const terminalRef = useRef<HTMLIFrameElement>(null);
     const [feedback, setFeedback] = useState<string>('Initializing...');
     const [isCleaningUp, setIsCleaningUp] = useState(false);
+    const [showTerminal, setShowTerminal] = useState(false);
     const router = useRouter();
 
-    const handleBack = () => {
-        // Navigating away will destroy the iframe component
-        router.push('/');
-    };
+
 
     const handleCleanup = async () => {
         if (!repo || !worktree || !branch) return;
@@ -150,19 +149,73 @@ function SessionContent() {
         setTimeout(() => checkAndInject(), 1000);
     };
 
+    const handleTerminalLoad = () => {
+        if (!terminalRef.current) return;
+        const iframe = terminalRef.current;
+        console.log('Secondary terminal loaded');
+
+        // Safety check
+        try {
+            const _ = iframe.contentWindow;
+        } catch (e) {
+            console.error("Secondary terminal: Cross-Origin access blocked.");
+            return;
+        }
+
+        const checkAndInject = (attempts = 0) => {
+            if (attempts > 30) {
+                console.log('Timeout waiting for secondary terminal');
+                return;
+            }
+
+            try {
+                const win = iframe.contentWindow as any;
+                if (win && win.term) {
+                    console.log('Secondary terminal instance found');
+
+                    const targetPath = worktree || repo;
+                    const cmd = `cd "${targetPath}"`;
+                    win.term.paste(cmd);
+
+                    const pressEnter = () => {
+                        const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                        if (textarea) {
+                            textarea.dispatchEvent(new KeyboardEvent('keypress', {
+                                bubbles: true,
+                                cancelable: true,
+                                charCode: 13,
+                                keyCode: 13,
+                                key: 'Enter',
+                                view: win
+                            }));
+                        } else {
+                            win.term.paste('\r');
+                        }
+                    };
+                    pressEnter();
+
+                    // Focus
+                    win.focus();
+                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                    if (textarea) (textarea as HTMLElement).focus();
+                } else {
+                    setTimeout(() => checkAndInject(attempts + 1), 500);
+                }
+            } catch (e) {
+                console.error("Secondary terminal injection error", e);
+            }
+        };
+
+        setTimeout(() => checkAndInject(), 1000);
+    };
+
     if (!repo) return <div className="p-4 text-error">No repository specified</div>;
 
     return (
         <div className="w-full h-screen flex flex-col bg-base-100">
-            <div className="bg-base-300 p-2 text-xs flex justify-between px-4 font-mono select-none items-center">
+            <div className="bg-base-300 p-2 text-xs flex justify-between px-4 font-mono select-none items-center shadow-md z-10">
                 <div className="flex items-center gap-4">
-                    <button
-                        onClick={handleBack}
-                        className="btn btn-ghost btn-xs btn-square"
-                        title="Back to Home"
-                    >
-                        <ArrowLeft className="w-4 h-4" />
-                    </button>
+
 
                     <div className="flex flex-col">
                         <div className="flex items-center gap-2">
@@ -179,6 +232,14 @@ function SessionContent() {
                 </div>
 
                 <div className="flex items-center gap-4">
+                    <button
+                        className={`btn btn-xs gap-1 ${showTerminal ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => setShowTerminal(!showTerminal)}
+                    >
+                        <Terminal className="w-3 h-3" />
+                        Terminal
+                    </button>
+
                     <div className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') ? 'bg-success' : 'bg-warning'}`}></span>
                         <span>{feedback}</span>
@@ -196,13 +257,32 @@ function SessionContent() {
                     )}
                 </div>
             </div>
-            <iframe
-                ref={iframeRef}
-                src="/terminal"
-                className="w-full flex-grow border-none dark:invert dark:brightness-90"
-                allow="clipboard-read; clipboard-write"
-                onLoad={handleIframeLoad}
-            />
+
+            <div className="flex flex-row w-full flex-grow overflow-hidden">
+                {/* coding agent iframe */}
+                <div className={`h-full ${showTerminal ? 'w-2/3' : 'w-full'}`}>
+                    <iframe
+                        ref={iframeRef}
+                        src="/terminal"
+                        className="w-full h-full border-none dark:invert dark:brightness-90"
+                        allow="clipboard-read; clipboard-write"
+                        onLoad={handleIframeLoad}
+                    />
+                </div>
+
+                {/* terminal iframe */}
+                {showTerminal && (
+                    <div className="h-full w-1/3 border-l border-base-300">
+                        <iframe
+                            ref={terminalRef}
+                            src="/terminal"
+                            className="w-full h-full border-none dark:invert dark:brightness-90"
+                            allow="clipboard-read; clipboard-write"
+                            onLoad={handleTerminalLoad}
+                        />
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
