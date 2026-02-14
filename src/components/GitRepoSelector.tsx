@@ -664,8 +664,8 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                     if (attachments.some(a => a.name === name)) {
                       return `${wtResult.worktreePath}-attachments/${name}`;
                     }
-                    // Assume repo file
-                    return `${wtResult.worktreePath}/${name}`;
+                    // Assume repo file - keep relative path as we run in worktree root
+                    return name;
                   });
 
                   // 3. Navigate to session page with new params OR call onStartSession
