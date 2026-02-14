@@ -113,11 +113,8 @@ function SessionContent() {
                                 // Gemini: gemini --model gemini-3-pro --yolo
                                 agentCmd = `gemini --model ${model || 'gemini-3-pro'} --yolo`;
                             } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
-                                // Cursor: agent --modal composer-1 (assuming model mapping or default)
-                                // The user prompt says: agent --modal composer-1. 
-                                // But we have model selection. Let's try to verify if we should use model param.
-                                // User example: agent --modal composer-1
-                                agentCmd = `agent --model ${model || 'gpt-4o'}`;
+                                // Cursor: agent --model opus-4.6-thinking
+                                agentCmd = `agent --model ${model || 'opus-4.6-thinking'}`;
                             } else {
                                 // Generic fallback: <agent> --model <model>
                                 agentCmd = `${agent} --model ${model}`;

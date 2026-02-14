@@ -6,13 +6,22 @@ import FileBrowser from './FileBrowser';
 import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, createSessionWorktree } from '@/app/actions/git';
 import { useRouter } from 'next/navigation';
 
-import agentProvidersData from '@/data/agent-providers.json';
+import agentProvidersDataRaw from '@/data/agent-providers.json';
+
+type Model = {
+  id: string;
+  label: string;
+  description?: string;
+};
 
 type AgentProvider = {
   name: string;
   cli: string;
-  models: string[];
+  description?: string;
+  models: Model[];
 };
+
+const agentProvidersData = agentProvidersDataRaw as unknown as AgentProvider[];
 
 export default function GitRepoSelector() {
   const [view, setView] = useState<'list' | 'details'>('list');
@@ -107,20 +116,20 @@ export default function GitRepoSelector() {
       const provider = agentProvidersData.find(p => p.cli === savedProviderCli);
       if (provider) {
         setSelectedProvider(provider);
-        if (savedModel && provider.models.includes(savedModel)) {
+        if (savedModel && provider.models.some(m => m.id === savedModel)) {
           setSelectedModel(savedModel);
         } else {
-          setSelectedModel(provider.models[0]);
+          setSelectedModel(provider.models[0].id);
         }
       } else {
         // Default if saved one is invalid
         setSelectedProvider(agentProvidersData[0]);
-        setSelectedModel(agentProvidersData[0].models[0]);
+        setSelectedModel(agentProvidersData[0].models[0].id);
       }
     } else {
       // Default
       setSelectedProvider(agentProvidersData[0]);
-      setSelectedModel(agentProvidersData[0].models[0]);
+      setSelectedModel(agentProvidersData[0].models[0].id);
     }
   };
 
@@ -187,7 +196,7 @@ export default function GitRepoSelector() {
     if (provider && selectedRepo) {
       setSelectedProvider(provider);
       // Default to first model
-      const defaultModel = provider.models[0];
+      const defaultModel = provider.models[0].id;
       setSelectedModel(defaultModel);
 
       localStorage.setItem(`viba_agent_provider_${selectedRepo}`, provider.cli);
@@ -344,6 +353,11 @@ export default function GitRepoSelector() {
                         ))}
                       </select>
                     </div>
+                    {selectedProvider?.description && (
+                      <p className="text-[10px] opacity-60 mt-1 pl-1 italic leading-tight">
+                        {selectedProvider.description}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -359,12 +373,17 @@ export default function GitRepoSelector() {
                         disabled={loading || !selectedProvider}
                       >
                         {selectedProvider?.models.map(model => (
-                          <option key={model} value={model}>
-                            {model}
+                          <option key={model.id} value={model.id}>
+                            {model.label}
                           </option>
                         ))}
                       </select>
                     </div>
+                    {selectedProvider?.models.find(m => m.id === selectedModel)?.description && (
+                      <p className="text-[10px] opacity-60 mt-1 pl-1 italic leading-tight">
+                        {selectedProvider.models.find(m => m.id === selectedModel)?.description}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
