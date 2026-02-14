@@ -13,6 +13,8 @@ export interface SessionViewProps {
     agent?: string;
     model?: string;
     startupScript?: string;
+    initialMessage?: string;
+    attachments?: File[];
     onExit: () => void;
 }
 
@@ -24,6 +26,8 @@ export function SessionView({
     agent,
     model,
     startupScript,
+    initialMessage,
+    attachments,
     onExit
 }: SessionViewProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -154,18 +158,20 @@ export function SessionView({
                     if (agent) {
                         setTimeout(() => {
                             let agentCmd = '';
+                            const safeMessage = initialMessage ? ` "${initialMessage.replace(/"/g, '\\"')}"` : '';
+
                             if (agent.toLowerCase().includes('codex')) {
                                 // Codex: codex --model gpt-5.3-codex --sandbox danger-full-access --ask-for-approval on-request --search
-                                agentCmd = `codex --model ${model || 'gpt-5.3-codex'} --sandbox danger-full-access --ask-for-approval on-request --search`;
+                                agentCmd = `codex --model ${model || 'gpt-5.3-codex'} --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`;
                             } else if (agent.toLowerCase().includes('gemini')) {
                                 // Gemini: gemini --model gemini-3-pro --yolo
-                                agentCmd = `gemini --model ${model || 'gemini-3-pro'} --yolo`;
+                                agentCmd = `gemini --model ${model || 'gemini-3-pro'} --yolo${safeMessage}`;
                             } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
                                 // Cursor: agent --model opus-4.6-thinking
-                                agentCmd = `agent --model ${model || 'opus-4.6-thinking'}`;
+                                agentCmd = `agent --model ${model || 'opus-4.6-thinking'}${safeMessage}`;
                             } else {
                                 // Generic fallback: <agent> --model <model>
-                                agentCmd = `${agent} --model ${model}`;
+                                agentCmd = `${agent} --model ${model}${safeMessage}`;
                             }
 
                             if (agentCmd) {

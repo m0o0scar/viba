@@ -113,6 +113,13 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
     const { spawn } = await import('child_process');
     console.log('Starting ttyd process...');
 
+    // Clean up environment variables to prevent conflicts
+    // Specifically remove TURBOPACK which causes "Multiple bundler flags set" error
+    // when running next dev inside the terminal if the parent process has it set.
+    const env = { ...process.env };
+    delete env.TURBOPACK;
+    delete env.PORT;
+
     // Start ttyd with -W (writable) and bash
     const child = spawn('ttyd', [
       '-p', '7681',
@@ -122,7 +129,7 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
       stdio: 'ignore', // or 'pipe' if we want to log output
       detached: false, // Keep attached to parent so it dies when parent dies (mostly)
       env: {
-        ...process.env,
+        ...env,
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
       },
@@ -192,6 +199,8 @@ export async function createSessionWorktree(repoPath: string, baseBranch: string
   }
 }
 
+// ...existing code...
+
 export async function cleanUpSessionWorktree(repoPath: string, worktreePath: string, branchName: string): Promise<{ success: boolean; error?: string }> {
   try {
     const git = simpleGit(repoPath);
@@ -215,6 +224,14 @@ export async function cleanUpSessionWorktree(repoPath: string, worktreePath: str
       // ignore
     }
 
+    // New: Clean up attachments folder if exists
+    try {
+      const attachmentsDir = `${worktreePath}-attachments`;
+      await fs.rm(attachmentsDir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+
     return { success: true };
   } catch (e: any) {
     console.error("Failed to cleanup worktree:", e);
@@ -232,5 +249,43 @@ export async function getStartupScript(repoPath: string): Promise<string> {
   } catch (error) {
     console.error('Error determining startup script:', error);
     return '';
+  }
+}
+
+export async function listRepoFiles(repoPath: string, query: string = ''): Promise<string[]> {
+  try {
+    const git = simpleGit(repoPath);
+    const result = await git.raw(['ls-files']);
+    const allFiles = result.split('\n').filter(Boolean);
+
+    if (!query) return allFiles.slice(0, 50);
+
+    const lowerQuery = query.toLowerCase();
+    return allFiles.filter(f => f.toLowerCase().includes(lowerQuery)).slice(0, 50);
+  } catch (error) {
+    console.error('Failed to list repo files:', error);
+    return [];
+  }
+}
+
+export async function saveAttachments(worktreePath: string, formData: FormData): Promise<boolean> {
+  try {
+    const attachmentsDir = `${worktreePath}-attachments`;
+    await fs.mkdir(attachmentsDir, { recursive: true });
+
+    const files = Array.from(formData.entries());
+
+    for (const [name, entry] of files) {
+      if (entry instanceof File) {
+        const buffer = Buffer.from(await entry.arrayBuffer());
+        // Sanitize filename
+        const safeName = entry.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        await fs.writeFile(path.join(attachmentsDir, safeName), buffer);
+      }
+    }
+    return true;
+  } catch (error) {
+    console.error('Failed to save attachments:', error);
+    return false;
   }
 }
