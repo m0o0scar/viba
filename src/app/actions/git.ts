@@ -114,7 +114,11 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
     console.log('Starting ttyd process...');
 
     // Start ttyd with -W (writable) and bash
-    const child = spawn('ttyd', ['-p', '7681', '-W', 'bash'], {
+    const child = spawn('ttyd', [
+      '-p', '7681',
+      '-t', 'theme={"background": "white", "foreground": "black", "cursor": "black"}',
+      '-W', 'bash'
+    ], {
       stdio: 'ignore', // or 'pipe' if we want to log output
       detached: false, // Keep attached to parent so it dies when parent dies (mostly)
       env: {
