@@ -15,9 +15,10 @@ interface FileBrowserProps {
   initialPath?: string;
   onSelect: (path: string) => void;
   onCancel: () => void;
+  checkRepo?: (path: string) => Promise<boolean>;
 }
 
-export default function FileBrowser({ initialPath, onSelect, onCancel }: FileBrowserProps) {
+export default function FileBrowser({ initialPath, onSelect, onCancel, checkRepo }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [items, setItems] = useState<FileSystemItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -25,17 +26,20 @@ export default function FileBrowser({ initialPath, onSelect, onCancel }: FileBro
 
   useEffect(() => {
     const init = async () => {
+      // ... same
       if (initialPath) {
         setCurrentPath(initialPath);
       } else {
+        // ... same
         const home = await getHomeDirectory();
         setCurrentPath(home);
       }
     };
     init();
-  }, [initialPath]);
+  }, [initialPath]); // Added dependency
 
   useEffect(() => {
+    // ... same logic for fetching items ...
     if (!currentPath) return;
 
     const fetchItems = async () => {
@@ -43,7 +47,14 @@ export default function FileBrowser({ initialPath, onSelect, onCancel }: FileBro
       setError(null);
       try {
         const dirs = await listDirectories(currentPath);
-        setItems(dirs);
+        // ... same map to items
+        const mapped: FileSystemItem[] = dirs.map(d => ({
+          name: d.name,
+          path: d.path,
+          isDirectory: d.isDirectory,
+          isGitRepo: d.isGitRepo
+        }));
+        setItems(mapped);
       } catch (err) {
         console.error(err);
         setError('Failed to load directory contents');
@@ -54,6 +65,21 @@ export default function FileBrowser({ initialPath, onSelect, onCancel }: FileBro
 
     fetchItems();
   }, [currentPath]);
+
+  // ... handleNavigate, handleGoUp ...
+
+  const handleSelect = async () => {
+    if (checkRepo) {
+      const isValid = await checkRepo(currentPath);
+      if (!isValid) {
+        setError("Selected directory is not a valid git repository.");
+        // Clear error after 3 seconds
+        setTimeout(() => setError(null), 3000);
+        return;
+      }
+    }
+    onSelect(currentPath);
+  };
 
   const handleNavigate = (path: string) => {
     setCurrentPath(path);
@@ -73,10 +99,10 @@ export default function FileBrowser({ initialPath, onSelect, onCancel }: FileBro
     // Let's just find the last separator.
     const lastSepIndex = currentPath.lastIndexOf('/');
     if (lastSepIndex > 0) {
-        setCurrentPath(currentPath.substring(0, lastSepIndex));
-    } else if (currentPath.length > 1) { 
-        // Handle root
-        setCurrentPath('/');
+      setCurrentPath(currentPath.substring(0, lastSepIndex));
+    } else if (currentPath.length > 1) {
+      // Handle root
+      setCurrentPath('/');
     }
   };
 
@@ -96,8 +122,8 @@ export default function FileBrowser({ initialPath, onSelect, onCancel }: FileBro
 
         {/* Current Path Bar */}
         <div className="flex items-center gap-2 p-3 bg-base-300">
-          <button 
-            onClick={handleGoUp} 
+          <button
+            onClick={handleGoUp}
             className="btn btn-sm btn-square btn-ghost"
             title="Go Up"
             disabled={currentPath === '/' || !currentPath}
@@ -107,8 +133,8 @@ export default function FileBrowser({ initialPath, onSelect, onCancel }: FileBro
           <div className="flex-1 overflow-x-auto whitespace-nowrap px-2 font-mono text-sm">
             {currentPath}
           </div>
-          <button 
-            onClick={() => onSelect(currentPath)} 
+          <button
+            onClick={handleSelect}
             className="btn btn-sm btn-primary"
           >
             Select Current Folder
@@ -128,7 +154,7 @@ export default function FileBrowser({ initialPath, onSelect, onCancel }: FileBro
           ) : (
             <div className="grid grid-cols-1 gap-1">
               {items.map((item) => (
-                <div 
+                <div
                   key={item.path}
                   className="flex items-center justify-between p-2 hover:bg-base-100 rounded-md cursor-pointer transition-colors"
                   onClick={() => handleNavigate(item.path)}
@@ -137,7 +163,7 @@ export default function FileBrowser({ initialPath, onSelect, onCancel }: FileBro
                     <Folder className={`w-5 h-5 ${item.isGitRepo ? 'text-primary' : 'text-base-content/70'}`} />
                     <span className="truncate">{item.name}</span>
                     {item.isGitRepo && (
-                         <span className="badge badge-xs badge-primary">git</span>
+                      <span className="badge badge-xs badge-primary">git</span>
                     )}
                   </div>
                 </div>
@@ -145,10 +171,10 @@ export default function FileBrowser({ initialPath, onSelect, onCancel }: FileBro
             </div>
           )}
         </div>
-        
+
         {/* Footer info */}
         <div className="p-3 border-t border-base-300 text-xs text-base-content/50 text-center">
-             Navigate to a folder and click "Select Current Folder" to choose it.
+          Navigate to a folder and click "Select Current Folder" to choose it.
         </div>
       </div>
     </div>

@@ -221,3 +221,16 @@ export async function cleanUpSessionWorktree(repoPath: string, worktreePath: str
     return { success: false, error: e.message || String(e) };
   }
 }
+
+export async function getStartupScript(repoPath: string): Promise<string> {
+  try {
+    const files = await fs.readdir(repoPath);
+    if (files.includes('package-lock.json')) return 'npm install';
+    if (files.includes('pnpm-lock.yaml')) return 'pnpm install';
+    if (files.includes('yarn.lock')) return 'yarn install';
+    return '';
+  } catch (error) {
+    console.error('Error determining startup script:', error);
+    return '';
+  }
+}

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog, Bot, Cpu } from 'lucide-react';
 import FileBrowser from './FileBrowser';
-import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, createSessionWorktree } from '@/app/actions/git';
+import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, createSessionWorktree, getStartupScript } from '@/app/actions/git';
 import { useRouter } from 'next/navigation';
 
 import agentProvidersDataRaw from '@/data/agent-providers.json';
@@ -108,7 +108,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       setView('details');
 
       // Load saved provider/model
-      loadSavedAgentSettings(path);
+      await loadSavedAgentSettings(path);
 
       // Load branches
       await loadBranches(path);
@@ -121,7 +121,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
     }
   };
 
-  const loadSavedAgentSettings = (repoPath: string) => {
+  const loadSavedAgentSettings = async (repoPath: string) => {
     const savedProviderCli = localStorage.getItem(`viba_agent_provider_${repoPath}`);
     const savedModel = localStorage.getItem(`viba_agent_model_${repoPath}`);
     const savedStartupScript = localStorage.getItem(`viba_startup_script_${repoPath}`);
@@ -145,10 +145,14 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       setSelectedProvider(agentProvidersData[0]);
       setSelectedModel(agentProvidersData[0].models[0].id);
     }
-    if (savedStartupScript) {
+
+    if (savedStartupScript !== null) {
+      // If it was explicitly saved (even as empty string), use it
       setStartupScript(savedStartupScript);
     } else {
-      setStartupScript('');
+      // Determine default based on repo content
+      const defaultScript = await getStartupScript(repoPath);
+      setStartupScript(defaultScript);
     }
   };
 
@@ -503,6 +507,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
           initialPath={defaultRoot || undefined}
           onSelect={(path) => handleSelectRepo(path)}
           onCancel={() => setIsBrowsing(false)}
+          checkRepo={checkIsGitRepo}
         />
       )}
 
