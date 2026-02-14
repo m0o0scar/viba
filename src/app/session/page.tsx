@@ -199,7 +199,7 @@ function SessionContent() {
             <iframe
                 ref={iframeRef}
                 src="/terminal"
-                className="w-full flex-grow border-none"
+                className="w-full flex-grow border-none dark:invert dark:brightness-90"
                 allow="clipboard-read; clipboard-write"
                 onLoad={handleIframeLoad}
             />
