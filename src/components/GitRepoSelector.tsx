@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog, Bot, Cpu } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, createSessionWorktree, getStartupScript, listRepoFiles, saveAttachments, listSessions, SessionMetadata } from '@/app/actions/git';
+import { getSetting, saveSetting } from '@/app/actions/settings';
 import { useRouter } from 'next/navigation';
 import { Play } from 'lucide-react'; // Added Play icon for resume
 
@@ -64,26 +65,25 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
 
   // Load recent repos and default root on mount
   useEffect(() => {
-    const savedRepos = localStorage.getItem('viba_recent_repos');
-    if (savedRepos) {
-      try {
-        setRecentRepos(JSON.parse(savedRepos));
-      } catch (e) {
-        console.error('Failed to parse recent repos', e);
+    async function loadSettings() {
+      const savedRepos = await getSetting<string[]>('viba_recent_repos');
+      if (savedRepos) {
+        setRecentRepos(savedRepos);
       }
-    }
 
-    const savedRoot = localStorage.getItem('viba_default_root');
-    if (savedRoot) {
-      setDefaultRoot(savedRoot);
+      const savedRoot = await getSetting<string>('viba_default_root');
+      if (savedRoot) {
+        setDefaultRoot(savedRoot);
+      }
+      setIsLoaded(true);
     }
-    setIsLoaded(true);
+    loadSettings();
   }, []);
 
   // Save recent repos whenever changed, but only after initial load
   useEffect(() => {
     if (isLoaded) {
-      localStorage.setItem('viba_recent_repos', JSON.stringify(recentRepos));
+      saveSetting('viba_recent_repos', recentRepos);
     }
   }, [recentRepos, isLoaded]);
 
@@ -132,9 +132,9 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   };
 
   const loadSavedAgentSettings = async (repoPath: string) => {
-    const savedProviderCli = localStorage.getItem(`viba_agent_provider_${repoPath}`);
-    const savedModel = localStorage.getItem(`viba_agent_model_${repoPath}`);
-    const savedStartupScript = localStorage.getItem(`viba_startup_script_${repoPath}`);
+    const savedProviderCli = await getSetting<string>(`viba_agent_provider_${repoPath}`);
+    const savedModel = await getSetting<string>(`viba_agent_model_${repoPath}`);
+    const savedStartupScript = await getSetting<string>(`viba_startup_script_${repoPath}`);
 
     if (savedProviderCli) {
       const provider = agentProvidersData.find(p => p.cli === savedProviderCli);
@@ -168,7 +168,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
 
   const handleSetDefaultRoot = (path: string) => {
     setDefaultRoot(path);
-    localStorage.setItem('viba_default_root', path);
+    saveSetting('viba_default_root', path);
     setIsSelectingRoot(false);
   };
 
@@ -177,8 +177,8 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       const data = await getBranches(repoPath);
       setBranches(data);
 
-      // 1. Check local storage for last picked
-      const lastPicked = localStorage.getItem(`viba_branch_${repoPath}`);
+      // 1. Check saved setting for last picked
+      const lastPicked = await getSetting<string>(`viba_branch_${repoPath}`);
 
       // 2. Check current checked out branch
       const currentCheckedOut = data.find(b => b.current)?.name;
@@ -212,7 +212,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
     try {
       await checkoutBranch(selectedRepo, newBranch);
       setCurrentBranchName(newBranch);
-      localStorage.setItem(`viba_branch_${selectedRepo}`, newBranch);
+      saveSetting(`viba_branch_${selectedRepo}`, newBranch);
 
       const data = await getBranches(selectedRepo);
       setBranches(data);
@@ -232,8 +232,8 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       const defaultModel = provider.models[0].id;
       setSelectedModel(defaultModel);
 
-      localStorage.setItem(`viba_agent_provider_${selectedRepo}`, provider.cli);
-      localStorage.setItem(`viba_agent_model_${selectedRepo}`, defaultModel);
+      saveSetting(`viba_agent_provider_${selectedRepo}`, provider.cli);
+      saveSetting(`viba_agent_model_${selectedRepo}`, defaultModel);
     }
   };
 
@@ -241,7 +241,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
     const model = e.target.value;
     setSelectedModel(model);
     if (selectedRepo) {
-      localStorage.setItem(`viba_agent_model_${selectedRepo}`, model);
+      saveSetting(`viba_agent_model_${selectedRepo}`, model);
     }
   };
 
@@ -249,7 +249,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
     const script = e.target.value;
     setStartupScript(script);
     if (selectedRepo) {
-      localStorage.setItem(`viba_startup_script_${selectedRepo}`, script);
+      saveSetting(`viba_startup_script_${selectedRepo}`, script);
     }
   };
 

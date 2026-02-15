@@ -3,6 +3,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 // import { useRouter } from 'next/navigation';
 import { cleanUpSessionWorktree } from '@/app/actions/git';
+import { getSetting, saveSetting } from '@/app/actions/settings';
 import { Trash2, ExternalLink } from 'lucide-react';
 
 const SUPPORTED_IDES = [
@@ -50,27 +51,33 @@ export function SessionView({
 
     // Resize state
     const [agentWidth, setAgentWidth] = useState(66.666);
+    const agentWidthRef = useRef(66.666);
     const [isResizing, setIsResizing] = useState(false);
 
     // IDE Selection
     const [selectedIde, setSelectedIde] = useState<string>('vscode');
 
     useEffect(() => {
-        const savedWidth = localStorage.getItem('session_agent_width');
-        if (savedWidth) {
-            setAgentWidth(parseFloat(savedWidth));
-        }
+        async function loadSettings() {
+            const savedWidth = await getSetting<string>('session_agent_width');
+            if (savedWidth) {
+                const val = parseFloat(savedWidth);
+                setAgentWidth(val);
+                agentWidthRef.current = val;
+            }
 
-        const savedIde = localStorage.getItem('viba_selected_ide');
-        if (savedIde && SUPPORTED_IDES.some(ide => ide.id === savedIde)) {
-            setSelectedIde(savedIde);
+            const savedIde = await getSetting<string>('viba_selected_ide');
+            if (savedIde && SUPPORTED_IDES.some(ide => ide.id === savedIde)) {
+                setSelectedIde(savedIde);
+            }
         }
+        loadSettings();
     }, []);
 
     const handleIdeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const value = e.target.value;
         setSelectedIde(value);
-        localStorage.setItem('viba_selected_ide', value);
+        saveSetting('viba_selected_ide', value);
     };
 
     const handleOpenIde = () => {
@@ -88,6 +95,7 @@ export function SessionView({
 
     const stopResizing = useCallback(() => {
         setIsResizing(false);
+        saveSetting('session_agent_width', agentWidthRef.current.toString());
     }, []);
 
     const resize = useCallback((e: MouseEvent) => {
@@ -96,7 +104,7 @@ export function SessionView({
             const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
             const clamped = Math.min(Math.max(newWidth, 20), 80);
             setAgentWidth(clamped);
-            localStorage.setItem('session_agent_width', clamped.toString());
+            agentWidthRef.current = clamped;
         }
     }, [isResizing]);
 
