@@ -1,0 +1,49 @@
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.2:3000
+
+✓ Starting...
+✓ Ready in 1129ms
+/*! 🌼 daisyUI 5.5.18 */
+○ Compiling / ...
+ GET / 200 in 6.3s (compile: 5.9s, render: 444ms)
+ POST / 200 in 80ms (compile: 7ms, render: 73ms)
+ POST / 200 in 31ms (compile: 11ms, render: 20ms)
+ POST / 200 in 32ms (compile: 8ms, render: 24ms)
+ POST / 200 in 25ms (compile: 9ms, render: 16ms)
+ POST / 200 in 63ms (compile: 12ms, render: 51ms)
+ POST / 200 in 19ms (compile: 4ms, render: 15ms)
+ POST / 200 in 25ms (compile: 5ms, render: 21ms)
+Starting ttyd process...
+Failed to start ttyd: Error: spawn ttyd ENOENT
+    at ignore-listed frames {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'spawn ttyd',
+  path: 'ttyd',
+  spawnargs: [Array]
+}
+ POST / 200 in 1060ms (compile: 7ms, render: 1053ms)
+Creating worktree at /tmp/.viba/test-repo/20260215-2314-8713a774 based on master
+ POST / 200 in 81ms (compile: 7ms, render: 74ms)
+(node:2573) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Failed to proxy http://localhost:7681 AggregateError:
+    at ignore-listed frames {
+  code: 'ECONNREFUSED'
+}
+AggregateError:
+    at ignore-listed frames {
+  code: 'ECONNREFUSED'
+}
+ POST / 200 in 50ms (compile: 5ms, render: 46ms)
+Failed to proxy http://localhost:7681 AggregateError:
+    at ignore-listed frames {
+  code: 'ECONNREFUSED'
+}
+AggregateError:
+    at ignore-listed frames {
+  code: 'ECONNREFUSED'
+}
+ POST / 200 in 23ms (compile: 5ms, render: 18ms)
+✓ Compiled in 139ms

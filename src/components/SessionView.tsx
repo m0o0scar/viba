@@ -2,7 +2,8 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 // import { useRouter } from 'next/navigation';
-import { cleanUpSessionWorktree } from '@/app/actions/git';
+import { deleteSession } from '@/app/actions/session';
+import { getConfig, updateConfig } from '@/app/actions/config';
 import { Trash2, ExternalLink } from 'lucide-react';
 
 const SUPPORTED_IDES = [
@@ -51,26 +52,32 @@ export function SessionView({
     // Resize state
     const [agentWidth, setAgentWidth] = useState(66.666);
     const [isResizing, setIsResizing] = useState(false);
+    const agentWidthRef = useRef(agentWidth);
+
+    useEffect(() => {
+        agentWidthRef.current = agentWidth;
+    }, [agentWidth]);
 
     // IDE Selection
     const [selectedIde, setSelectedIde] = useState<string>('vscode');
 
     useEffect(() => {
-        const savedWidth = localStorage.getItem('session_agent_width');
-        if (savedWidth) {
-            setAgentWidth(parseFloat(savedWidth));
-        }
-
-        const savedIde = localStorage.getItem('viba_selected_ide');
-        if (savedIde && SUPPORTED_IDES.some(ide => ide.id === savedIde)) {
-            setSelectedIde(savedIde);
-        }
+        const loadConfig = async () => {
+            const config = await getConfig();
+            if (config.agentWidth) {
+                setAgentWidth(config.agentWidth);
+            }
+            if (config.selectedIde && SUPPORTED_IDES.some(ide => ide.id === config.selectedIde)) {
+                setSelectedIde(config.selectedIde);
+            }
+        };
+        loadConfig();
     }, []);
 
-    const handleIdeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const handleIdeChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
         const value = e.target.value;
         setSelectedIde(value);
-        localStorage.setItem('viba_selected_ide', value);
+        await updateConfig({ selectedIde: value });
     };
 
     const handleOpenIde = () => {
@@ -88,6 +95,7 @@ export function SessionView({
 
     const stopResizing = useCallback(() => {
         setIsResizing(false);
+        updateConfig({ agentWidth: agentWidthRef.current });
     }, []);
 
     const resize = useCallback((e: MouseEvent) => {
@@ -96,7 +104,6 @@ export function SessionView({
             const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
             const clamped = Math.min(Math.max(newWidth, 20), 80);
             setAgentWidth(clamped);
-            localStorage.setItem('session_agent_width', clamped.toString());
         }
     }, [isResizing]);
 
@@ -119,7 +126,10 @@ export function SessionView({
         setFeedback('Cleaning up session...');
 
         try {
-            const result = await cleanUpSessionWorktree(repo, worktree, branch);
+            // New: use deleteSession with sessionName
+            // If sessionName is missing (legacy?), we might have issues.
+            // But SessionView expects sessionName.
+            const result = await deleteSession(sessionName);
             if (result.success) {
                 onExit();
             } else {
@@ -430,5 +440,3 @@ export function SessionView({
         </div>
     );
 }
-
-

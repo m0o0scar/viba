@@ -3,7 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog, Bot, Cpu } from 'lucide-react';
 import FileBrowser from './FileBrowser';
-import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, createSessionWorktree, getStartupScript, listRepoFiles, saveAttachments, listSessions, SessionMetadata } from '@/app/actions/git';
+import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, getStartupScript, listRepoFiles, saveAttachments } from '@/app/actions/git';
+import { createSession, listSessions, SessionMetadata } from '@/app/actions/session';
+import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
 import { useRouter } from 'next/navigation';
 import { Play } from 'lucide-react'; // Added Play icon for resume
 
@@ -44,9 +46,10 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   const [view, setView] = useState<'list' | 'details'>('list');
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
-  const [recentRepos, setRecentRepos] = useState<string[]>([]);
+
+  const [config, setConfig] = useState<Config | null>(null);
+
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
-  const [defaultRoot, setDefaultRoot] = useState<string>('');
 
   const router = useRouter();
 
@@ -62,30 +65,19 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   const [error, setError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load recent repos and default root on mount
+  // Load config on mount
   useEffect(() => {
-    const savedRepos = localStorage.getItem('viba_recent_repos');
-    if (savedRepos) {
+    const loadConfig = async () => {
       try {
-        setRecentRepos(JSON.parse(savedRepos));
+        const cfg = await getConfig();
+        setConfig(cfg);
+        setIsLoaded(true);
       } catch (e) {
-        console.error('Failed to parse recent repos', e);
+        console.error('Failed to load config', e);
       }
-    }
-
-    const savedRoot = localStorage.getItem('viba_default_root');
-    if (savedRoot) {
-      setDefaultRoot(savedRoot);
-    }
-    setIsLoaded(true);
+    };
+    loadConfig();
   }, []);
-
-  // Save recent repos whenever changed, but only after initial load
-  useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem('viba_recent_repos', JSON.stringify(recentRepos));
-    }
-  }, [recentRepos, isLoaded]);
 
   const handleSelectRepo = async (path: string) => {
     setLoading(true);
@@ -95,19 +87,23 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       if (!isValid) {
         setError('Selected directory is not a valid git repository.');
         setLoading(false);
-        // Do not close browser if invalid, let user try again
         return;
       }
 
-      // Add to recent if not exists
-      let newRecent = [...recentRepos];
-      if (!newRecent.includes(path)) {
-        newRecent.unshift(path);
-      } else {
-        // Move to top
-        newRecent = [path, ...newRecent.filter(r => r !== path)];
+      if (config) {
+        // Add to recent if not exists
+        let newRecent = [...config.recentRepos];
+        if (!newRecent.includes(path)) {
+          newRecent.unshift(path);
+        } else {
+          // Move to top
+          newRecent = [path, ...newRecent.filter(r => r !== path)];
+        }
+
+        // Update config
+        const newConfig = await updateConfig({ recentRepos: newRecent });
+        setConfig(newConfig);
       }
-      setRecentRepos(newRecent);
 
       setSelectedRepo(path);
       setIsBrowsing(false);
@@ -132,9 +128,17 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   };
 
   const loadSavedAgentSettings = async (repoPath: string) => {
-    const savedProviderCli = localStorage.getItem(`viba_agent_provider_${repoPath}`);
-    const savedModel = localStorage.getItem(`viba_agent_model_${repoPath}`);
-    const savedStartupScript = localStorage.getItem(`viba_startup_script_${repoPath}`);
+    // Refresh config to ensure we have latest settings?
+    // We can just rely on current config state if we assume single user or minimal concurrency.
+    // Or we can refetch.
+    const currentConfig = config || await getConfig();
+    if (!config) setConfig(currentConfig);
+
+    const settings = currentConfig.repoSettings[repoPath] || {};
+
+    const savedProviderCli = settings.agentProvider;
+    const savedModel = settings.agentModel;
+    const savedStartupScript = settings.startupScript;
 
     if (savedProviderCli) {
       const provider = agentProvidersData.find(p => p.cli === savedProviderCli);
@@ -156,8 +160,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       setSelectedModel(agentProvidersData[0].models[0].id);
     }
 
-    if (savedStartupScript !== null) {
-      // If it was explicitly saved (even as empty string), use it
+    if (savedStartupScript !== undefined && savedStartupScript !== null) {
       setStartupScript(savedStartupScript);
     } else {
       // Determine default based on repo content
@@ -166,9 +169,9 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
     }
   };
 
-  const handleSetDefaultRoot = (path: string) => {
-    setDefaultRoot(path);
-    localStorage.setItem('viba_default_root', path);
+  const handleSetDefaultRoot = async (path: string) => {
+    const newConfig = await updateConfig({ defaultRoot: path });
+    setConfig(newConfig);
     setIsSelectingRoot(false);
   };
 
@@ -177,10 +180,11 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       const data = await getBranches(repoPath);
       setBranches(data);
 
-      // 1. Check local storage for last picked
-      const lastPicked = localStorage.getItem(`viba_branch_${repoPath}`);
+      const currentConfig = config || await getConfig();
+      const settings = currentConfig.repoSettings[repoPath] || {};
+      const lastPicked = settings.lastBranch;
 
-      // 2. Check current checked out branch
+      // Check current checked out branch
       const currentCheckedOut = data.find(b => b.current)?.name;
 
       if (lastPicked && data.some(b => b.name === lastPicked)) {
@@ -212,7 +216,9 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
     try {
       await checkoutBranch(selectedRepo, newBranch);
       setCurrentBranchName(newBranch);
-      localStorage.setItem(`viba_branch_${selectedRepo}`, newBranch);
+
+      const newConfig = await updateRepoSettings(selectedRepo, { lastBranch: newBranch });
+      setConfig(newConfig);
 
       const data = await getBranches(selectedRepo);
       setBranches(data);
@@ -223,7 +229,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
     }
   };
 
-  const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleProviderChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const cli = e.target.value;
     const provider = agentProvidersData.find(p => p.cli === cli);
     if (provider && selectedRepo) {
@@ -232,26 +238,43 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       const defaultModel = provider.models[0].id;
       setSelectedModel(defaultModel);
 
-      localStorage.setItem(`viba_agent_provider_${selectedRepo}`, provider.cli);
-      localStorage.setItem(`viba_agent_model_${selectedRepo}`, defaultModel);
+      const newConfig = await updateRepoSettings(selectedRepo, {
+        agentProvider: provider.cli,
+        agentModel: defaultModel
+      });
+      setConfig(newConfig);
     }
   };
 
-  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleModelChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const model = e.target.value;
     setSelectedModel(model);
     if (selectedRepo) {
-      localStorage.setItem(`viba_agent_model_${selectedRepo}`, model);
+      const newConfig = await updateRepoSettings(selectedRepo, { agentModel: model });
+      setConfig(newConfig);
     }
   };
 
-  const handleStartupScriptChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleStartupScriptChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const script = e.target.value;
     setStartupScript(script);
-    if (selectedRepo) {
-      localStorage.setItem(`viba_startup_script_${selectedRepo}`, script);
-    }
+    // Debounce saving? Or just save on blur/change?
+    // For simplicity, I'll save on change but it triggers server action every keystroke which is bad.
+    // Better to save on blur or debounce.
+    // Or just save when starting session?
+    // The previous code saved on every change to localStorage.
+    // Let's rely on saving when starting session? No, we want to persist even if not started.
+    // I'll save on blur for now, or just save here and accept the cost.
+    // Given the "async" nature, let's just save. But it might be laggy.
+    // Actually, let's just update local state here, and use `onBlur` to save.
   };
+
+  const saveStartupScript = async () => {
+    if (selectedRepo) {
+        const newConfig = await updateRepoSettings(selectedRepo, { startupScript });
+        setConfig(newConfig);
+    }
+  }
 
   const [initialMessage, setInitialMessage] = useState<string>('');
   const [title, setTitle] = useState<string>('');
@@ -262,7 +285,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   const [suggestionList, setSuggestionList] = useState<string[]>([]);
   const [, setSuggestionQuery] = useState('');
   const [cursorPosition, setCursorPosition] = useState(0);
-  const [selectedIndex, setSelectedIndex] = useState(0); // NEW
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Cache filtered files
   const [repoFilesCache, setRepoFilesCache] = useState<string[]>([]);
@@ -347,7 +370,6 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       const newValue = `${prefix}@${suggestion} ${suffix}`;
       setInitialMessage(newValue);
       setShowSuggestions(false);
-      // Focus logic could go here if we had ref
     }
   };
 
@@ -362,14 +384,22 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   };
 
 
-  const handleRemoveRecent = (e: React.MouseEvent, repo: string) => {
+  const handleRemoveRecent = async (e: React.MouseEvent, repo: string) => {
     e.stopPropagation();
-    setRecentRepos(prev => prev.filter(r => r !== repo));
+    if (config) {
+        const newRecent = config.recentRepos.filter(r => r !== repo);
+        const newConfig = await updateConfig({ recentRepos: newRecent });
+        setConfig(newConfig);
+    }
   };
 
   const handleStartSession = async () => {
     if (!selectedRepo) return;
     setLoading(true);
+
+    // Also save startup script if changed
+    await saveStartupScript();
+
     try {
       // 1. Start TTYD if needed
       const ttydResult = await startTtydProcess();
@@ -383,7 +413,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       // Use current selected branch as base
       const baseBranch = currentBranchName || 'main'; // Fallback to main if empty, though shouldn't happen
 
-      const wtResult = await createSessionWorktree(selectedRepo, baseBranch, {
+      const wtResult = await createSession(selectedRepo, baseBranch, {
         agent: selectedProvider?.cli || 'agent',
         model: selectedModel || '',
         title: title
@@ -436,13 +466,6 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
             title: title || '',
             // params url too long for attachments/message probably, but generic fallback
           });
-
-          // For long messages passed via URL, we might hit limits.
-          // Ideally we should persist creating session state on server or use localStorage.
-          // But given existing architecture passes via URL or callback, we stick to it.
-          // If callback is used (which is true in main page), it's fine.
-          // If direct navigation, msg might be lost if too long. 
-          // But GitRepoSelector is used inside Home page which provides onStartSession.
 
           router.push(`/session?${params.toString()}`);
         }
@@ -528,10 +551,10 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                 <button
                   className="btn btn-ghost btn-sm gap-2"
                   onClick={() => setIsSelectingRoot(true)}
-                  title={defaultRoot ? `Default: ${defaultRoot}` : "Set default browsing folder"}
+                  title={config?.defaultRoot ? `Default: ${config.defaultRoot}` : "Set default browsing folder"}
                 >
                   <FolderCog className="w-4 h-4" />
-                  {defaultRoot ? "Change Default" : "Set Default Root"}
+                  {config?.defaultRoot ? "Change Default" : "Set Default Root"}
                 </button>
                 <button className="btn btn-primary btn-sm gap-2" onClick={() => setIsBrowsing(true)}>
                   <Plus className="w-4 h-4" /> Open Local Repo
@@ -540,13 +563,13 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
 
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold opacity-70 uppercase tracking-wide">Recent Repositories</h3>
-                {recentRepos.length === 0 ? (
+                {(!config || config.recentRepos.length === 0) ? (
                   <div className="text-center py-8 text-base-content/40 italic bg-base-100 rounded-lg">
                     No recent repositories found.
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    {recentRepos.map(repo => (
+                    {config.recentRepos.map(repo => (
                       <div
                         key={repo}
                         onClick={() => handleSelectRepo(repo)}
@@ -744,6 +767,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                       placeholder="npm i"
                       value={startupScript}
                       onChange={handleStartupScriptChange}
+                      onBlur={saveStartupScript}
                       disabled={loading}
                     />
                     <div className="text-xs opacity-50 px-1">
@@ -850,7 +874,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
 
       {isBrowsing && (
         <FileBrowser
-          initialPath={defaultRoot || undefined}
+          initialPath={config?.defaultRoot || undefined}
           onSelect={(path) => handleSelectRepo(path)}
           onCancel={() => setIsBrowsing(false)}
           checkRepo={checkIsGitRepo}
@@ -859,7 +883,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
 
       {isSelectingRoot && (
         <FileBrowser
-          initialPath={defaultRoot || undefined}
+          initialPath={config?.defaultRoot || undefined}
           onSelect={handleSetDefaultRoot}
           onCancel={() => setIsSelectingRoot(false)}
         />
