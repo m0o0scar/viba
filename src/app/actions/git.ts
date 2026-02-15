@@ -5,6 +5,8 @@ import path from 'path';
 import os from 'os';
 import simpleGit from 'simple-git';
 
+const SESSIONS_DIR = path.join(process.cwd(), 'data', 'sessions');
+
 export type FileSystemItem = {
   name: string;
   path: string;
@@ -165,6 +167,7 @@ export type SessionMetadata = {
   model: string;
   title?: string;
   timestamp: string;
+  repoPath: string;
 };
 
 export async function createSessionWorktree(
@@ -203,6 +206,7 @@ export async function createSessionWorktree(
 
     // Save metadata
     if (metadata) {
+      await fs.mkdir(SESSIONS_DIR, { recursive: true });
       const sessionData: SessionMetadata = {
         sessionName,
         worktreePath,
@@ -211,8 +215,9 @@ export async function createSessionWorktree(
         model: metadata.model,
         title: metadata.title,
         timestamp: date.toISOString(),
+        repoPath,
       };
-      await fs.writeFile(path.join(worktreePath, '.viba-session.json'), JSON.stringify(sessionData, null, 2));
+      await fs.writeFile(path.join(SESSIONS_DIR, `${sessionName}.json`), JSON.stringify(sessionData, null, 2));
     }
 
     return {
@@ -229,36 +234,27 @@ export async function createSessionWorktree(
 
 export async function listSessions(repoPath: string): Promise<SessionMetadata[]> {
   try {
-    const rNa = path.basename(repoPath);
-    const pDi = path.dirname(repoPath);
-    const vibaDir = path.join(pDi, '.viba', rNa);
-
     try {
-      await fs.access(vibaDir);
+      await fs.access(SESSIONS_DIR);
     } catch {
       return [];
     }
 
-    const entries = await fs.readdir(vibaDir, { withFileTypes: true });
+    const files = await fs.readdir(SESSIONS_DIR);
     const sessions: SessionMetadata[] = [];
 
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const wtPath = path.join(vibaDir, entry.name);
-        // Check for .viba-session.json
-        try {
-          const metaPath = path.join(wtPath, '.viba-session.json');
-          const content = await fs.readFile(metaPath, 'utf-8');
-          const data = JSON.parse(content) as SessionMetadata;
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
 
-          // Verify worktree still exists or is valid? 
-          // For now, assume if folder exists, it's a session.
+      try {
+        const content = await fs.readFile(path.join(SESSIONS_DIR, file), 'utf-8');
+        const data = JSON.parse(content) as SessionMetadata;
+
+        if (data.repoPath === repoPath) {
           sessions.push(data);
-        } catch {
-          // If no metadata, maybe it was created before this update.
-          // Or it's a random folder.
-          // We can try to infer or skip. Let's skip for now to be safe.
         }
+      } catch (e) {
+        // ignore invalid files
       }
     }
 
@@ -300,6 +296,14 @@ export async function cleanUpSessionWorktree(repoPath: string, worktreePath: str
     try {
       const attachmentsDir = `${worktreePath}-attachments`;
       await fs.rm(attachmentsDir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+
+    // Remove metadata file
+    try {
+      const sessionName = path.basename(worktreePath);
+      await fs.rm(path.join(SESSIONS_DIR, `${sessionName}.json`), { force: true });
     } catch {
       // ignore
     }
