@@ -157,7 +157,21 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
   }
 }
 
-export async function createSessionWorktree(repoPath: string, baseBranch: string): Promise<{ success: boolean; sessionName?: string; worktreePath?: string; branchName?: string; error?: string }> {
+export type SessionMetadata = {
+  sessionName: string;
+  worktreePath: string;
+  branchName: string;
+  agent: string;
+  model: string;
+  title?: string;
+  timestamp: string;
+};
+
+export async function createSessionWorktree(
+  repoPath: string,
+  baseBranch: string,
+  metadata?: { agent: string; model: string; title?: string }
+): Promise<{ success: boolean; sessionName?: string; worktreePath?: string; branchName?: string; error?: string }> {
   try {
     const { v4: uuidv4 } = await import('uuid');
     const shortUuid = uuidv4().split('-')[0]; // first part of uuid enough?
@@ -187,6 +201,20 @@ export async function createSessionWorktree(repoPath: string, baseBranch: string
     console.log(`Creating worktree at ${worktreePath} based on ${baseBranch}`);
     await git.raw(['worktree', 'add', '-b', branchName, worktreePath, baseBranch]);
 
+    // Save metadata
+    if (metadata) {
+      const sessionData: SessionMetadata = {
+        sessionName,
+        worktreePath,
+        branchName,
+        agent: metadata.agent,
+        model: metadata.model,
+        title: metadata.title,
+        timestamp: date.toISOString(),
+      };
+      await fs.writeFile(path.join(worktreePath, '.viba-session.json'), JSON.stringify(sessionData, null, 2));
+    }
+
     return {
       success: true,
       sessionName,
@@ -196,6 +224,50 @@ export async function createSessionWorktree(repoPath: string, baseBranch: string
   } catch (e: any) {
     console.error("Failed to create worktree:", e);
     return { success: false, error: e.message || String(e) };
+  }
+}
+
+export async function listSessions(repoPath: string): Promise<SessionMetadata[]> {
+  try {
+    const rNa = path.basename(repoPath);
+    const pDi = path.dirname(repoPath);
+    const vibaDir = path.join(pDi, '.viba', rNa);
+
+    try {
+      await fs.access(vibaDir);
+    } catch {
+      return [];
+    }
+
+    const entries = await fs.readdir(vibaDir, { withFileTypes: true });
+    const sessions: SessionMetadata[] = [];
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const wtPath = path.join(vibaDir, entry.name);
+        // Check for .viba-session.json
+        try {
+          const metaPath = path.join(wtPath, '.viba-session.json');
+          const content = await fs.readFile(metaPath, 'utf-8');
+          const data = JSON.parse(content) as SessionMetadata;
+
+          // Verify worktree still exists or is valid? 
+          // For now, assume if folder exists, it's a session.
+          sessions.push(data);
+        } catch {
+          // If no metadata, maybe it was created before this update.
+          // Or it's a random folder.
+          // We can try to infer or skip. Let's skip for now to be safe.
+        }
+      }
+    }
+
+    // Sort by timestamp desc
+    return sessions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  } catch (e) {
+    console.error("Failed to list sessions:", e);
+    return [];
   }
 }
 

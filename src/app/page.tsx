@@ -13,7 +13,9 @@ type SessionState = {
   model: string;
   startupScript: string;
   initialMessage: string;
+  title?: string;
   attachments: File[];
+  isResume?: boolean;
 };
 
 export default function Home() {
@@ -48,7 +50,9 @@ export default function Home() {
         startupScript={session.startupScript}
         onExit={() => setSession(null)}
         initialMessage={session.initialMessage}
+        title={session.title}
         attachments={session.attachments}
+        isResume={session.isResume}
       />
     );
   }

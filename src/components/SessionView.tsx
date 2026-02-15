@@ -14,8 +14,10 @@ export interface SessionViewProps {
     model?: string;
     startupScript?: string;
     initialMessage?: string;
+    title?: string;
     attachments?: File[];
     onExit: () => void;
+    isResume?: boolean;
 }
 
 export function SessionView({
@@ -27,8 +29,10 @@ export function SessionView({
     model,
     startupScript,
     initialMessage,
+    title,
     attachments,
-    onExit
+    onExit,
+    isResume
 }: SessionViewProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const terminalRef = useRef<HTMLIFrameElement>(null);
@@ -158,27 +162,44 @@ export function SessionView({
                     if (agent) {
                         setTimeout(() => {
                             let agentCmd = '';
-                            const safeMessage = initialMessage ? ` "${initialMessage.replace(/"/g, '\\"')}"` : '';
 
-                            if (agent.toLowerCase().includes('codex')) {
-                                // Codex: codex --model gpt-5.3-codex --sandbox danger-full-access --ask-for-approval on-request --search
-                                agentCmd = `codex --model ${model || 'gpt-5.3-codex'} --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`;
-                            } else if (agent.toLowerCase().includes('gemini')) {
-                                // Gemini: gemini --model gemini-3-pro --yolo
-                                agentCmd = `gemini --model ${model || 'gemini-3-pro'} --yolo${safeMessage}`;
-                            } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
-                                // Cursor: agent --model opus-4.6-thinking
-                                agentCmd = `agent --model ${model || 'opus-4.6-thinking'}${safeMessage}`;
+                            if (isResume) {
+                                // Resume Logic
+                                if (agent.toLowerCase().includes('gemini')) {
+                                    agentCmd = `gemini --resume latest`;
+                                } else if (agent.toLowerCase().includes('codex')) {
+                                    agentCmd = `codex resume --last`;
+                                } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
+                                    agentCmd = `agent resume`;
+                                } else {
+                                    // Fallback for others? assuming generic resume
+                                    agentCmd = `${agent} resume`;
+                                }
                             } else {
-                                // Generic fallback: <agent> --model <model>
-                                agentCmd = `${agent} --model ${model}${safeMessage}`;
+                                // Normal Start Logic
+                                const fullMessage = title ? `${title}\n\n${initialMessage || ''}` : initialMessage;
+                                const safeMessage = fullMessage ? ` "${fullMessage.replace(/"/g, '\\"')}"` : '';
+
+                                if (agent.toLowerCase().includes('codex')) {
+                                    // Codex: codex --model gpt-5.3-codex --sandbox danger-full-access --ask-for-approval on-request --search
+                                    agentCmd = `codex --model ${model || 'gpt-5.3-codex'} --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`;
+                                } else if (agent.toLowerCase().includes('gemini')) {
+                                    // Gemini: gemini --model gemini-3-pro --yolo
+                                    agentCmd = `gemini --model ${model || 'gemini-3-pro'} --yolo${safeMessage}`;
+                                } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
+                                    // Cursor: agent --model opus-4.6-thinking
+                                    agentCmd = `agent --model ${model || 'opus-4.6-thinking'}${safeMessage}`;
+                                } else {
+                                    // Generic fallback: <agent> --model <model>
+                                    agentCmd = `${agent} --model ${model}${safeMessage}`;
+                                }
                             }
 
                             if (agentCmd) {
                                 console.log('Injecting agent command:', agentCmd);
                                 win.term.paste(agentCmd);
                                 pressEnter();
-                                setFeedback(`Session started with ${agent}`);
+                                setFeedback(isResume ? `Resumed session with ${agent}` : `Session started with ${agent}`);
                             }
                         }, 500); // Wait a bit for cd to finish
                     } else {
@@ -250,7 +271,7 @@ export function SessionView({
                     pressEnter();
 
                     // Check for startup script
-                    if (startupScript) {
+                    if (startupScript && !isResume) {
                         setTimeout(() => {
                             console.log('Injecting startup script:', startupScript);
                             win.term.paste(startupScript);

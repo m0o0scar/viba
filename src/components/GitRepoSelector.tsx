@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog, Bot, Cpu } from 'lucide-react';
 import FileBrowser from './FileBrowser';
-import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, createSessionWorktree, getStartupScript, listRepoFiles, saveAttachments } from '@/app/actions/git';
+import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, createSessionWorktree, getStartupScript, listRepoFiles, saveAttachments, listSessions, SessionMetadata } from '@/app/actions/git';
 import { useRouter } from 'next/navigation';
+import { Play } from 'lucide-react'; // Added Play icon for resume
 
 import agentProvidersDataRaw from '@/data/agent-providers.json';
 
@@ -33,7 +34,9 @@ interface GitRepoSelectorProps {
     model: string;
     startupScript: string;
     initialMessage: string;
+    title?: string;
     attachments: File[];
+    isResume?: boolean;
   }) => void;
 }
 
@@ -49,6 +52,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
 
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [currentBranchName, setCurrentBranchName] = useState<string>('');
+  const [existingSessions, setExistingSessions] = useState<SessionMetadata[]>([]);
 
   const [selectedProvider, setSelectedProvider] = useState<AgentProvider | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -114,6 +118,10 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
 
       // Load branches
       await loadBranches(path);
+
+      // Load sessions
+      const sessions = await listSessions(path);
+      setExistingSessions(sessions);
 
     } catch (err) {
       console.error(err);
@@ -246,6 +254,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   };
 
   const [initialMessage, setInitialMessage] = useState<string>('');
+  const [title, setTitle] = useState<string>('');
   const [attachments, setAttachments] = useState<File[]>([]);
 
   // Suggestion state
@@ -272,6 +281,13 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Cmd+Enter to submit
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleStartSession();
+      return;
+    }
+
     if (showSuggestions && suggestionList.length > 0) {
       if (e.key === 'ArrowUp') {
         e.preventDefault();
@@ -351,6 +367,148 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
     setRecentRepos(prev => prev.filter(r => r !== repo));
   };
 
+  const handleStartSession = async () => {
+    if (!selectedRepo) return;
+    setLoading(true);
+    try {
+      // 1. Start TTYD if needed
+      const ttydResult = await startTtydProcess();
+      if (!ttydResult.success) {
+        setError(ttydResult.error || "Failed to start ttyd");
+        setLoading(false);
+        return;
+      }
+
+      // 2. Create Session Worktree
+      // Use current selected branch as base
+      const baseBranch = currentBranchName || 'main'; // Fallback to main if empty, though shouldn't happen
+
+      const wtResult = await createSessionWorktree(selectedRepo, baseBranch, {
+        agent: selectedProvider?.cli || 'agent',
+        model: selectedModel || '',
+        title: title
+      });
+
+      if (wtResult.success && wtResult.worktreePath && wtResult.branchName) {
+        // NEW: Upload attachments
+        if (attachments.length > 0) {
+          const formData = new FormData();
+          attachments.forEach(file => formData.append(file.name, file)); // Use filename as key or just 'files'
+          // Backend iterates entries [name, file].
+          await saveAttachments(wtResult.worktreePath, formData);
+        }
+
+        // NEW: Process initial message mentions
+        let processedMessage = initialMessage;
+
+        // Helper to match replacement
+        processedMessage = processedMessage.replace(/@(\S+)/g, (match, name) => {
+          if (attachments.some(a => a.name === name)) {
+            return `${wtResult.worktreePath}-attachments/${name}`;
+          }
+          // Assume repo file - keep relative path as we run in worktree root
+          return name;
+        });
+
+        // 3. Navigate to session page with new params OR call onStartSession
+        if (onStartSession) {
+          onStartSession({
+            repo: selectedRepo, // Keep original repo for context if needed
+            worktree: wtResult.worktreePath,
+            branch: wtResult.branchName,
+            sessionName: wtResult.sessionName || '',
+            agent: selectedProvider?.cli || '',
+            model: selectedModel || '',
+            startupScript: startupScript || '',
+            initialMessage: processedMessage,
+            title: title || '',
+            attachments: attachments || []
+          });
+        } else {
+          const params = new URLSearchParams({
+            repo: selectedRepo, // Keep original repo for context if needed
+            worktree: wtResult.worktreePath,
+            branch: wtResult.branchName,
+            session: wtResult.sessionName || '',
+            agent: selectedProvider?.cli || '',
+            model: selectedModel || '',
+            startup_script: startupScript || '',
+            title: title || '',
+            // params url too long for attachments/message probably, but generic fallback
+          });
+
+          // For long messages passed via URL, we might hit limits.
+          // Ideally we should persist creating session state on server or use localStorage.
+          // But given existing architecture passes via URL or callback, we stick to it.
+          // If callback is used (which is true in main page), it's fine.
+          // If direct navigation, msg might be lost if too long. 
+          // But GitRepoSelector is used inside Home page which provides onStartSession.
+
+          router.push(`/session?${params.toString()}`);
+        }
+      } else {
+        setError(wtResult.error || "Failed to create session worktree");
+        setLoading(false);
+      }
+
+    } catch (e) {
+      console.error(e);
+      setError("Failed to start session");
+      setLoading(false);
+    }
+  };
+
+  const handleResumeSession = async (session: SessionMetadata) => {
+    if (!selectedRepo) return;
+    setLoading(true);
+
+    try {
+      // 1. Start TTYD
+      const ttydResult = await startTtydProcess();
+      if (!ttydResult.success) {
+        setError(ttydResult.error || "Failed to start ttyd");
+        setLoading(false);
+        return;
+      }
+
+      // 2. Resume - session already exists so just navigate
+      if (onStartSession) {
+        onStartSession({
+          repo: selectedRepo,
+          worktree: session.worktreePath,
+          branch: session.branchName,
+          sessionName: session.sessionName,
+          agent: session.agent || 'agent',
+          model: session.model || '',
+          startupScript: '', // No startup script on resume
+          initialMessage: '',
+          title: session.title,
+          attachments: [],
+          isResume: true
+        });
+      } else {
+        const params = new URLSearchParams({
+          repo: selectedRepo,
+          worktree: session.worktreePath,
+          branch: session.branchName,
+          session: session.sessionName,
+          agent: session.agent || 'agent',
+          model: session.model || '',
+          startup_script: '',
+          title: session.title || '',
+          isResume: 'true'
+        });
+
+        router.push(`/session?${params.toString()}`);
+      }
+
+    } catch (e) {
+      console.error(e);
+      setError("Failed to resume session");
+      setLoading(false);
+    }
+  };
+
   return (
     <>
       {view === 'list' && (
@@ -424,8 +582,8 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       {view === 'details' && selectedRepo && (
         <div className="w-full max-w-6xl space-y-4">
           {error && <div className="alert alert-error text-sm py-2 px-3">{error}</div>}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:items-start w-full">
-            <div className="card w-full bg-base-200 shadow-xl lg:h-full">
+          <div className="flex flex-col gap-4 w-full">
+            <div className="card w-full bg-base-200 shadow-xl">
               <div className="card-body">
                 <h2 className="card-title flex justify-between items-center">
                   <div className="flex items-center gap-2">
@@ -446,121 +604,171 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    {/* Branch Selection */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="text-sm font-medium opacity-70">Current Branch</label>
-                        {loading && <span className="loading loading-spinner loading-xs"></span>}
-                      </div>
-
-                      <div className="join w-full">
-                        <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
-                          <GitBranchIcon className="w-4 h-4" />
-                        </div>
-                        <select
-                          className="select select-bordered join-item w-full font-mono focus:outline-none"
-                          value={currentBranchName}
-                          onChange={handleBranchChange}
-                          disabled={loading}
-                        >
-                          {branches.map(branch => (
-                            <option key={branch.name} value={branch.name}>
-                              {branch.name} {branch.current ? '(checked out)' : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="text-xs opacity-50 px-1">
-                        Switching branches will update your working directory.
-                      </div>
+                  {/* Branch Selection */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-sm font-medium opacity-70">Current Branch</label>
+                      {loading && <span className="loading loading-spinner loading-xs"></span>}
                     </div>
 
-                    <div className="divider"></div>
-
-                    {/* Agent Selection */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium opacity-70">Agent Provider</label>
-                        <div className="join w-full">
-                          <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
-                            <Bot className="w-4 h-4" />
-                          </div>
-                          <select
-                            className="select select-bordered join-item w-full focus:outline-none"
-                            value={selectedProvider?.cli || ''}
-                            onChange={handleProviderChange}
-                            disabled={loading}
-                          >
-                            {agentProvidersData.map(provider => (
-                              <option key={provider.cli} value={provider.cli}>
-                                {provider.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        {selectedProvider?.description && (
-                          <p className="text-[10px] opacity-60 mt-1 pl-1 italic leading-tight">
-                            {selectedProvider.description}
-                          </p>
-                        )}
+                    <div className="join w-full">
+                      <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
+                        <GitBranchIcon className="w-4 h-4" />
                       </div>
-
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium opacity-70">Model</label>
-                        <div className="join w-full">
-                          <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
-                            <Cpu className="w-4 h-4" />
-                          </div>
-                          <select
-                            className="select select-bordered join-item w-full focus:outline-none"
-                            value={selectedModel}
-                            onChange={handleModelChange}
-                            disabled={loading || !selectedProvider}
-                          >
-                            {selectedProvider?.models.map(model => (
-                              <option key={model.id} value={model.id}>
-                                {model.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        {selectedProvider?.models.find(m => m.id === selectedModel)?.description && (
-                          <p className="text-[10px] opacity-60 mt-1 pl-1 italic leading-tight">
-                            {selectedProvider.models.find(m => m.id === selectedModel)?.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium opacity-70">Start up script (Optional)</label>
-                      <input
-                        type="text"
-                        className="input input-bordered w-full font-mono text-sm"
-                        placeholder="npm i"
-                        value={startupScript}
-                        onChange={handleStartupScriptChange}
+                      <select
+                        className="select select-bordered join-item w-full font-mono focus:outline-none"
+                        value={currentBranchName}
+                        onChange={handleBranchChange}
                         disabled={loading}
-                      />
-                      <div className="text-xs opacity-50 px-1">
-                        Script to run in the terminal agent iframe upon startup.
-                      </div>
+                      >
+                        {branches.map(branch => (
+                          <option key={branch.name} value={branch.name}>
+                            {branch.name} {branch.current ? '(checked out)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="text-xs opacity-50 px-1">
+                      Switching branches will update your working directory.
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Right Card: Agent Context */}
-            <div className="card w-full bg-base-200 shadow-xl lg:h-full">
+            {/* Continue Existing Session Card */}
+            {existingSessions.length > 0 && (
+              <div className="card w-full bg-base-200 shadow-xl">
+                <div className="card-body">
+                  <h2 className="card-title flex items-center gap-2">
+                    <Play className="w-6 h-6 text-success" />
+                    Continue Existing Session
+                  </h2>
+                  <div className="flex flex-col gap-2 mt-4 max-h-64 overflow-y-auto">
+                    {existingSessions.map((session, idx) => (
+                      <div key={idx} className="flex flex-col gap-2 p-3 bg-base-100 rounded-md border border-base-300">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            {session.title && <div className="font-semibold">{session.title}</div>}
+                            <div className="text-xs opacity-60 font-mono">{session.sessionName}</div>
+                            <div className="text-xs opacity-60 mt-1">
+                              Agent: {session.agent} • Model: {session.model}
+                            </div>
+                          </div>
+                          <button
+                            className="btn btn-sm btn-success btn-outline gap-2"
+                            onClick={() => handleResumeSession(session)}
+                            disabled={loading}
+                          >
+                            <Play className="w-3 h-3" /> Resume
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Start New Session Card */}
+            <div className="card w-full bg-base-200 shadow-xl">
               <div className="card-body">
                 <h2 className="card-title flex items-center gap-2">
                   <Bot className="w-6 h-6 text-secondary" />
-                  Agent Context
+                  Start New Session
                 </h2>
 
-                <div className="space-y-4 mt-2">
+                <div className="mt-4 space-y-6">
+                  {/* Agent Selection Moved Here */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium opacity-70">Agent Provider</label>
+                      <div className="join w-full">
+                        <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
+                          <Bot className="w-4 h-4" />
+                        </div>
+                        <select
+                          className="select select-bordered join-item w-full focus:outline-none"
+                          value={selectedProvider?.cli || ''}
+                          onChange={handleProviderChange}
+                          disabled={loading}
+                        >
+                          {agentProvidersData.map(provider => (
+                            <option key={provider.cli} value={provider.cli}>
+                              {provider.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {selectedProvider?.description && (
+                        <p className="text-[10px] opacity-60 mt-1 pl-1 italic leading-tight">
+                          {selectedProvider.description}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium opacity-70">Model</label>
+                      <div className="join w-full">
+                        <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
+                          <Cpu className="w-4 h-4" />
+                        </div>
+                        <select
+                          className="select select-bordered join-item w-full focus:outline-none"
+                          value={selectedModel}
+                          onChange={handleModelChange}
+                          disabled={loading || !selectedProvider}
+                        >
+                          {selectedProvider?.models.map(model => (
+                            <option key={model.id} value={model.id}>
+                              {model.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {selectedProvider?.models.find(m => m.id === selectedModel)?.description && (
+                        <p className="text-[10px] opacity-60 mt-1 pl-1 italic leading-tight">
+                          {selectedProvider.models.find(m => m.id === selectedModel)?.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium opacity-70">Start up script (Optional)</label>
+                    <input
+                      type="text"
+                      className="input input-bordered w-full font-mono text-sm"
+                      placeholder="npm i"
+                      value={startupScript}
+                      onChange={handleStartupScriptChange}
+                      disabled={loading}
+                    />
+                    <div className="text-xs opacity-50 px-1">
+                      Script to run in the terminal agent iframe upon startup.
+                    </div>
+                  </div>
+
+                  <div className="divider"></div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium opacity-70">Title (Optional)</label>
+                    <input
+                      type="text"
+                      className="input input-bordered w-full font-mono text-sm"
+                      placeholder="Task Title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                          e.preventDefault();
+                          handleStartSession();
+                        }
+                      }}
+                      disabled={loading}
+                    />
+                  </div>
+
                   <div className="space-y-2">
                     <label className="text-sm font-medium opacity-70">Initial Message (Optional)</label>
                     <div className="relative">
@@ -619,6 +827,16 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                       </div>
                     )}
                   </div>
+
+                  <div className="card-actions justify-end mt-4">
+                    <button
+                      className="btn btn-primary btn-wide shadow-lg"
+                      onClick={handleStartSession}
+                      disabled={loading}
+                    >
+                      {loading ? <span className="loading loading-spinner"></span> : "Start Session"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -626,99 +844,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
         </div>
       )}
 
-      {selectedRepo && view === 'details' && (
-        <div className="flex justify-center mt-8 pb-8">
-          <button
-            className="btn btn-primary btn-lg btn-wide shadow-lg"
-            onClick={async () => {
-              setLoading(true);
-              try {
-                // 1. Start TTYD if needed
-                const ttydResult = await startTtydProcess();
-                if (!ttydResult.success) {
-                  setError(ttydResult.error || "Failed to start ttyd");
-                  setLoading(false);
-                  return;
-                }
 
-                // 2. Create Session Worktree
-                // Use current selected branch as base
-                const baseBranch = currentBranchName || 'main'; // Fallback to main if empty, though shouldn't happen
-
-                const wtResult = await createSessionWorktree(selectedRepo, baseBranch);
-
-                if (wtResult.success && wtResult.worktreePath && wtResult.branchName) {
-                  // NEW: Upload attachments
-                  if (attachments.length > 0) {
-                    const formData = new FormData();
-                    attachments.forEach(file => formData.append(file.name, file)); // Use filename as key or just 'files'
-                    // Backend iterates entries [name, file].
-                    await saveAttachments(wtResult.worktreePath, formData);
-                  }
-
-                  // NEW: Process initial message mentions
-                  let processedMessage = initialMessage;
-
-                  // Helper to match replacement
-                  processedMessage = processedMessage.replace(/@(\S+)/g, (match, name) => {
-                    if (attachments.some(a => a.name === name)) {
-                      return `${wtResult.worktreePath}-attachments/${name}`;
-                    }
-                    // Assume repo file - keep relative path as we run in worktree root
-                    return name;
-                  });
-
-                  // 3. Navigate to session page with new params OR call onStartSession
-                  if (onStartSession) {
-                    onStartSession({
-                      repo: selectedRepo, // Keep original repo for context if needed
-                      worktree: wtResult.worktreePath,
-                      branch: wtResult.branchName,
-                      sessionName: wtResult.sessionName || '',
-                      agent: selectedProvider?.cli || '',
-                      model: selectedModel || '',
-                      startupScript: startupScript || '',
-                      initialMessage: processedMessage,
-                      attachments: attachments || []
-                    });
-                  } else {
-                    const params = new URLSearchParams({
-                      repo: selectedRepo, // Keep original repo for context if needed
-                      worktree: wtResult.worktreePath,
-                      branch: wtResult.branchName,
-                      session: wtResult.sessionName || '',
-                      agent: selectedProvider?.cli || '',
-                      model: selectedModel || '',
-                      startup_script: startupScript || '',
-                      // params url too long for attachments/message probably, but generic fallback
-                    });
-
-                    // For long messages passed via URL, we might hit limits.
-                    // Ideally we should persist creating session state on server or use localStorage.
-                    // But given existing architecture passes via URL or callback, we stick to it.
-                    // If callback is used (which is true in main page), it's fine.
-                    // If direct navigation, msg might be lost if too long. 
-                    // But GitRepoSelector is used inside Home page which provides onStartSession.
-
-                    router.push(`/session?${params.toString()}`);
-                  }
-                } else {
-                  setError(wtResult.error || "Failed to create session worktree");
-                  setLoading(false);
-                }
-
-              } catch (e) {
-                console.error(e);
-                setError("Failed to start session");
-                setLoading(false);
-              }
-            }}
-            disabled={loading}
-          >
-            {loading ? <span className="loading loading-spinner"></span> : "Start Session"}
-          </button>
-        </div>
-      )}
 
       {isBrowsing && (
         <FileBrowser
