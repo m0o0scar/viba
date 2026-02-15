@@ -595,41 +595,43 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                   </button>
                 </h2>
 
-                <div className="mt-4 space-y-6">
-                  <div className="bg-base-100 p-4 rounded-lg border border-base-300">
-                    <div className="text-xs opacity-50 uppercase tracking-widest mb-1">Current Repository</div>
-                    <div className="flex items-center gap-2 font-mono text-sm break-all">
-                      <FolderGit2 className="w-4 h-4 text-primary shrink-0" />
-                      {selectedRepo}
-                    </div>
-                  </div>
-
-                  {/* Branch Selection */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <label className="text-sm font-medium opacity-70">Current Branch</label>
-                      {loading && <span className="loading loading-spinner loading-xs"></span>}
-                    </div>
-
-                    <div className="join w-full">
-                      <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
-                        <GitBranchIcon className="w-4 h-4" />
+                <div className="mt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-base-100 p-4 rounded-lg border border-base-300 flex flex-col justify-center">
+                      <div className="text-xs opacity-50 uppercase tracking-widest mb-1">Current Repository</div>
+                      <div className="flex items-center gap-2 font-mono text-sm break-all">
+                        <FolderGit2 className="w-4 h-4 text-primary shrink-0" />
+                        {selectedRepo}
                       </div>
-                      <select
-                        className="select select-bordered join-item w-full font-mono focus:outline-none"
-                        value={currentBranchName}
-                        onChange={handleBranchChange}
-                        disabled={loading}
-                      >
-                        {branches.map(branch => (
-                          <option key={branch.name} value={branch.name}>
-                            {branch.name} {branch.current ? '(checked out)' : ''}
-                          </option>
-                        ))}
-                      </select>
                     </div>
-                    <div className="text-xs opacity-50 px-1">
-                      Switching branches will update your working directory.
+
+                    {/* Branch Selection */}
+                    <div className="bg-base-100 p-4 rounded-lg border border-base-300 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-sm font-medium opacity-70 uppercase tracking-widest">Current Branch</label>
+                        {loading && <span className="loading loading-spinner loading-xs"></span>}
+                      </div>
+
+                      <div className="join w-full">
+                        <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
+                          <GitBranchIcon className="w-4 h-4" />
+                        </div>
+                        <select
+                          className="select select-bordered join-item w-full font-mono focus:outline-none"
+                          value={currentBranchName}
+                          onChange={handleBranchChange}
+                          disabled={loading}
+                        >
+                          {branches.map(branch => (
+                            <option key={branch.name} value={branch.name}>
+                              {branch.name} {branch.current ? '(checked out)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="text-[10px] opacity-50 px-1 italic">
+                        Switching branches updates the working directory.
+                      </div>
                     </div>
                   </div>
                 </div>
