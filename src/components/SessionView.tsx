@@ -3,7 +3,14 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 // import { useRouter } from 'next/navigation';
 import { cleanUpSessionWorktree } from '@/app/actions/git';
-import { Trash2 } from 'lucide-react';
+import { Trash2, ExternalLink } from 'lucide-react';
+
+const SUPPORTED_IDES = [
+    { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
+    { id: 'cursor', name: 'Cursor', protocol: 'cursor' },
+    { id: 'windsurf', name: 'Windsurf', protocol: 'windsurf' },
+    { id: 'antigravity', name: 'Antigravity', protocol: 'antigravity' },
+];
 
 export interface SessionViewProps {
     repo: string;
@@ -45,12 +52,35 @@ export function SessionView({
     const [agentWidth, setAgentWidth] = useState(66.666);
     const [isResizing, setIsResizing] = useState(false);
 
+    // IDE Selection
+    const [selectedIde, setSelectedIde] = useState<string>('vscode');
+
     useEffect(() => {
         const savedWidth = localStorage.getItem('session_agent_width');
         if (savedWidth) {
             setAgentWidth(parseFloat(savedWidth));
         }
+
+        const savedIde = localStorage.getItem('viba_selected_ide');
+        if (savedIde && SUPPORTED_IDES.some(ide => ide.id === savedIde)) {
+            setSelectedIde(savedIde);
+        }
     }, []);
+
+    const handleIdeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const value = e.target.value;
+        setSelectedIde(value);
+        localStorage.setItem('viba_selected_ide', value);
+    };
+
+    const handleOpenIde = () => {
+        if (!worktree) return;
+        const ide = SUPPORTED_IDES.find(i => i.id === selectedIde);
+        if (!ide) return;
+
+        const uri = `${ide.protocol}://file/${encodeURI(worktree)}`;
+        window.open(uri, '_blank');
+    };
 
     const startResizing = useCallback(() => {
         setIsResizing(true);
@@ -315,6 +345,28 @@ export function SessionView({
                 </div>
 
                 <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <select
+                            className="select select-bordered select-xs w-auto h-6 min-h-6 bg-base-200"
+                            value={selectedIde}
+                            onChange={handleIdeChange}
+                        >
+                            {SUPPORTED_IDES.map(ide => (
+                                <option key={ide.id} value={ide.id}>{ide.name}</option>
+                            ))}
+                        </select>
+                        <button
+                            className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
+                            onClick={handleOpenIde}
+                            title={`Open in ${SUPPORTED_IDES.find(i => i.id === selectedIde)?.name}`}
+                        >
+                            <ExternalLink className="w-3 h-3" />
+                            Open
+                        </button>
+                    </div>
+
+                    <div className="w-[1px] h-4 bg-base-content/20 mx-2"></div>
+
                     <div className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') ? 'bg-success' : 'bg-warning'}`}></span>
                         <span>{feedback}</span>
