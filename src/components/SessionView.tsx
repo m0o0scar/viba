@@ -214,8 +214,8 @@ export function SessionView({
                                     // Codex: codex --model gpt-5.3-codex --sandbox danger-full-access --ask-for-approval on-request --search
                                     agentCmd = `codex --model ${model || 'gpt-5.3-codex'} --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`;
                                 } else if (agent.toLowerCase().includes('gemini')) {
-                                    // Gemini: gemini --model gemini-3-pro --yolo
-                                    agentCmd = `gemini --model ${model || 'gemini-3-pro'} --yolo${safeMessage}`;
+                                    // Gemini: gemini --model gemini-3-pro-preview --yolo
+                                    agentCmd = `gemini --model ${model || 'gemini-3-pro-preview'} --yolo${safeMessage}`;
                                 } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
                                     // Cursor: agent --model opus-4.6-thinking
                                     agentCmd = `agent --model ${model || 'opus-4.6-thinking'}${safeMessage}`;

@@ -37,13 +37,13 @@
     "description": "Google's powerful multimodal models with large context windows.",
     "models": [
       {
-        "id": "gemini-3-pro",
-        "label": "Gemini 3 Pro",
+        "id": "gemini-3-pro-preview",
+        "label": "Gemini 3 Pro Preview",
         "description": "Google's most capable model for complex reasoning and coding tasks."
       },
       {
-        "id": "gemini-3-flash",
-        "label": "Gemini 3 Flash",
+        "id": "gemini-3-flash-preview",
+        "label": "Gemini 3 Flash Preview",
         "description": "Fast and efficient model optimized for speed and low latency."
       },
       {
@@ -55,6 +55,11 @@
         "id": "gemini-2.5-flash",
         "label": "Gemini 2.5 Flash",
         "description": "Streamlined model for quick responses and iterative tasks."
+      },
+      {
+        "id": "gemini-2.5-flash-lite",
+        "label": "Gemini 2.5 Flash Lite",
+        "description": "Optimized for extreme speed and cost efficiency."
       }
     ]
   },
