@@ -71,6 +71,19 @@ export function SessionView({
     const [selectedIde, setSelectedIde] = useState<string>('vscode');
 
     useEffect(() => {
+        const trimmedTitle = title?.trim();
+        if (trimmedTitle) {
+            document.title = `${trimmedTitle} | Viba`;
+            return () => {
+                document.title = 'Viba';
+            };
+        }
+
+        document.title = 'Viba';
+        return undefined;
+    }, [title]);
+
+    useEffect(() => {
         const loadConfig = async () => {
             const config = await getConfig();
             if (config.agentWidth) {
