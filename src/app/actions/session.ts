@@ -204,6 +204,59 @@ export async function mergeSessionToBase(
   }
 }
 
+export async function rebaseSessionOntoBase(
+  sessionName: string
+): Promise<{ success: boolean; branchName?: string; baseBranch?: string; error?: string }> {
+  try {
+    const metadata = await getSessionMetadata(sessionName);
+    if (!metadata) {
+      return { success: false, error: 'Session metadata not found' };
+    }
+
+    const baseBranch = metadata.baseBranch?.trim();
+    if (!baseBranch) {
+      return {
+        success: false,
+        error: 'Base branch is missing for this session. This session may be from an older version.',
+      };
+    }
+
+    const worktreeGit = simpleGit(metadata.worktreePath);
+    const worktreeStatus = await worktreeGit.status();
+    if (!worktreeStatus.isClean()) {
+      return {
+        success: false,
+        error: 'Worktree has uncommitted changes. Commit your changes first.',
+      };
+    }
+
+    const repoGit = simpleGit(metadata.repoPath);
+    const branchSummary = await repoGit.branchLocal();
+    if (!branchSummary.all.includes(baseBranch)) {
+      return { success: false, error: `Base branch "${baseBranch}" not found in repository.` };
+    }
+    if (!branchSummary.all.includes(metadata.branchName)) {
+      return { success: false, error: `Session branch "${metadata.branchName}" not found in repository.` };
+    }
+
+    const worktreeBranchSummary = await worktreeGit.branchLocal();
+    if (worktreeBranchSummary.current !== metadata.branchName) {
+      await worktreeGit.checkout(metadata.branchName);
+    }
+
+    await worktreeGit.rebase([baseBranch]);
+
+    return {
+      success: true,
+      branchName: metadata.branchName,
+      baseBranch,
+    };
+  } catch (e: unknown) {
+    console.error('Failed to rebase session branch:', e);
+    return { success: false, error: getErrorMessage(e) };
+  }
+}
+
 export async function getSessionUncommittedFileCount(
   sessionName: string
 ): Promise<{ success: boolean; count?: number; error?: string }> {

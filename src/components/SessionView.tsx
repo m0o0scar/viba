@@ -8,10 +8,11 @@ import {
     getSessionUncommittedFileCount,
     listSessionBaseBranches,
     mergeSessionToBase,
+    rebaseSessionOntoBase,
     updateSessionBaseBranch
 } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, ArrowUp, ArrowDown } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown } from 'lucide-react';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -68,9 +69,11 @@ export function SessionView({
     const [isStartingDevServer, setIsStartingDevServer] = useState(false);
     const [isRequestingCommit, setIsRequestingCommit] = useState(false);
     const [isMerging, setIsMerging] = useState(false);
+    const [isRebasing, setIsRebasing] = useState(false);
     const [currentBaseBranch, setCurrentBaseBranch] = useState(baseBranch?.trim() || '');
     const [baseBranchOptions, setBaseBranchOptions] = useState<string[]>([]);
     const [isLoadingBaseBranches, setIsLoadingBaseBranches] = useState(false);
+    const isLoadingBaseBranchesRef = useRef(false);
     const [isUpdatingBaseBranch, setIsUpdatingBaseBranch] = useState(false);
     const [divergence, setDivergence] = useState({ ahead: 0, behind: 0 });
     const [uncommittedFileCount, setUncommittedFileCount] = useState(0);
@@ -278,7 +281,9 @@ export function SessionView({
 
     const loadBaseBranchOptions = useCallback(async () => {
         if (!sessionName) return;
+        if (isLoadingBaseBranchesRef.current) return;
 
+        isLoadingBaseBranchesRef.current = true;
         setIsLoadingBaseBranches(true);
 
         try {
@@ -292,6 +297,7 @@ export function SessionView({
         } catch (e) {
             console.error('Failed to load base branches:', e);
         } finally {
+            isLoadingBaseBranchesRef.current = false;
             setIsLoadingBaseBranches(false);
         }
     }, [sessionName]);
@@ -400,6 +406,30 @@ export function SessionView({
             setFeedback('Merge failed');
         } finally {
             setIsMerging(false);
+        }
+    };
+
+    const handleRebase = async () => {
+        if (!sessionName) return;
+        if (!currentBaseBranch) return;
+        if (!confirm(`Rebase ${branch} onto ${currentBaseBranch}?`)) return;
+
+        setIsRebasing(true);
+        setFeedback('Rebasing session branch...');
+
+        try {
+            const result = await rebaseSessionOntoBase(sessionName);
+            if (result.success) {
+                setFeedback(`Rebased ${result.branchName} onto ${result.baseBranch}`);
+                void loadSessionDivergence();
+            } else {
+                setFeedback(`Rebase failed: ${result.error}`);
+            }
+        } catch (e) {
+            console.error('Rebase request failed:', e);
+            setFeedback('Rebase failed');
+        } finally {
+            setIsRebasing(false);
         }
     };
 
@@ -662,7 +692,7 @@ export function SessionView({
     const selectableBaseBranches = Array.from(new Set([
         ...(currentBaseBranch ? [currentBaseBranch] : []),
         ...baseBranchOptions
-    ]));
+    ])).filter((branchOption) => branchOption !== branch || branchOption === currentBaseBranch);
 
     return (
         <div className="w-full h-screen flex flex-col bg-base-100">
@@ -725,41 +755,60 @@ export function SessionView({
                         Commit ({uncommittedFileCount})
                     </button>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                         <span className="text-[10px] opacity-70">Base</span>
-                        <select
-                            className="select select-bordered select-xs w-36 h-6 min-h-6 bg-base-200"
-                            value={currentBaseBranch}
-                            onChange={handleBaseBranchChange}
-                            onFocus={() => { void loadBaseBranchOptions(); }}
-                            onMouseDown={() => { void loadBaseBranchOptions(); }}
-                            disabled={isUpdatingBaseBranch || !sessionName}
-                            title={currentBaseBranch ? `Current base branch: ${currentBaseBranch}` : 'Select base branch'}
-                        >
-                            {!currentBaseBranch && (
-                                <option value="" disabled>
-                                    Select base branch
-                                </option>
-                            )}
-                            {selectableBaseBranches.map((branchOption) => (
-                                <option key={branchOption} value={branchOption}>
-                                    {branchOption}
-                                </option>
-                            ))}
-                        </select>
-                        {(isLoadingBaseBranches || isUpdatingBaseBranch) && (
-                            <span className="loading loading-spinner loading-xs"></span>
-                        )}
+                        <div className="relative w-40 shrink-0">
+                            <select
+                                className="select select-bordered select-xs w-full h-6 min-h-6 bg-base-200 pr-7"
+                                value={currentBaseBranch}
+                                onChange={handleBaseBranchChange}
+                                onFocus={() => { void loadBaseBranchOptions(); }}
+                                onMouseDown={() => { void loadBaseBranchOptions(); }}
+                                disabled={isUpdatingBaseBranch || !sessionName}
+                                title={currentBaseBranch ? `Current base branch: ${currentBaseBranch}` : 'Select base branch'}
+                            >
+                                {!currentBaseBranch && (
+                                    <option value="" disabled>
+                                        Select base branch
+                                    </option>
+                                )}
+                                {selectableBaseBranches.map((branchOption) => (
+                                    <option
+                                        key={branchOption}
+                                        value={branchOption}
+                                        disabled={branchOption === currentBaseBranch}
+                                        className={branchOption === currentBaseBranch ? 'text-base-content/50' : ''}
+                                    >
+                                        {branchOption}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-3 w-3 items-center justify-center">
+                                {(isLoadingBaseBranches || isUpdatingBaseBranch) && (
+                                    <span className="loading loading-spinner loading-xs"></span>
+                                )}
+                            </span>
+                        </div>
                     </div>
 
                     <button
                         className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
                         onClick={handleMerge}
-                        disabled={isMerging || isUpdatingBaseBranch || !currentBaseBranch}
+                        disabled={isMerging || isRebasing || isUpdatingBaseBranch || !currentBaseBranch}
                         title={currentBaseBranch ? `Merge ${branch} into ${currentBaseBranch}` : 'Base branch unavailable for this session'}
                     >
                         {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
                         Merge
+                    </button>
+
+                    <button
+                        className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
+                        onClick={handleRebase}
+                        disabled={isRebasing || isMerging || isUpdatingBaseBranch || !currentBaseBranch}
+                        title={currentBaseBranch ? `Rebase ${branch} onto ${currentBaseBranch}` : 'Base branch unavailable for this session'}
+                    >
+                        {isRebasing ? <span className="loading loading-spinner loading-xs"></span> : <GitPullRequestArrow className="w-3 h-3" />}
+                        Rebase
                     </button>
 
                     {currentBaseBranch && (
@@ -778,7 +827,7 @@ export function SessionView({
                     <div className="w-[1px] h-4 bg-base-content/20 mx-2"></div>
 
                     <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') || feedback.includes('Merged') || feedback.includes('sent') ? 'bg-success' : 'bg-warning'}`}></span>
+                        <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') || feedback.includes('Merged') || feedback.includes('Rebased') || feedback.includes('sent') ? 'bg-success' : 'bg-warning'}`}></span>
                         <span>{feedback}</span>
                     </div>
 
