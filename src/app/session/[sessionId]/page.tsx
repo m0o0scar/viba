@@ -37,18 +37,19 @@ export default function SessionPage({ params }: { params: Promise<{ sessionId: s
                     setMetadata(data);
                     
                     // Cleanup URL params to prevent re-execution on reload
-                    // We only do this if we have "initialization" params
                     if (initialMessage || startupScript || attachmentNames.length > 0) {
                         const newUrl = `/session/${sessionId}`;
                         window.history.replaceState(null, '', newUrl);
                     }
+                    setLoading(false);
                 } else {
-                    setError('Session not found');
+                    // Session not found - redirect to home
+                    router.push('/');
+                    // Keep loading as true to avoid showing error card during redirect
                 }
             } catch (e) {
                 console.error('Failed to load session:', e);
                 setError('Failed to load session');
-            } finally {
                 setLoading(false);
             }
         };
