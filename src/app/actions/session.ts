@@ -202,3 +202,42 @@ export async function mergeSessionToBase(
     return { success: false, error: getErrorMessage(e) };
   }
 }
+
+export async function getSessionDivergence(
+  sessionName: string
+): Promise<{ success: boolean; ahead?: number; behind?: number; error?: string }> {
+  try {
+    const metadata = await getSessionMetadata(sessionName);
+    if (!metadata) {
+      return { success: false, error: 'Session metadata not found' };
+    }
+
+    const baseBranch = metadata.baseBranch?.trim();
+    if (!baseBranch) {
+      return { success: false, error: 'Base branch is unavailable for this session.' };
+    }
+
+    const git = simpleGit(metadata.repoPath);
+    const branchSummary = await git.branchLocal();
+    if (!branchSummary.all.includes(baseBranch)) {
+      return { success: false, error: `Base branch "${baseBranch}" not found in repository.` };
+    }
+    if (!branchSummary.all.includes(metadata.branchName)) {
+      return { success: false, error: `Session branch "${metadata.branchName}" not found in repository.` };
+    }
+
+    const rawCounts = await git.raw(['rev-list', '--left-right', '--count', `${baseBranch}...${metadata.branchName}`]);
+    const [behindRaw, aheadRaw] = rawCounts.trim().split(/\s+/);
+    const behind = Number.parseInt(behindRaw, 10);
+    const ahead = Number.parseInt(aheadRaw, 10);
+
+    if (Number.isNaN(behind) || Number.isNaN(ahead)) {
+      return { success: false, error: 'Failed to parse git divergence output.' };
+    }
+
+    return { success: true, ahead, behind };
+  } catch (e: unknown) {
+    console.error('Failed to get session divergence:', e);
+    return { success: false, error: getErrorMessage(e) };
+  }
+}

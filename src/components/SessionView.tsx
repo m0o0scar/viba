@@ -2,9 +2,9 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 // import { useRouter } from 'next/navigation';
-import { deleteSession, mergeSessionToBase } from '@/app/actions/session';
+import { deleteSession, getSessionDivergence, mergeSessionToBase } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, ArrowUp, ArrowDown } from 'lucide-react';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -61,6 +61,7 @@ export function SessionView({
     const [isStartingDevServer, setIsStartingDevServer] = useState(false);
     const [isRequestingCommit, setIsRequestingCommit] = useState(false);
     const [isMerging, setIsMerging] = useState(false);
+    const [divergence, setDivergence] = useState({ ahead: 0, behind: 0 });
 
     // Resize state
     const [agentWidth, setAgentWidth] = useState(66.666);
@@ -258,6 +259,30 @@ export function SessionView({
         setIsRequestingCommit(false);
     };
 
+    const loadSessionDivergence = useCallback(async () => {
+        if (!sessionName || !baseBranch) return;
+
+        try {
+            const result = await getSessionDivergence(sessionName);
+            if (result.success && typeof result.ahead === 'number' && typeof result.behind === 'number') {
+                setDivergence({ ahead: result.ahead, behind: result.behind });
+            }
+        } catch (e) {
+            console.error('Failed to load branch divergence:', e);
+        }
+    }, [baseBranch, sessionName]);
+
+    useEffect(() => {
+        if (!sessionName || !baseBranch) return;
+
+        void loadSessionDivergence();
+        const timer = window.setInterval(() => {
+            void loadSessionDivergence();
+        }, 60000);
+
+        return () => window.clearInterval(timer);
+    }, [baseBranch, loadSessionDivergence, sessionName]);
+
     const handleMerge = async () => {
         if (!sessionName) return;
         if (!confirm(`Merge ${branch} into ${baseBranch || 'the base branch'}?`)) return;
@@ -269,6 +294,7 @@ export function SessionView({
             const result = await mergeSessionToBase(sessionName);
             if (result.success) {
                 setFeedback(`Merged ${result.branchName} into ${result.baseBranch}`);
+                void loadSessionDivergence();
             } else {
                 setFeedback(`Merge failed: ${result.error}`);
             }
@@ -606,6 +632,19 @@ export function SessionView({
                         {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
                         Merge
                     </button>
+
+                    {baseBranch && (
+                        <div className="flex items-center gap-2 text-xs opacity-80" title={`Divergence against ${baseBranch}`}>
+                            <span className="inline-flex items-center gap-1">
+                                <ArrowUp className="w-3 h-3" />
+                                {divergence.ahead}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                                <ArrowDown className="w-3 h-3" />
+                                {divergence.behind}
+                            </span>
+                        </div>
+                    )}
 
                     <div className="w-[1px] h-4 bg-base-content/20 mx-2"></div>
 
