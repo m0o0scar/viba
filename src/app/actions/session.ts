@@ -261,3 +261,55 @@ export async function getSessionDivergence(
     return { success: false, error: getErrorMessage(e) };
   }
 }
+
+export async function listSessionBaseBranches(
+  sessionName: string
+): Promise<{ success: boolean; baseBranch?: string; branches?: string[]; error?: string }> {
+  try {
+    const metadata = await getSessionMetadata(sessionName);
+    if (!metadata) {
+      return { success: false, error: 'Session metadata not found' };
+    }
+
+    const git = simpleGit(metadata.repoPath);
+    const branchSummary = await git.branchLocal();
+    const branches = [...branchSummary.all].sort((a, b) => a.localeCompare(b));
+    const baseBranch = metadata.baseBranch?.trim();
+
+    return { success: true, baseBranch, branches };
+  } catch (e: unknown) {
+    console.error('Failed to list session base branches:', e);
+    return { success: false, error: getErrorMessage(e) };
+  }
+}
+
+export async function updateSessionBaseBranch(
+  sessionName: string,
+  baseBranch: string
+): Promise<{ success: boolean; baseBranch?: string; error?: string }> {
+  try {
+    const metadata = await getSessionMetadata(sessionName);
+    if (!metadata) {
+      return { success: false, error: 'Session metadata not found' };
+    }
+
+    const nextBaseBranch = baseBranch.trim();
+    if (!nextBaseBranch) {
+      return { success: false, error: 'Base branch cannot be empty.' };
+    }
+
+    const git = simpleGit(metadata.repoPath);
+    const branchSummary = await git.branchLocal();
+    if (!branchSummary.all.includes(nextBaseBranch)) {
+      return { success: false, error: `Base branch "${nextBaseBranch}" not found in repository.` };
+    }
+
+    metadata.baseBranch = nextBaseBranch;
+    await saveSessionMetadata(metadata);
+
+    return { success: true, baseBranch: nextBaseBranch };
+  } catch (e: unknown) {
+    console.error('Failed to update session base branch:', e);
+    return { success: false, error: getErrorMessage(e) };
+  }
+}

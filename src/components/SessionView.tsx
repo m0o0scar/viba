@@ -2,7 +2,14 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 // import { useRouter } from 'next/navigation';
-import { deleteSession, getSessionDivergence, getSessionUncommittedFileCount, mergeSessionToBase } from '@/app/actions/session';
+import {
+    deleteSession,
+    getSessionDivergence,
+    getSessionUncommittedFileCount,
+    listSessionBaseBranches,
+    mergeSessionToBase,
+    updateSessionBaseBranch
+} from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
 import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, ArrowUp, ArrowDown } from 'lucide-react';
 
@@ -61,6 +68,10 @@ export function SessionView({
     const [isStartingDevServer, setIsStartingDevServer] = useState(false);
     const [isRequestingCommit, setIsRequestingCommit] = useState(false);
     const [isMerging, setIsMerging] = useState(false);
+    const [currentBaseBranch, setCurrentBaseBranch] = useState(baseBranch?.trim() || '');
+    const [baseBranchOptions, setBaseBranchOptions] = useState<string[]>([]);
+    const [isLoadingBaseBranches, setIsLoadingBaseBranches] = useState(false);
+    const [isUpdatingBaseBranch, setIsUpdatingBaseBranch] = useState(false);
     const [divergence, setDivergence] = useState({ ahead: 0, behind: 0 });
     const [uncommittedFileCount, setUncommittedFileCount] = useState(0);
 
@@ -101,6 +112,11 @@ export function SessionView({
         };
         loadConfig();
     }, []);
+
+    useEffect(() => {
+        setCurrentBaseBranch(baseBranch?.trim() || '');
+        setBaseBranchOptions([]);
+    }, [baseBranch, sessionName]);
 
     // Prevent accidental reload/close
     useEffect(() => {
@@ -209,7 +225,7 @@ export function SessionView({
                             prompt,
                             sessionName,
                             branch,
-                            baseBranch,
+                            baseBranch: currentBaseBranch || undefined,
                             timestamp: Date.now(),
                         },
                         '*'
@@ -247,7 +263,7 @@ export function SessionView({
 
             checkAndSend();
         });
-    }, [baseBranch, branch, sessionName]);
+    }, [branch, currentBaseBranch, sessionName]);
 
     const handleCommit = async () => {
         setIsRequestingCommit(true);
@@ -260,8 +276,33 @@ export function SessionView({
         setIsRequestingCommit(false);
     };
 
+    const loadBaseBranchOptions = useCallback(async () => {
+        if (!sessionName) return;
+
+        setIsLoadingBaseBranches(true);
+
+        try {
+            const result = await listSessionBaseBranches(sessionName);
+            if (result.success) {
+                setBaseBranchOptions(result.branches ?? []);
+                setCurrentBaseBranch(result.baseBranch?.trim() || '');
+            } else if (result.error) {
+                setFeedback(`Failed to load branches: ${result.error}`);
+            }
+        } catch (e) {
+            console.error('Failed to load base branches:', e);
+        } finally {
+            setIsLoadingBaseBranches(false);
+        }
+    }, [sessionName]);
+
+    useEffect(() => {
+        if (!sessionName) return;
+        void loadBaseBranchOptions();
+    }, [loadBaseBranchOptions, sessionName]);
+
     const loadSessionDivergence = useCallback(async () => {
-        if (!sessionName || !baseBranch) return;
+        if (!sessionName) return;
 
         try {
             const result = await getSessionDivergence(sessionName);
@@ -271,10 +312,13 @@ export function SessionView({
         } catch (e) {
             console.error('Failed to load branch divergence:', e);
         }
-    }, [baseBranch, sessionName]);
+    }, [sessionName]);
 
     useEffect(() => {
-        if (!sessionName || !baseBranch) return;
+        if (!sessionName || !currentBaseBranch) {
+            setDivergence({ ahead: 0, behind: 0 });
+            return;
+        }
 
         void loadSessionDivergence();
         const timer = window.setInterval(() => {
@@ -282,7 +326,34 @@ export function SessionView({
         }, 60000);
 
         return () => window.clearInterval(timer);
-    }, [baseBranch, loadSessionDivergence, sessionName]);
+    }, [currentBaseBranch, loadSessionDivergence, sessionName]);
+
+    const handleBaseBranchChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+        if (!sessionName) return;
+
+        const nextBaseBranch = e.target.value.trim();
+        if (!nextBaseBranch || nextBaseBranch === currentBaseBranch) return;
+
+        setIsUpdatingBaseBranch(true);
+        setFeedback(`Updating base branch to ${nextBaseBranch}...`);
+
+        try {
+            const result = await updateSessionBaseBranch(sessionName, nextBaseBranch);
+            if (result.success && result.baseBranch) {
+                setCurrentBaseBranch(result.baseBranch);
+                setFeedback(`Base branch updated to ${result.baseBranch}`);
+                await loadBaseBranchOptions();
+                await loadSessionDivergence();
+            } else {
+                setFeedback(`Failed to update base branch: ${result.error}`);
+            }
+        } catch (error) {
+            console.error('Failed to update base branch:', error);
+            setFeedback('Failed to update base branch');
+        } finally {
+            setIsUpdatingBaseBranch(false);
+        }
+    };
 
     const loadUncommittedFileCount = useCallback(async () => {
         if (!sessionName) return;
@@ -310,7 +381,8 @@ export function SessionView({
 
     const handleMerge = async () => {
         if (!sessionName) return;
-        if (!confirm(`Merge ${branch} into ${baseBranch || 'the base branch'}?`)) return;
+        if (!currentBaseBranch) return;
+        if (!confirm(`Merge ${branch} into ${currentBaseBranch}?`)) return;
 
         setIsMerging(true);
         setFeedback('Merging session branch...');
@@ -587,6 +659,11 @@ export function SessionView({
 
     if (!repo) return <div className="p-4 text-error">No repository specified</div>;
 
+    const selectableBaseBranches = Array.from(new Set([
+        ...(currentBaseBranch ? [currentBaseBranch] : []),
+        ...baseBranchOptions
+    ]));
+
     return (
         <div className="w-full h-screen flex flex-col bg-base-100">
             <div className="bg-base-300 p-2 text-xs flex justify-between px-4 font-mono select-none items-center shadow-md z-10">
@@ -648,18 +725,45 @@ export function SessionView({
                         Commit ({uncommittedFileCount})
                     </button>
 
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] opacity-70">Base</span>
+                        <select
+                            className="select select-bordered select-xs w-36 h-6 min-h-6 bg-base-200"
+                            value={currentBaseBranch}
+                            onChange={handleBaseBranchChange}
+                            onFocus={() => { void loadBaseBranchOptions(); }}
+                            onMouseDown={() => { void loadBaseBranchOptions(); }}
+                            disabled={isUpdatingBaseBranch || !sessionName}
+                            title={currentBaseBranch ? `Current base branch: ${currentBaseBranch}` : 'Select base branch'}
+                        >
+                            {!currentBaseBranch && (
+                                <option value="" disabled>
+                                    Select base branch
+                                </option>
+                            )}
+                            {selectableBaseBranches.map((branchOption) => (
+                                <option key={branchOption} value={branchOption}>
+                                    {branchOption}
+                                </option>
+                            ))}
+                        </select>
+                        {(isLoadingBaseBranches || isUpdatingBaseBranch) && (
+                            <span className="loading loading-spinner loading-xs"></span>
+                        )}
+                    </div>
+
                     <button
                         className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
                         onClick={handleMerge}
-                        disabled={isMerging || !baseBranch}
-                        title={baseBranch ? `Merge ${branch} into ${baseBranch}` : 'Base branch unavailable for this session'}
+                        disabled={isMerging || isUpdatingBaseBranch || !currentBaseBranch}
+                        title={currentBaseBranch ? `Merge ${branch} into ${currentBaseBranch}` : 'Base branch unavailable for this session'}
                     >
                         {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
                         Merge
                     </button>
 
-                    {baseBranch && (
-                        <div className="flex items-center gap-2 text-xs opacity-80" title={`Divergence against ${baseBranch}`}>
+                    {currentBaseBranch && (
+                        <div className="flex items-center gap-2 text-xs opacity-80" title={`Divergence against ${currentBaseBranch}`}>
                             <span className="inline-flex items-center gap-1">
                                 <ArrowUp className="w-3 h-3" />
                                 {divergence.ahead}
