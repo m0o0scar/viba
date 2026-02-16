@@ -71,9 +71,10 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       try {
         const cfg = await getConfig();
         setConfig(cfg);
-        setIsLoaded(true);
       } catch (e) {
         console.error('Failed to load config', e);
+      } finally {
+        setIsLoaded(true);
       }
     };
     loadConfig();
@@ -563,7 +564,11 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
 
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold opacity-70 uppercase tracking-wide">Recent Repositories</h3>
-                {(!config || config.recentRepos.length === 0) ? (
+                {!isLoaded ? (
+                  <div className="flex items-center justify-center py-8 bg-base-100 rounded-lg">
+                    <span className="loading loading-spinner loading-md"></span>
+                  </div>
+                ) : (!config || config.recentRepos.length === 0) ? (
                   <div className="text-center py-8 text-base-content/40 italic bg-base-100 rounded-lg">
                     No recent repositories found.
                   </div>
