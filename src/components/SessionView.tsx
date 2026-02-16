@@ -12,7 +12,8 @@ import {
     updateSessionBaseBranch
 } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen } from 'lucide-react';
+import SessionFileBrowser from './SessionFileBrowser';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -73,6 +74,8 @@ export function SessionView({
     const [isRequestingCommit, setIsRequestingCommit] = useState(false);
     const [isMerging, setIsMerging] = useState(false);
     const [isRebasing, setIsRebasing] = useState(false);
+    const [isFileBrowserOpen, setIsFileBrowserOpen] = useState(false);
+    const [isInsertingFilePaths, setIsInsertingFilePaths] = useState(false);
     const [currentBaseBranch, setCurrentBaseBranch] = useState(baseBranch?.trim() || '');
     const [baseBranchOptions, setBaseBranchOptions] = useState<string[]>([]);
     const [isLoadingBaseBranches, setIsLoadingBaseBranches] = useState(false);
@@ -296,6 +299,59 @@ export function SessionView({
         setFeedback(sent ? 'Commit request sent to agent' : 'Failed to send commit request to agent');
         setIsRequestingCommit(false);
     };
+
+    const pasteIntoAgentIframe = useCallback((text: string): Promise<boolean> => {
+        return new Promise((resolve) => {
+            const iframe = iframeRef.current;
+            if (!iframe) {
+                resolve(false);
+                return;
+            }
+
+            const checkAndPaste = (attempts = 0) => {
+                if (attempts > 30) {
+                    resolve(false);
+                    return;
+                }
+
+                try {
+                    const win = iframe.contentWindow as TerminalWindow | null;
+                    if (!win || !win.term) {
+                        setTimeout(() => checkAndPaste(attempts + 1), 300);
+                        return;
+                    }
+
+                    win.term.paste(text);
+
+                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                    if (textarea) {
+                        (textarea as HTMLElement).focus();
+                    }
+                    win.focus();
+                    resolve(true);
+                } catch (e) {
+                    console.error('Failed to paste into agent iframe:', e);
+                    setTimeout(() => checkAndPaste(attempts + 1), 300);
+                }
+            };
+
+            checkAndPaste();
+        });
+    }, []);
+
+    const handleInsertFilePaths = useCallback(async (paths: string[]) => {
+        if (paths.length === 0) return;
+
+        setIsInsertingFilePaths(true);
+        const textToInsert = `${paths.join(' ')} `;
+        const inserted = await pasteIntoAgentIframe(textToInsert);
+        setFeedback(
+            inserted
+                ? `Inserted ${paths.length} file path${paths.length === 1 ? '' : 's'} into agent input`
+                : 'Failed to insert file paths into agent input'
+        );
+        setIsInsertingFilePaths(false);
+    }, [pasteIntoAgentIframe]);
 
     const loadBaseBranchOptions = useCallback(async () => {
         if (!sessionName) return;
@@ -778,6 +834,16 @@ export function SessionView({
                         </button>
                     </div>
 
+                    <button
+                        className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
+                        onClick={() => setIsFileBrowserOpen(true)}
+                        disabled={isInsertingFilePaths}
+                        title="Browse files and insert absolute paths into the agent input"
+                    >
+                        {isInsertingFilePaths ? <span className="loading loading-spinner loading-xs"></span> : <FolderOpen className="w-3 h-3" />}
+                        Insert Files
+                    </button>
+
                     {devServerScript?.trim() && (
                         <button
                             className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
@@ -931,6 +997,17 @@ export function SessionView({
                     {isResizing && <div className="absolute inset-0 z-50 bg-transparent" />}
                 </div>
             </div>
+
+            {isFileBrowserOpen && (
+                <SessionFileBrowser
+                    initialPath={worktree || repo}
+                    onConfirm={(paths) => {
+                        setIsFileBrowserOpen(false);
+                        void handleInsertFilePaths(paths);
+                    }}
+                    onCancel={() => setIsFileBrowserOpen(false)}
+                />
+            )}
         </div>
     );
 }
