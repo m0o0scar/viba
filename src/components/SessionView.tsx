@@ -4,7 +4,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 // import { useRouter } from 'next/navigation';
 import { deleteSession } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink } from 'lucide-react';
+import { Trash2, ExternalLink, Play } from 'lucide-react';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -12,6 +12,12 @@ const SUPPORTED_IDES = [
     { id: 'windsurf', name: 'Windsurf', protocol: 'windsurf' },
     { id: 'antigravity', name: 'Antigravity', protocol: 'antigravity' },
 ];
+
+type TerminalWindow = Window & {
+    term?: {
+        paste: (text: string) => void;
+    };
+};
 
 export interface SessionViewProps {
     repo: string;
@@ -21,6 +27,7 @@ export interface SessionViewProps {
     agent?: string;
     model?: string;
     startupScript?: string;
+    devServerScript?: string;
     initialMessage?: string;
     title?: string;
     attachments?: File[];
@@ -36,6 +43,7 @@ export function SessionView({
     agent,
     model,
     startupScript,
+    devServerScript,
     initialMessage,
     title,
     attachments,
@@ -48,6 +56,7 @@ export function SessionView({
 
     const [feedback, setFeedback] = useState<string>('Initializing...');
     const [isCleaningUp, setIsCleaningUp] = useState(false);
+    const [isStartingDevServer, setIsStartingDevServer] = useState(false);
 
     // Resize state
     const [agentWidth, setAgentWidth] = useState(66.666);
@@ -142,6 +151,58 @@ export function SessionView({
         }
     };
 
+    const handleStartDevServer = () => {
+        const script = devServerScript?.trim();
+        if (!script || !terminalRef.current) return;
+
+        const iframe = terminalRef.current;
+        setIsStartingDevServer(true);
+        setFeedback('Starting dev server...');
+
+        const checkAndInject = (attempts = 0) => {
+            if (attempts > 30) {
+                setFeedback('Failed to start dev server: terminal is not ready');
+                setIsStartingDevServer(false);
+                return;
+            }
+
+            try {
+                const win = iframe.contentWindow as TerminalWindow | null;
+                if (win && win.term) {
+                    win.term.paste(script);
+
+                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                    if (textarea) {
+                        textarea.dispatchEvent(new KeyboardEvent('keypress', {
+                            bubbles: true,
+                            cancelable: true,
+                            charCode: 13,
+                            keyCode: 13,
+                            key: 'Enter',
+                            view: win
+                        }));
+                    } else {
+                        win.term.paste('\r');
+                    }
+
+                    win.focus();
+                    if (textarea) (textarea as HTMLElement).focus();
+
+                    setFeedback('Dev server start command sent');
+                    setIsStartingDevServer(false);
+                } else {
+                    setTimeout(() => checkAndInject(attempts + 1), 300);
+                }
+            } catch (e) {
+                console.error('Dev server injection error', e);
+                setFeedback('Failed to start dev server');
+                setIsStartingDevServer(false);
+            }
+        };
+
+        checkAndInject();
+    };
+
     const handleIframeLoad = () => {
         if (!iframeRef.current) return;
         const iframe = iframeRef.current;
@@ -165,8 +226,9 @@ export function SessionView({
             }
 
             try {
-                const win = iframe.contentWindow as any;
+                const win = iframe.contentWindow as TerminalWindow | null;
                 if (win && win.term) {
+                    const term = win.term;
                     console.log('Terminal instance found');
                     // Attempt injection
 
@@ -177,7 +239,7 @@ export function SessionView({
                     const targetPath = worktree || repo; // Fallback to repo if no worktree
                     const cmd = `cd "${targetPath}"`;
                     // Send cd command
-                    win.term.paste(cmd);
+                    term.paste(cmd);
 
                     // Helper to press enter
                     const pressEnter = () => {
@@ -192,7 +254,7 @@ export function SessionView({
                                 view: win
                             }));
                         } else {
-                            win.term.paste('\r');
+                            term.paste('\r');
                         }
                     };
 
@@ -237,7 +299,7 @@ export function SessionView({
 
                             if (agentCmd) {
                                 console.log('Injecting agent command:', agentCmd);
-                                win.term.paste(agentCmd);
+                                term.paste(agentCmd);
                                 pressEnter();
                                 setFeedback(isResume ? `Resumed session with ${agent}` : `Session started with ${agent}`);
                             }
@@ -285,13 +347,14 @@ export function SessionView({
             }
 
             try {
-                const win = iframe.contentWindow as any;
+                const win = iframe.contentWindow as TerminalWindow | null;
                 if (win && win.term) {
+                    const term = win.term;
                     console.log('Secondary terminal instance found');
 
                     const targetPath = worktree || repo;
                     const cmd = `cd "${targetPath}"`;
-                    win.term.paste(cmd);
+                    term.paste(cmd);
 
                     const pressEnter = () => {
                         const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
@@ -305,7 +368,7 @@ export function SessionView({
                                 view: win
                             }));
                         } else {
-                            win.term.paste('\r');
+                            term.paste('\r');
                         }
                     };
                     pressEnter();
@@ -314,7 +377,7 @@ export function SessionView({
                     if (startupScript && !isResume) {
                         setTimeout(() => {
                             console.log('Injecting startup script:', startupScript);
-                            win.term.paste(startupScript);
+                            term.paste(startupScript);
                             pressEnter();
                         }, 500);
                     }
@@ -374,6 +437,18 @@ export function SessionView({
                             Open
                         </button>
                     </div>
+
+                    {devServerScript?.trim() && (
+                        <button
+                            className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
+                            onClick={handleStartDevServer}
+                            disabled={isStartingDevServer}
+                            title="Run dev server script in terminal"
+                        >
+                            {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="w-3 h-3" />}
+                            Start Dev Server
+                        </button>
+                    )}
 
                     <div className="w-[1px] h-4 bg-base-content/20 mx-2"></div>
 

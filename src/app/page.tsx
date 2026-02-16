@@ -12,6 +12,7 @@ type SessionState = {
   agent: string;
   model: string;
   startupScript: string;
+  devServerScript: string;
   initialMessage: string;
   title?: string;
   attachments: File[];
@@ -48,6 +49,7 @@ export default function Home() {
         agent={session.agent}
         model={session.model}
         startupScript={session.startupScript}
+        devServerScript={session.devServerScript}
         onExit={() => setSession(null)}
         initialMessage={session.initialMessage}
         title={session.title}

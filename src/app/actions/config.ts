@@ -8,6 +8,7 @@ export interface RepoSettings {
   agentProvider?: string;
   agentModel?: string;
   startupScript?: string;
+  devServerScript?: string;
   lastBranch?: string;
 }
 
