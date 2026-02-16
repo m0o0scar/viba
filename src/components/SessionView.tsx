@@ -8,10 +8,11 @@ import {
     getSessionUncommittedFileCount,
     listSessionBaseBranches,
     mergeSessionToBase,
+    rebaseSessionOntoBase,
     updateSessionBaseBranch
 } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, ArrowUp, ArrowDown } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown } from 'lucide-react';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -68,6 +69,7 @@ export function SessionView({
     const [isStartingDevServer, setIsStartingDevServer] = useState(false);
     const [isRequestingCommit, setIsRequestingCommit] = useState(false);
     const [isMerging, setIsMerging] = useState(false);
+    const [isRebasing, setIsRebasing] = useState(false);
     const [currentBaseBranch, setCurrentBaseBranch] = useState(baseBranch?.trim() || '');
     const [baseBranchOptions, setBaseBranchOptions] = useState<string[]>([]);
     const [isLoadingBaseBranches, setIsLoadingBaseBranches] = useState(false);
@@ -400,6 +402,30 @@ export function SessionView({
             setFeedback('Merge failed');
         } finally {
             setIsMerging(false);
+        }
+    };
+
+    const handleRebase = async () => {
+        if (!sessionName) return;
+        if (!currentBaseBranch) return;
+        if (!confirm(`Rebase ${branch} onto ${currentBaseBranch}?`)) return;
+
+        setIsRebasing(true);
+        setFeedback('Rebasing session branch...');
+
+        try {
+            const result = await rebaseSessionOntoBase(sessionName);
+            if (result.success) {
+                setFeedback(`Rebased ${result.branchName} onto ${result.baseBranch}`);
+                void loadSessionDivergence();
+            } else {
+                setFeedback(`Rebase failed: ${result.error}`);
+            }
+        } catch (e) {
+            console.error('Rebase request failed:', e);
+            setFeedback('Rebase failed');
+        } finally {
+            setIsRebasing(false);
         }
     };
 
@@ -755,11 +781,21 @@ export function SessionView({
                     <button
                         className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
                         onClick={handleMerge}
-                        disabled={isMerging || isUpdatingBaseBranch || !currentBaseBranch}
+                        disabled={isMerging || isRebasing || isUpdatingBaseBranch || !currentBaseBranch}
                         title={currentBaseBranch ? `Merge ${branch} into ${currentBaseBranch}` : 'Base branch unavailable for this session'}
                     >
                         {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
                         Merge
+                    </button>
+
+                    <button
+                        className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
+                        onClick={handleRebase}
+                        disabled={isRebasing || isMerging || isUpdatingBaseBranch || !currentBaseBranch}
+                        title={currentBaseBranch ? `Rebase ${branch} onto ${currentBaseBranch}` : 'Base branch unavailable for this session'}
+                    >
+                        {isRebasing ? <span className="loading loading-spinner loading-xs"></span> : <GitPullRequestArrow className="w-3 h-3" />}
+                        Rebase
                     </button>
 
                     {currentBaseBranch && (
@@ -778,7 +814,7 @@ export function SessionView({
                     <div className="w-[1px] h-4 bg-base-content/20 mx-2"></div>
 
                     <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') || feedback.includes('Merged') || feedback.includes('sent') ? 'bg-success' : 'bg-warning'}`}></span>
+                        <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') || feedback.includes('Merged') || feedback.includes('Rebased') || feedback.includes('sent') ? 'bg-success' : 'bg-warning'}`}></span>
                         <span>{feedback}</span>
                     </div>
 
