@@ -292,7 +292,15 @@ export function SessionView({
                                 }
                             } else {
                                 // Normal Start Logic
-                                const fullMessage = title ? `${title}\n\n${initialMessage || ''}` : initialMessage;
+                                let fullMessage = title ? `${title}\n\n${initialMessage || ''}` : (initialMessage || '');
+                                if (attachments && attachments.length > 0) {
+                                    const attachmentBasePath = `${worktree || repo}-attachments`;
+                                    const attachmentSection = [
+                                        'Attachments:',
+                                        ...attachments.map(file => `- ${attachmentBasePath}/${file.name}`)
+                                    ].join('\n');
+                                    fullMessage = fullMessage ? `${fullMessage}\n\n${attachmentSection}` : attachmentSection;
+                                }
                                 const safeMessage = fullMessage ? ` "${fullMessage.replace(/"/g, '\\"')}"` : '';
 
                                 if (agent.toLowerCase().includes('codex')) {
