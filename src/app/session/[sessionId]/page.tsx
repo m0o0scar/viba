@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { SessionView } from '@/components/SessionView';
-import { consumeSessionLaunchContext, getSessionMetadata, SessionMetadata } from '@/app/actions/session';
+import { consumeSessionLaunchContext, getSessionMetadata, SessionMetadata, markSessionInitialized } from '@/app/actions/session';
 import { startTtydProcess } from '@/app/actions/git';
 
 export default function SessionPage() {
@@ -40,19 +40,47 @@ export default function SessionPage() {
                 const data = await getSessionMetadata(sessionId);
                 if (data) {
                     setMetadata(data);
-                    const contextResult = await consumeSessionLaunchContext(sessionId);
-                    if (!contextResult.success) {
-                        console.error('Failed to load session context:', contextResult.error);
+
+                    // Logic to determine if we should resume or start fresh
+                    // Old sessions (initialized undefined) are considered initialized.
+                    // New sessions (initialized false) are not.
+                    const isAlreadyInitialized = data.initialized !== false;
+
+                    let context = undefined;
+                    let shouldResume = isAlreadyInitialized;
+
+                    if (!isAlreadyInitialized) {
+                        const contextResult = await consumeSessionLaunchContext(sessionId);
+                        if (contextResult.success && contextResult.context) {
+                            context = contextResult.context;
+                            // If context says resume (e.g. from "resume session" button), then resume.
+                            if (context.isResume) {
+                                shouldResume = true;
+                            } else {
+                                shouldResume = false;
+                                // We have a new session context.
+                                // We will mark it initialized via callback from SessionView.
+                            }
+                        } else {
+                            // Failed to load context (file missing/deleted).
+                            // Assume it was already consumed or lost. Treat as resume.
+                            shouldResume = true;
+                        }
+                    } else {
+                         // Already initialized, so we resume.
+                         shouldResume = true;
                     }
 
-                    const context = contextResult.success ? contextResult.context : undefined;
-                    setInitialMessage(context?.initialMessage);
-                    setStartupScript(context?.startupScript);
-                    setAttachmentNames(context?.attachmentNames || []);
-                    setContextTitle(context?.title);
-                    setContextAgentProvider(context?.agentProvider);
-                    setContextModel(context?.model);
-                    setIsResumeParam(context?.isResume === true);
+                    if (context) {
+                        setInitialMessage(context.initialMessage);
+                        setStartupScript(context.startupScript);
+                        setAttachmentNames(context.attachmentNames || []);
+                        setContextTitle(context.title);
+                        setContextAgentProvider(context.agentProvider);
+                        setContextModel(context.model);
+                    }
+
+                    setIsResumeParam(shouldResume);
                     setLoading(false);
                 } else {
                     // Session not found - redirect to home
@@ -88,6 +116,12 @@ export default function SessionPage() {
 
     const handleExit = () => {
         router.push('/');
+    };
+
+    const handleSessionStart = async () => {
+        if (sessionId) {
+            await markSessionInitialized(sessionId);
+        }
     };
 
     if (loading) {
@@ -133,6 +167,7 @@ export default function SessionPage() {
             attachmentNames={attachmentNames}
             onExit={handleExit}
             isResume={isResumeParam || (!initialMessage && !startupScript)} // If no init action, treat as resume
+            onSessionStart={handleSessionStart}
         />
     );
 }

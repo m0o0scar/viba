@@ -16,6 +16,7 @@ export type SessionMetadata = {
   model: string;
   title?: string;
   devServerScript?: string;
+  initialized?: boolean;
   timestamp: string;
 };
 
@@ -178,6 +179,7 @@ export async function createSession(
       model: metadata.model,
       title: metadata.title,
       devServerScript: metadata.devServerScript,
+      initialized: false,
       timestamp: new Date().toISOString(),
     };
 
@@ -188,6 +190,15 @@ export async function createSession(
     console.error("Failed to create session:", e);
     return { success: false, error: getErrorMessage(e) };
   }
+}
+
+export async function markSessionInitialized(sessionName: string): Promise<void> {
+  const metadata = await getSessionMetadata(sessionName);
+  if (!metadata) return;
+  if (metadata.initialized) return;
+
+  metadata.initialized = true;
+  await saveSessionMetadata(metadata);
 }
 
 export async function deleteSession(sessionName: string): Promise<{ success: boolean; error?: string }> {

@@ -45,6 +45,7 @@ export interface SessionViewProps {
     attachmentNames?: string[];
     onExit: () => void;
     isResume?: boolean;
+    onSessionStart?: () => void;
 }
 
 export function SessionView({
@@ -61,7 +62,8 @@ export function SessionView({
     title,
     attachmentNames,
     onExit,
-    isResume
+    isResume,
+    onSessionStart
 }: SessionViewProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const terminalRef = useRef<HTMLIFrameElement>(null);
@@ -666,10 +668,17 @@ export function SessionView({
                                 term.paste(agentCmd);
                                 pressEnter();
                                 setFeedback(isResume ? `Resumed session with ${agent}` : `Session started with ${agent}`);
+
+                                if (!isResume && onSessionStart) {
+                                    onSessionStart();
+                                }
                             }
                         }, 500); // Wait a bit for cd to finish
                     } else {
                         setFeedback(`Session started ${worktree ? '(Worktree)' : ''}`);
+                        if (!isResume && onSessionStart) {
+                            onSessionStart();
+                        }
                     }
 
                     // Focus the iframe
