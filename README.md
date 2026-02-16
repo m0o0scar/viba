@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Viba
+
+Viba is a local session manager for AI coding agents. It lets you pick a Git repository, start an isolated worktree session, launch an agent CLI in a browser terminal, and manage the session lifecycle from one UI.
+
+## Major Features
+
+- Repository picker with local filesystem browsing and Git repo validation.
+- Isolated session worktrees using `git worktree`, with per-session branch naming (`viba/<session>`).
+- Start new sessions or resume existing sessions for a repository.
+- Multi-agent setup with provider/model selection (Codex, Gemini, Cursor Agent data included).
+- Dual terminal workspace:
+  - Left terminal for agent execution.
+  - Right terminal for startup/dev scripts.
+- Session prompt tooling:
+  - Optional title and initial message.
+  - `@` file suggestions from tracked repo files.
+  - File attachments saved per session.
+- Session operations in the active view:
+  - Ask agent to create a commit.
+  - Merge session branch into base branch.
+  - Rebase session branch onto base branch.
+  - Live ahead/behind divergence and uncommitted file count.
+- IDE deep-links for opening the session worktree (VS Code, Cursor, Windsurf, Antigravity).
+- Persistent local config and session metadata under `~/.viba`.
+
+## Tech Stack
+
+- Next.js (App Router) + React + TypeScript
+- Tailwind CSS + DaisyUI
+- `simple-git` for Git/worktree operations
+- `ttyd` as the web terminal backend (proxied at `/terminal`)
+
+## Prerequisites
+
+- Node.js and npm
+- `ttyd` installed and available in `PATH`
+- At least one supported agent CLI installed (for example `codex`, `gemini`, or `agent`)
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies and start development:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The app picks an available port starting at `3200` in development.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Open the local URL printed in your terminal, then:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Select a local Git repository.
+2. Pick branch/agent/model and optional scripts.
+3. Start a session and work inside the generated worktree.
 
-## Learn More
+## Build and Run
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run build
+npm run start
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Production start uses port `3200` by default.
