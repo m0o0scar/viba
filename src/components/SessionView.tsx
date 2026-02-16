@@ -73,6 +73,7 @@ export function SessionView({
     const [currentBaseBranch, setCurrentBaseBranch] = useState(baseBranch?.trim() || '');
     const [baseBranchOptions, setBaseBranchOptions] = useState<string[]>([]);
     const [isLoadingBaseBranches, setIsLoadingBaseBranches] = useState(false);
+    const isLoadingBaseBranchesRef = useRef(false);
     const [isUpdatingBaseBranch, setIsUpdatingBaseBranch] = useState(false);
     const [divergence, setDivergence] = useState({ ahead: 0, behind: 0 });
     const [uncommittedFileCount, setUncommittedFileCount] = useState(0);
@@ -280,7 +281,9 @@ export function SessionView({
 
     const loadBaseBranchOptions = useCallback(async () => {
         if (!sessionName) return;
+        if (isLoadingBaseBranchesRef.current) return;
 
+        isLoadingBaseBranchesRef.current = true;
         setIsLoadingBaseBranches(true);
 
         try {
@@ -294,6 +297,7 @@ export function SessionView({
         } catch (e) {
             console.error('Failed to load base branches:', e);
         } finally {
+            isLoadingBaseBranchesRef.current = false;
             setIsLoadingBaseBranches(false);
         }
     }, [sessionName]);
@@ -688,7 +692,7 @@ export function SessionView({
     const selectableBaseBranches = Array.from(new Set([
         ...(currentBaseBranch ? [currentBaseBranch] : []),
         ...baseBranchOptions
-    ]));
+    ])).filter((branchOption) => branchOption !== branch || branchOption === currentBaseBranch);
 
     return (
         <div className="w-full h-screen flex flex-col bg-base-100">
@@ -751,31 +755,40 @@ export function SessionView({
                         Commit ({uncommittedFileCount})
                     </button>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                         <span className="text-[10px] opacity-70">Base</span>
-                        <select
-                            className="select select-bordered select-xs w-36 h-6 min-h-6 bg-base-200"
-                            value={currentBaseBranch}
-                            onChange={handleBaseBranchChange}
-                            onFocus={() => { void loadBaseBranchOptions(); }}
-                            onMouseDown={() => { void loadBaseBranchOptions(); }}
-                            disabled={isUpdatingBaseBranch || !sessionName}
-                            title={currentBaseBranch ? `Current base branch: ${currentBaseBranch}` : 'Select base branch'}
-                        >
-                            {!currentBaseBranch && (
-                                <option value="" disabled>
-                                    Select base branch
-                                </option>
-                            )}
-                            {selectableBaseBranches.map((branchOption) => (
-                                <option key={branchOption} value={branchOption}>
-                                    {branchOption}
-                                </option>
-                            ))}
-                        </select>
-                        {(isLoadingBaseBranches || isUpdatingBaseBranch) && (
-                            <span className="loading loading-spinner loading-xs"></span>
-                        )}
+                        <div className="relative w-40 shrink-0">
+                            <select
+                                className="select select-bordered select-xs w-full h-6 min-h-6 bg-base-200 pr-7"
+                                value={currentBaseBranch}
+                                onChange={handleBaseBranchChange}
+                                onFocus={() => { void loadBaseBranchOptions(); }}
+                                onMouseDown={() => { void loadBaseBranchOptions(); }}
+                                disabled={isUpdatingBaseBranch || !sessionName}
+                                title={currentBaseBranch ? `Current base branch: ${currentBaseBranch}` : 'Select base branch'}
+                            >
+                                {!currentBaseBranch && (
+                                    <option value="" disabled>
+                                        Select base branch
+                                    </option>
+                                )}
+                                {selectableBaseBranches.map((branchOption) => (
+                                    <option
+                                        key={branchOption}
+                                        value={branchOption}
+                                        disabled={branchOption === currentBaseBranch}
+                                        className={branchOption === currentBaseBranch ? 'text-base-content/50' : ''}
+                                    >
+                                        {branchOption}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-3 w-3 items-center justify-center">
+                                {(isLoadingBaseBranches || isUpdatingBaseBranch) && (
+                                    <span className="loading loading-spinner loading-xs"></span>
+                                )}
+                            </span>
+                        </div>
                     </div>
 
                     <button
