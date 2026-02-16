@@ -113,21 +113,20 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
     const { spawn } = await import('child_process');
     console.log('Starting ttyd process...');
 
+    const env = { ...process.env };
     // Clean up environment variables to prevent conflicts
     // Specifically remove TURBOPACK which causes "Multiple bundler flags set" error
     // when running next dev inside the terminal if the parent process has it set.
-    const env = { ...process.env };
     delete env.TURBOPACK;
     delete env.PORT;
 
-    // Start ttyd with -W (writable) and bash
     const child = spawn('ttyd', [
       '-p', '7681',
       '-t', 'theme={"background": "white", "foreground": "black", "cursor": "black"}',
       '-W', 'bash'
     ], {
-      stdio: 'ignore', // or 'pipe' if we want to log output
-      detached: false, // Keep attached to parent so it dies when parent dies (mostly)
+      stdio: 'ignore',
+      detached: false,
       env: {
         ...env,
         TERM: 'xterm-256color',
@@ -147,7 +146,6 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
 
     global.ttydProcess = child;
 
-    // Give it a moment to start up
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     return { success: true };
@@ -157,63 +155,32 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
   }
 }
 
-export type SessionMetadata = {
-  sessionName: string;
-  worktreePath: string;
-  branchName: string;
-  agent: string;
-  model: string;
-  title?: string;
-  timestamp: string;
-};
-
-export async function createSessionWorktree(
+export async function prepareSessionWorktree(
   repoPath: string,
-  baseBranch: string,
-  metadata?: { agent: string; model: string; title?: string }
+  baseBranch: string
 ): Promise<{ success: boolean; sessionName?: string; worktreePath?: string; branchName?: string; error?: string }> {
   try {
     const { v4: uuidv4 } = await import('uuid');
-    const shortUuid = uuidv4().split('-')[0]; // first part of uuid enough?
+    const shortUuid = uuidv4().split('-')[0];
 
     const date = new Date();
-    // YYYYMMDD-HHMM
     const timestamp = date.toISOString().replace(/[-:]/g, '').slice(0, 8) + '-' + date.getHours().toString().padStart(2, '0') + date.getMinutes().toString().padStart(2, '0');
     const sessionName = `${timestamp}-${shortUuid}`;
 
     const branchName = `viba/${sessionName}`;
 
-    // Parent directory of the repo
     const repoName = path.basename(repoPath);
     const parentDir = path.dirname(repoPath);
 
-    // ../.viba/<repo-name>/<session-name>
     const vibaDir = path.join(parentDir, '.viba', repoName);
     const worktreePath = path.join(vibaDir, sessionName);
 
-    // Ensure .viba directory exists
     await fs.mkdir(vibaDir, { recursive: true });
 
     const git = simpleGit(repoPath);
 
-    // Create worktree
-    // git worktree add -b <new-branch> <path> <start-point>
     console.log(`Creating worktree at ${worktreePath} based on ${baseBranch}`);
     await git.raw(['worktree', 'add', '-b', branchName, worktreePath, baseBranch]);
-
-    // Save metadata
-    if (metadata) {
-      const sessionData: SessionMetadata = {
-        sessionName,
-        worktreePath,
-        branchName,
-        agent: metadata.agent,
-        model: metadata.model,
-        title: metadata.title,
-        timestamp: date.toISOString(),
-      };
-      await fs.writeFile(path.join(worktreePath, '.viba-session.json'), JSON.stringify(sessionData, null, 2));
-    }
 
     return {
       success: true,
@@ -227,76 +194,23 @@ export async function createSessionWorktree(
   }
 }
 
-export async function listSessions(repoPath: string): Promise<SessionMetadata[]> {
-  try {
-    const rNa = path.basename(repoPath);
-    const pDi = path.dirname(repoPath);
-    const vibaDir = path.join(pDi, '.viba', rNa);
-
-    try {
-      await fs.access(vibaDir);
-    } catch {
-      return [];
-    }
-
-    const entries = await fs.readdir(vibaDir, { withFileTypes: true });
-    const sessions: SessionMetadata[] = [];
-
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const wtPath = path.join(vibaDir, entry.name);
-        // Check for .viba-session.json
-        try {
-          const metaPath = path.join(wtPath, '.viba-session.json');
-          const content = await fs.readFile(metaPath, 'utf-8');
-          const data = JSON.parse(content) as SessionMetadata;
-
-          // Verify worktree still exists or is valid? 
-          // For now, assume if folder exists, it's a session.
-          sessions.push(data);
-        } catch {
-          // If no metadata, maybe it was created before this update.
-          // Or it's a random folder.
-          // We can try to infer or skip. Let's skip for now to be safe.
-        }
-      }
-    }
-
-    // Sort by timestamp desc
-    return sessions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-  } catch (e) {
-    console.error("Failed to list sessions:", e);
-    return [];
-  }
-}
-
-// ...existing code...
-
-export async function cleanUpSessionWorktree(repoPath: string, worktreePath: string, branchName: string): Promise<{ success: boolean; error?: string }> {
+export async function removeWorktree(repoPath: string, worktreePath: string, branchName: string): Promise<{ success: boolean; error?: string }> {
   try {
     const git = simpleGit(repoPath);
 
     console.log(`Removing worktree at ${worktreePath}...`);
 
-    // Remove worktree
-    // force remove if needed? user might have uncommitted changes but this is a cleanup request.
-    // git worktree remove --force <path>
     await git.raw(['worktree', 'remove', '--force', worktreePath]);
 
-    // Remove branch
-    // git branch -D <branch>
     console.log(`Deleting branch ${branchName}...`);
-    await git.deleteLocalBranch(branchName, true); // true = force delete
+    await git.deleteLocalBranch(branchName, true);
 
-    // Try to verify if folder is gone, sometimes worktree remove leaves empty dir
     try {
       await fs.rm(worktreePath, { recursive: true, force: true });
     } catch {
       // ignore
     }
 
-    // New: Clean up attachments folder if exists
     try {
       const attachmentsDir = `${worktreePath}-attachments`;
       await fs.rm(attachmentsDir, { recursive: true, force: true });
@@ -350,7 +264,6 @@ export async function saveAttachments(worktreePath: string, formData: FormData):
     for (const [name, entry] of files) {
       if (entry instanceof File) {
         const buffer = Buffer.from(await entry.arrayBuffer());
-        // Sanitize filename
         const safeName = entry.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         await fs.writeFile(path.join(attachmentsDir, safeName), buffer);
       }
