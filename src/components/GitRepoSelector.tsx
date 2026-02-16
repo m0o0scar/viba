@@ -57,6 +57,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   const [branches, setBranches] = useState<GitBranch[]>([]);
   const [currentBranchName, setCurrentBranchName] = useState<string>('');
   const [existingSessions, setExistingSessions] = useState<SessionMetadata[]>([]);
+  const [allSessions, setAllSessions] = useState<SessionMetadata[]>([]);
 
   const [selectedProvider, setSelectedProvider] = useState<AgentProvider | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -69,19 +70,23 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   const [error, setError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load config on mount
+  // Load config and all sessions on mount
   useEffect(() => {
-    const loadConfig = async () => {
+    const loadData = async () => {
       try {
-        const cfg = await getConfig();
+        const [cfg, sessions] = await Promise.all([
+          getConfig(),
+          listSessions()
+        ]);
         setConfig(cfg);
+        setAllSessions(sessions);
       } catch (e) {
-        console.error('Failed to load config', e);
+        console.error('Failed to load data', e);
       } finally {
         setIsLoaded(true);
       }
     };
-    loadConfig();
+    loadData();
   }, []);
 
   const handleSelectRepo = async (
@@ -130,6 +135,10 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       // Load sessions
       const sessions = await listSessions(path);
       setExistingSessions(sessions);
+
+      // Also refresh all sessions to keep the list view count accurate
+      const allSess = await listSessions();
+      setAllSessions(allSess);
 
     } catch (err) {
       console.error(err);
@@ -503,6 +512,10 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
 
           router.push(`/session?${params.toString()}`);
         }
+
+        // Refresh all sessions
+        const allSess = await listSessions();
+        setAllSessions(allSess);
       } else {
         setError(wtResult.error || "Failed to create session worktree");
         setLoading(false);
@@ -588,6 +601,10 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
 
       const sessions = await listSessions(selectedRepo);
       setExistingSessions(sessions);
+
+      // Also refresh all sessions
+      const allSess = await listSessions();
+      setAllSessions(allSess);
     } catch (e) {
       console.error(e);
       setError('Failed to delete session');
@@ -637,31 +654,40 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    {config.recentRepos.map(repo => (
-                      <div
-                        key={repo}
-                        onClick={() => handleSelectRepo(repo)}
-                        className="flex items-center justify-between p-3 bg-base-100 hover:bg-base-300 rounded-md cursor-pointer group transition-all border border-base-300"
-                      >
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          <FolderGit2 className="w-5 h-5 text-secondary" />
-                          <div className="flex flex-col overflow-hidden">
-                            <span className="font-medium truncate">{repo.split('/').pop()}</span>
-                            <span className="text-xs opacity-50 truncate">{repo}</span>
+                    {config.recentRepos.map(repo => {
+                      const sessionCount = allSessions.filter(s => s.repoPath === repo).length;
+                      return (
+                        <div
+                          key={repo}
+                          onClick={() => handleSelectRepo(repo)}
+                          className="flex items-center justify-between p-3 bg-base-100 hover:bg-base-300 rounded-md cursor-pointer group transition-all border border-base-300"
+                        >
+                          <div className="flex items-center gap-3 overflow-hidden shrink min-w-0">
+                            <FolderGit2 className="w-5 h-5 text-secondary shrink-0" />
+                            <div className="flex flex-col overflow-hidden">
+                              <span className="font-medium truncate">{repo.split('/').pop()}</span>
+                              <span className="text-xs opacity-50 truncate">{repo}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {sessionCount > 0 && (
+                              <div className="badge badge-secondary badge-sm gap-1 opacity-80" title={`${sessionCount} on-going sessions`}>
+                                <Bot className="w-3 h-3" />
+                                {sessionCount}
+                              </div>
+                            )}
+                            <button
+                              onClick={(e) => handleRemoveRecent(e, repo)}
+                              className="btn btn-circle btn-ghost btn-xs opacity-0 group-hover:opacity-100 text-error"
+                              title="Remove from history"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                            <ChevronRight className="w-4 h-4 opacity-30" />
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={(e) => handleRemoveRecent(e, repo)}
-                            className="btn btn-circle btn-ghost btn-xs opacity-0 group-hover:opacity-100 text-error"
-                            title="Remove from history"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                          <ChevronRight className="w-4 h-4 opacity-30" />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
