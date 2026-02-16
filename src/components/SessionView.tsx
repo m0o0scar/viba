@@ -880,9 +880,9 @@ export function SessionView({
                         <button
                             className="btn btn-error btn-xs gap-1"
                             onClick={handleCleanup}
-                            disabled={cleanupPhase === 'running'}
+                            disabled={(cleanupPhase as string) === 'running'}
                         >
-                            {cleanupPhase === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="w-3 h-3" />}
+                            {(cleanupPhase as string) === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="w-3 h-3" />}
                             Clean Up & Exit
                         </button>
                     )}
