@@ -14,6 +14,9 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Viba",
+  icons: {
+    icon: "/icon.png",
+  },
 };
 
 export default function RootLayout({
