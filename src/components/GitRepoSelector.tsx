@@ -79,7 +79,11 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
     loadConfig();
   }, []);
 
-  const handleSelectRepo = async (path: string) => {
+  const handleSelectRepo = async (
+    path: string,
+    options?: { navigateToDetails?: boolean }
+  ) => {
+    const navigateToDetails = options?.navigateToDetails ?? true;
     setLoading(true);
     setError(null);
     try {
@@ -90,23 +94,26 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
         return;
       }
 
-      if (config) {
-        // Add to recent if not exists
-        let newRecent = [...config.recentRepos];
-        if (!newRecent.includes(path)) {
-          newRecent.unshift(path);
-        } else {
-          // Move to top
-          newRecent = [path, ...newRecent.filter(r => r !== path)];
-        }
+      const currentConfig = config || await getConfig();
+      let newRecent = [...currentConfig.recentRepos];
+      if (!newRecent.includes(path)) {
+        newRecent.unshift(path);
+      } else {
+        // Move to top
+        newRecent = [path, ...newRecent.filter(r => r !== path)];
+      }
 
-        // Update config
-        const newConfig = await updateConfig({ recentRepos: newRecent });
-        setConfig(newConfig);
+      // Update config
+      const newConfig = await updateConfig({ recentRepos: newRecent });
+      setConfig(newConfig);
+
+      setIsBrowsing(false);
+
+      if (!navigateToDetails) {
+        return;
       }
 
       setSelectedRepo(path);
-      setIsBrowsing(false);
       setView('details');
 
       // Load saved provider/model
@@ -875,7 +882,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       {isBrowsing && (
         <FileBrowser
           initialPath={config?.defaultRoot || undefined}
-          onSelect={(path) => handleSelectRepo(path)}
+          onSelect={(path) => handleSelectRepo(path, { navigateToDetails: false })}
           onCancel={() => setIsBrowsing(false)}
           checkRepo={checkIsGitRepo}
         />
