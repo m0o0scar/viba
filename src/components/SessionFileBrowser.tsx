@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { getHomeDirectory, listPathEntries } from '@/app/actions/git';
-import { ArrowLeft, Check, FileText, Folder } from 'lucide-react';
+import { ArrowLeft, Check, FileText, Folder, House } from 'lucide-react';
 
 type FileSystemItem = {
   name: string;
@@ -26,20 +26,35 @@ export default function SessionFileBrowser({
   const [items, setItems] = useState<FileSystemItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [homePath, setHomePath] = useState('');
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     const init = async () => {
-      if (initialPath) {
-        setCurrentPath(initialPath);
-        return;
+      try {
+        const home = await getHomeDirectory();
+        if (!isMounted) return;
+        setHomePath(home);
+        if (!initialPath) {
+          setCurrentPath(home);
+        }
+      } catch (err) {
+        console.error('Failed to resolve home directory:', err);
       }
-      const home = await getHomeDirectory();
-      setCurrentPath(home);
+
+      if (initialPath && isMounted) {
+        setCurrentPath(initialPath);
+      }
     };
 
     void init();
+
+    return () => {
+      isMounted = false;
+    };
   }, [initialPath]);
 
   useEffect(() => {
@@ -82,6 +97,11 @@ export default function SessionFileBrowser({
 
     const parent = normalized.slice(0, lastSlash);
     setCurrentPath(parent || '/');
+  };
+
+  const handleGoHome = () => {
+    if (!homePath || currentPath === homePath) return;
+    setCurrentPath(homePath);
   };
 
   const handleItemClick = (item: FileSystemItem, index: number, e: React.MouseEvent<HTMLDivElement>) => {
@@ -143,6 +163,15 @@ export default function SessionFileBrowser({
             disabled={currentPath === '/' || !currentPath}
           >
             <ArrowLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleGoHome}
+            className="btn btn-sm btn-ghost gap-1"
+            title={homePath ? `Go to Home Folder (${homePath})` : 'Go to Home Folder'}
+            disabled={!homePath || currentPath === homePath}
+          >
+            <House className="w-4 h-4" />
+            Home
           </button>
           <div className="flex-1 overflow-x-auto whitespace-nowrap px-2 font-mono text-sm">
             {currentPath}
