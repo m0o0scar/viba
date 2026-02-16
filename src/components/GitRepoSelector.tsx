@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog, Bot, Cpu } from 'lucide-react';
+import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog, Bot, Cpu, Trash2 } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, getStartupScript, listRepoFiles, saveAttachments } from '@/app/actions/git';
-import { createSession, listSessions, SessionMetadata } from '@/app/actions/session';
+import { createSession, listSessions, SessionMetadata, deleteSession } from '@/app/actions/session';
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
 import { useRouter } from 'next/navigation';
 import { Play } from 'lucide-react'; // Added Play icon for resume
@@ -65,6 +65,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   const [showSessionAdvanced, setShowSessionAdvanced] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [deletingSessionName, setDeletingSessionName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -567,6 +568,34 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
     }
   };
 
+  const handleDeleteSession = async (session: SessionMetadata) => {
+    if (!selectedRepo) return;
+
+    const confirmed = confirm(
+      `Delete session "${session.sessionName}"?\n\nThis will remove the worktree, branch, and session metadata.`
+    );
+    if (!confirmed) return;
+
+    setDeletingSessionName(session.sessionName);
+    setError(null);
+
+    try {
+      const result = await deleteSession(session.sessionName);
+      if (!result.success) {
+        setError(result.error || 'Failed to delete session');
+        return;
+      }
+
+      const sessions = await listSessions(selectedRepo);
+      setExistingSessions(sessions);
+    } catch (e) {
+      console.error(e);
+      setError('Failed to delete session');
+    } finally {
+      setDeletingSessionName(null);
+    }
+  };
+
   return (
     <>
       {view === 'list' && (
@@ -709,8 +738,8 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                     Continue Existing Session
                   </h2>
                   <div className="flex flex-col gap-2 mt-4 max-h-64 overflow-y-auto">
-                    {existingSessions.map((session, idx) => (
-                      <div key={idx} className="flex flex-col gap-2 p-3 bg-base-100 rounded-md border border-base-300">
+                    {existingSessions.map((session) => (
+                      <div key={session.sessionName} className="flex flex-col gap-2 p-3 bg-base-100 rounded-md border border-base-300">
                         <div className="flex justify-between items-start">
                           <div>
                             {session.title && <div className="font-semibold">{session.title}</div>}
@@ -719,13 +748,23 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                               Agent: {session.agent} • Model: {session.model}
                             </div>
                           </div>
-                          <button
-                            className="btn btn-sm btn-success btn-outline gap-2"
-                            onClick={() => handleResumeSession(session)}
-                            disabled={loading}
-                          >
-                            <Play className="w-3 h-3" /> Resume
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="btn btn-sm btn-success btn-outline gap-2"
+                              onClick={() => handleResumeSession(session)}
+                              disabled={loading || deletingSessionName === session.sessionName}
+                            >
+                              <Play className="w-3 h-3" /> Resume
+                            </button>
+                            <button
+                              className="btn btn-sm btn-error btn-outline gap-2"
+                              onClick={() => handleDeleteSession(session)}
+                              disabled={loading || deletingSessionName === session.sessionName}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              {deletingSessionName === session.sessionName ? 'Deleting...' : 'Delete'}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
