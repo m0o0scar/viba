@@ -186,7 +186,8 @@ export async function mergeSessionToBase(
       await git.checkout(baseBranch);
     }
 
-    await git.merge([metadata.branchName]);
+    // Always create a merge commit record instead of fast-forwarding.
+    await git.merge(['--no-ff', metadata.branchName]);
 
     if (originalBranch && originalBranch !== baseBranch) {
       await git.checkout(originalBranch);
