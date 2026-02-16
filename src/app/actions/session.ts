@@ -204,6 +204,25 @@ export async function mergeSessionToBase(
   }
 }
 
+export async function getSessionUncommittedFileCount(
+  sessionName: string
+): Promise<{ success: boolean; count?: number; error?: string }> {
+  try {
+    const metadata = await getSessionMetadata(sessionName);
+    if (!metadata) {
+      return { success: false, error: 'Session metadata not found' };
+    }
+
+    const git = simpleGit(metadata.worktreePath);
+    const status = await git.status();
+
+    return { success: true, count: status.files.length };
+  } catch (e: unknown) {
+    console.error('Failed to get uncommitted file count:', e);
+    return { success: false, error: getErrorMessage(e) };
+  }
+}
+
 export async function getSessionDivergence(
   sessionName: string
 ): Promise<{ success: boolean; ahead?: number; behind?: number; error?: string }> {
