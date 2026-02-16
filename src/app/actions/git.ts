@@ -125,6 +125,7 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
     // when running next dev inside the terminal if the parent process has it set.
     delete env.TURBOPACK;
     delete env.PORT;
+    delete env.NODE_ENV;
 
     const child = spawn('ttyd', [
       '-p', '7681',
