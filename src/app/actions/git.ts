@@ -21,11 +21,10 @@ export async function getHomeDirectory() {
   return os.homedir();
 }
 
-export async function listDirectories(dirPath: string): Promise<FileSystemItem[]> {
+export async function listPathEntries(dirPath: string): Promise<FileSystemItem[]> {
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-    // Sort directories first, then files (though we mainly care about directories for repo selection)
     const sortedEntries = entries.sort((a, b) => {
       if (a.isDirectory() && !b.isDirectory()) return -1;
       if (!a.isDirectory() && b.isDirectory()) return 1;
@@ -35,32 +34,39 @@ export async function listDirectories(dirPath: string): Promise<FileSystemItem[]
     const items: FileSystemItem[] = [];
 
     for (const entry of sortedEntries) {
-      if (!entry.isDirectory()) continue; // Only show directories for repo selection
+      if (!entry.isDirectory() && !entry.isFile()) continue;
 
       const fullPath = path.join(dirPath, entry.name);
       let isGitRepo = false;
 
-      try {
-        const gitDir = path.join(fullPath, '.git');
-        await fs.access(gitDir);
-        isGitRepo = true;
-      } catch {
-        isGitRepo = false;
+      if (entry.isDirectory()) {
+        try {
+          const gitDir = path.join(fullPath, '.git');
+          await fs.access(gitDir);
+          isGitRepo = true;
+        } catch {
+          isGitRepo = false;
+        }
       }
 
       items.push({
         name: entry.name,
         path: fullPath,
-        isDirectory: true,
+        isDirectory: entry.isDirectory(),
         isGitRepo,
       });
     }
 
     return items;
   } catch (error) {
-    console.error('Error listing directories:', error);
+    console.error('Error listing directory entries:', error);
     return [];
   }
+}
+
+export async function listDirectories(dirPath: string): Promise<FileSystemItem[]> {
+  const items = await listPathEntries(dirPath);
+  return items.filter((item) => item.isDirectory);
 }
 
 export async function getBranches(repoPath: string): Promise<GitBranch[]> {
