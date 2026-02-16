@@ -1,27 +1,32 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useSearchParams, useRouter, useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { SessionView } from '@/components/SessionView';
-import { getSessionMetadata, SessionMetadata } from '@/app/actions/session';
+import { consumeSessionLaunchContext, getSessionMetadata, SessionMetadata } from '@/app/actions/session';
 import { startTtydProcess } from '@/app/actions/git';
 
-export default function SessionPage({ params }: { params: Promise<{ sessionId: string }> }) {
-    const { sessionId } = React.use(params);
-    const searchParams = useSearchParams();
+export default function SessionPage() {
+    const params = useParams<{ sessionId: string }>();
+    const sessionIdParam = params.sessionId;
+    const sessionId = Array.isArray(sessionIdParam) ? sessionIdParam[0] : sessionIdParam;
     const router = useRouter();
 
     const [metadata, setMetadata] = useState<SessionMetadata | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Get ephemeral params from URL
-    const [initialMessage, setInitialMessage] = useState<string | undefined>(searchParams.get('initialMessage') || undefined);
-    const [startupScript, setStartupScript] = useState<string | undefined>(searchParams.get('startupScript') || undefined);
-    const [attachmentNames, setAttachmentNames] = useState<string[]>(searchParams.getAll('attachmentNames'));
-    const [isResumeParam, setIsResumeParam] = useState<boolean>(searchParams.get('isResume') === 'true');
+    const [initialMessage, setInitialMessage] = useState<string | undefined>(undefined);
+    const [startupScript, setStartupScript] = useState<string | undefined>(undefined);
+    const [attachmentNames, setAttachmentNames] = useState<string[]>([]);
+    const [contextTitle, setContextTitle] = useState<string | undefined>(undefined);
+    const [contextAgentProvider, setContextAgentProvider] = useState<string | undefined>(undefined);
+    const [contextModel, setContextModel] = useState<string | undefined>(undefined);
+    const [isResumeParam, setIsResumeParam] = useState<boolean>(false);
 
     useEffect(() => {
+        if (!sessionId) return;
+
         const loadSession = async () => {
             try {
                 // Ensure ttyd is running
@@ -35,12 +40,19 @@ export default function SessionPage({ params }: { params: Promise<{ sessionId: s
                 const data = await getSessionMetadata(sessionId);
                 if (data) {
                     setMetadata(data);
-                    
-                    // Cleanup URL params to prevent re-execution on reload
-                    if (initialMessage || startupScript || attachmentNames.length > 0) {
-                        const newUrl = `/session/${sessionId}`;
-                        window.history.replaceState(null, '', newUrl);
+                    const contextResult = await consumeSessionLaunchContext(sessionId);
+                    if (!contextResult.success) {
+                        console.error('Failed to load session context:', contextResult.error);
                     }
+
+                    const context = contextResult.success ? contextResult.context : undefined;
+                    setInitialMessage(context?.initialMessage);
+                    setStartupScript(context?.startupScript);
+                    setAttachmentNames(context?.attachmentNames || []);
+                    setContextTitle(context?.title);
+                    setContextAgentProvider(context?.agentProvider);
+                    setContextModel(context?.model);
+                    setIsResumeParam(context?.isResume === true);
                     setLoading(false);
                 } else {
                     // Session not found - redirect to home
@@ -55,7 +67,7 @@ export default function SessionPage({ params }: { params: Promise<{ sessionId: s
         };
 
         loadSession();
-    }, [sessionId]);
+    }, [sessionId, router]);
 
     // Prevent browser back/forward navigation
     useEffect(() => {
@@ -112,13 +124,13 @@ export default function SessionPage({ params }: { params: Promise<{ sessionId: s
             branch={metadata.branchName}
             baseBranch={metadata.baseBranch}
             sessionName={metadata.sessionName}
-            agent={metadata.agent}
-            model={metadata.model}
-            startupScript={startupScript} // Use URL param
+            agent={contextAgentProvider || metadata.agent}
+            model={contextModel || metadata.model}
+            startupScript={startupScript}
             devServerScript={metadata.devServerScript}
-            initialMessage={initialMessage} // Use URL param
-            title={metadata.title}
-            attachmentNames={attachmentNames} // Use URL param
+            initialMessage={initialMessage}
+            title={contextTitle || metadata.title}
+            attachmentNames={attachmentNames}
             onExit={handleExit}
             isResume={isResumeParam || (!initialMessage && !startupScript)} // If no init action, treat as resume
         />

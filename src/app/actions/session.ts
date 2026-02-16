@@ -19,6 +19,18 @@ export type SessionMetadata = {
   timestamp: string;
 };
 
+export type SessionLaunchContext = {
+  sessionName: string;
+  title?: string;
+  initialMessage?: string;
+  startupScript?: string;
+  attachmentNames?: string[];
+  agentProvider?: string;
+  model?: string;
+  isResume?: boolean;
+  timestamp: string;
+};
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
@@ -35,10 +47,67 @@ async function getSessionsDir(): Promise<string> {
   return sessionsDir;
 }
 
+async function getSessionContextsDir(): Promise<string> {
+  const homedir = os.homedir();
+  const contextsDir = path.join(homedir, '.viba', 'session-contexts');
+  try {
+    await fs.mkdir(contextsDir, { recursive: true });
+  } catch {
+    // Ignore if exists
+  }
+  return contextsDir;
+}
+
+async function getSessionContextFilePath(sessionName: string): Promise<string> {
+  const contextsDir = await getSessionContextsDir();
+  return path.join(contextsDir, `${sessionName}.json`);
+}
+
 export async function saveSessionMetadata(metadata: SessionMetadata): Promise<void> {
   const sessionsDir = await getSessionsDir();
   const filePath = path.join(sessionsDir, `${metadata.sessionName}.json`);
   await fs.writeFile(filePath, JSON.stringify(metadata, null, 2), 'utf-8');
+}
+
+export async function saveSessionLaunchContext(
+  sessionName: string,
+  context: Omit<SessionLaunchContext, 'sessionName' | 'timestamp'>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const filePath = await getSessionContextFilePath(sessionName);
+    const contextData: SessionLaunchContext = {
+      sessionName,
+      ...context,
+      timestamp: new Date().toISOString(),
+    };
+    await fs.writeFile(filePath, JSON.stringify(contextData, null, 2), 'utf-8');
+    return { success: true };
+  } catch (e: unknown) {
+    console.error('Failed to save session launch context:', e);
+    return { success: false, error: getErrorMessage(e) };
+  }
+}
+
+export async function consumeSessionLaunchContext(
+  sessionName: string
+): Promise<{ success: boolean; context?: SessionLaunchContext; error?: string }> {
+  try {
+    const filePath = await getSessionContextFilePath(sessionName);
+    const content = await fs.readFile(filePath, 'utf-8');
+    await fs.rm(filePath, { force: true });
+    const context = JSON.parse(content) as SessionLaunchContext;
+    return { success: true, context };
+  } catch (e: unknown) {
+    const errorCode =
+      typeof e === 'object' && e !== null && 'code' in e
+        ? (e as { code?: string }).code
+        : undefined;
+    if (errorCode === 'ENOENT') {
+      return { success: true };
+    }
+    console.error('Failed to consume session launch context:', e);
+    return { success: false, error: getErrorMessage(e) };
+  }
 }
 
 export async function getSessionMetadata(sessionName: string): Promise<SessionMetadata | null> {
@@ -138,6 +207,8 @@ export async function deleteSession(sessionName: string): Promise<{ success: boo
     const sessionsDir = await getSessionsDir();
     const filePath = path.join(sessionsDir, `${sessionName}.json`);
     await fs.rm(filePath, { force: true });
+    const contextFilePath = await getSessionContextFilePath(sessionName);
+    await fs.rm(contextFilePath, { force: true });
 
     return { success: true };
   } catch (e: unknown) {

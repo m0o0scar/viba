@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog, Bot, Cpu, Trash2 } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, getStartupScript, listRepoFiles, saveAttachments } from '@/app/actions/git';
-import { createSession, listSessions, SessionMetadata, deleteSession } from '@/app/actions/session';
+import { createSession, listSessions, SessionMetadata, deleteSession, saveSessionLaunchContext } from '@/app/actions/session';
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
 import { useRouter } from 'next/navigation';
 import { Play } from 'lucide-react'; // Added Play icon for resume
@@ -444,7 +444,7 @@ export default function GitRepoSelector() {
         devServerScript: devServerScript || undefined
       });
 
-      if (wtResult.success && wtResult.worktreePath && wtResult.branchName) {
+      if (wtResult.success && wtResult.sessionName && wtResult.worktreePath && wtResult.branchName) {
         // NEW: Upload attachments
         if (attachments.length > 0) {
           const formData = new FormData();
@@ -465,21 +465,25 @@ export default function GitRepoSelector() {
           return name;
         });
 
-        // 3. Navigate to session page with new params
-        const params = new URLSearchParams({
-          // Minimal params needed for initial start command, session metadata handles the rest
-          initialMessage: processedMessage,
+        // 3. Persist launch context for the new session
+        const launchContextResult = await saveSessionLaunchContext(wtResult.sessionName, {
+          title: title || undefined,
+          initialMessage: processedMessage || undefined,
+          startupScript: startupScript || undefined,
+          attachmentNames: attachments.map(file => file.name),
+          agentProvider: selectedProvider?.cli || 'agent',
+          model: selectedModel || '',
+          isResume: false,
         });
 
-        if (startupScript) {
-            params.append('startupScript', startupScript);
+        if (!launchContextResult.success) {
+          setError(launchContextResult.error || 'Failed to save session context');
+          setLoading(false);
+          return;
         }
 
-        // Append attachment names
-        attachments.forEach(file => params.append('attachmentNames', file.name));
-
-        const dest = `/session/${wtResult.sessionName}?${params.toString()}`;
-        console.log("Navigating to:", dest);
+        // 4. Navigate to session page by path only
+        const dest = `/session/${wtResult.sessionName}`;
         router.push(dest);
 
         // No need to refresh sessions as we are navigating away
@@ -508,12 +512,22 @@ export default function GitRepoSelector() {
         return;
       }
 
-      // 2. Resume - session already exists so just navigate
-      const params = new URLSearchParams({
-          isResume: 'true'
+      // 2. Persist launch context for resume
+      const launchContextResult = await saveSessionLaunchContext(session.sessionName, {
+        title: session.title,
+        agentProvider: session.agent,
+        model: session.model,
+        isResume: true,
       });
-      
-      const dest = `/session/${session.sessionName}?${params.toString()}`;
+
+      if (!launchContextResult.success) {
+        setError(launchContextResult.error || 'Failed to save session context');
+        setLoading(false);
+        return;
+      }
+
+      // 3. Resume - session already exists so just navigate
+      const dest = `/session/${session.sessionName}`;
       router.push(dest);
 
     } catch (e) {
