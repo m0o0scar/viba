@@ -38,7 +38,7 @@ export interface SessionViewProps {
     devServerScript?: string;
     initialMessage?: string;
     title?: string;
-    attachments?: File[];
+    attachmentNames?: string[];
     onExit: () => void;
     isResume?: boolean;
 }
@@ -55,7 +55,7 @@ export function SessionView({
     devServerScript,
     initialMessage,
     title,
-    attachments,
+    attachmentNames,
     onExit,
     isResume
 }: SessionViewProps) {
@@ -532,11 +532,11 @@ export function SessionView({
                             } else {
                                 // Normal Start Logic
                                 let fullMessage = title ? `${title}\n\n${initialMessage || ''}` : (initialMessage || '');
-                                if (attachments && attachments.length > 0) {
+                                if (attachmentNames && attachmentNames.length > 0) {
                                     const attachmentBasePath = `${worktree || repo}-attachments`;
                                     const attachmentSection = [
                                         'Attachments:',
-                                        ...attachments.map(file => `- ${attachmentBasePath}/${file.name}`)
+                                        ...attachmentNames.map(name => `- ${attachmentBasePath}/${name}`)
                                     ].join('\n');
                                     fullMessage = fullMessage ? `${fullMessage}\n\n${attachmentSection}` : attachmentSection;
                                 }

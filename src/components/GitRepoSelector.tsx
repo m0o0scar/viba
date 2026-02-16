@@ -26,25 +26,8 @@ type AgentProvider = {
 
 const agentProvidersData = agentProvidersDataRaw as unknown as AgentProvider[];
 
-interface GitRepoSelectorProps {
-  onStartSession?: (sessionDetails: {
-    repo: string;
-    worktree: string;
-    branch: string;
-    baseBranch?: string;
-    sessionName: string;
-    agent: string;
-    model: string;
-    startupScript: string;
-    devServerScript: string;
-    initialMessage: string;
-    title?: string;
-    attachments: File[];
-    isResume?: boolean;
-  }) => void;
-}
 
-export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps) {
+export default function GitRepoSelector() {
   const [view, setView] = useState<'list' | 'details'>('list');
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
@@ -482,43 +465,24 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
           return name;
         });
 
-        // 3. Navigate to session page with new params OR call onStartSession
-        if (onStartSession) {
-          onStartSession({
-            repo: selectedRepo, // Keep original repo for context if needed
-            worktree: wtResult.worktreePath,
-            branch: wtResult.branchName,
-            baseBranch,
-            sessionName: wtResult.sessionName || '',
-            agent: selectedProvider?.cli || '',
-            model: selectedModel || '',
-            startupScript: startupScript || '',
-            devServerScript: devServerScript || '',
-            initialMessage: processedMessage,
-            title: title || '',
-            attachments: attachments || []
-          });
-        } else {
-          const params = new URLSearchParams({
-            repo: selectedRepo, // Keep original repo for context if needed
-            worktree: wtResult.worktreePath,
-            branch: wtResult.branchName,
-            base_branch: baseBranch,
-            session: wtResult.sessionName || '',
-            agent: selectedProvider?.cli || '',
-            model: selectedModel || '',
-            startup_script: startupScript || '',
-            dev_server_script: devServerScript || '',
-            title: title || '',
-            // params url too long for attachments/message probably, but generic fallback
-          });
+        // 3. Navigate to session page with new params
+        const params = new URLSearchParams({
+          // Minimal params needed for initial start command, session metadata handles the rest
+          initialMessage: processedMessage,
+        });
 
-          router.push(`/session?${params.toString()}`);
+        if (startupScript) {
+            params.append('startupScript', startupScript);
         }
 
-        // Refresh all sessions
-        const allSess = await listSessions();
-        setAllSessions(allSess);
+        // Append attachment names
+        attachments.forEach(file => params.append('attachmentNames', file.name));
+
+        const dest = `/session/${wtResult.sessionName}?${params.toString()}`;
+        console.log("Navigating to:", dest);
+        router.push(dest);
+
+        // No need to refresh sessions as we are navigating away
       } else {
         setError(wtResult.error || "Failed to create session worktree");
         setLoading(false);
@@ -545,39 +509,12 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       }
 
       // 2. Resume - session already exists so just navigate
-      if (onStartSession) {
-        onStartSession({
-          repo: selectedRepo,
-          worktree: session.worktreePath,
-          branch: session.branchName,
-          baseBranch: session.baseBranch,
-          sessionName: session.sessionName,
-          agent: session.agent || 'agent',
-          model: session.model || '',
-          startupScript: '', // No startup script on resume
-          devServerScript: session.devServerScript || '',
-          initialMessage: '',
-          title: session.title,
-          attachments: [],
-          isResume: true
-        });
-      } else {
-        const params = new URLSearchParams({
-          repo: selectedRepo,
-          worktree: session.worktreePath,
-          branch: session.branchName,
-          base_branch: session.baseBranch || '',
-          session: session.sessionName,
-          agent: session.agent || 'agent',
-          model: session.model || '',
-          startup_script: '',
-          dev_server_script: session.devServerScript || '',
-          title: session.title || '',
+      const params = new URLSearchParams({
           isResume: 'true'
-        });
-
-        router.push(`/session?${params.toString()}`);
-      }
+      });
+      
+      const dest = `/session/${session.sessionName}?${params.toString()}`;
+      router.push(dest);
 
     } catch (e) {
       console.error(e);
