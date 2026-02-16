@@ -35,6 +35,7 @@ interface GitRepoSelectorProps {
     agent: string;
     model: string;
     startupScript: string;
+    devServerScript: string;
     initialMessage: string;
     title?: string;
     attachments: File[];
@@ -60,6 +61,8 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
   const [selectedProvider, setSelectedProvider] = useState<AgentProvider | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [startupScript, setStartupScript] = useState<string>('');
+  const [devServerScript, setDevServerScript] = useState<string>('');
+  const [showSessionAdvanced, setShowSessionAdvanced] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +150,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
     const savedProviderCli = settings.agentProvider;
     const savedModel = settings.agentModel;
     const savedStartupScript = settings.startupScript;
+    const savedDevServerScript = settings.devServerScript;
 
     if (savedProviderCli) {
       const provider = agentProvidersData.find(p => p.cli === savedProviderCli);
@@ -174,6 +178,12 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       // Determine default based on repo content
       const defaultScript = await getStartupScript(repoPath);
       setStartupScript(defaultScript);
+    }
+
+    if (savedDevServerScript !== undefined && savedDevServerScript !== null) {
+      setDevServerScript(savedDevServerScript);
+    } else {
+      setDevServerScript('');
     }
   };
 
@@ -283,6 +293,17 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
         setConfig(newConfig);
     }
   }
+
+  const handleDevServerScriptChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDevServerScript(e.target.value);
+  };
+
+  const saveDevServerScript = async () => {
+    if (selectedRepo) {
+      const newConfig = await updateRepoSettings(selectedRepo, { devServerScript });
+      setConfig(newConfig);
+    }
+  };
 
   const [initialMessage, setInitialMessage] = useState<string>('');
   const [title, setTitle] = useState<string>('');
@@ -407,6 +428,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
 
     // Also save startup script if changed
     await saveStartupScript();
+    await saveDevServerScript();
 
     try {
       // 1. Start TTYD if needed
@@ -424,7 +446,8 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
       const wtResult = await createSession(selectedRepo, baseBranch, {
         agent: selectedProvider?.cli || 'agent',
         model: selectedModel || '',
-        title: title
+        title: title,
+        devServerScript: devServerScript || undefined
       });
 
       if (wtResult.success && wtResult.worktreePath && wtResult.branchName) {
@@ -458,6 +481,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
             agent: selectedProvider?.cli || '',
             model: selectedModel || '',
             startupScript: startupScript || '',
+            devServerScript: devServerScript || '',
             initialMessage: processedMessage,
             title: title || '',
             attachments: attachments || []
@@ -471,6 +495,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
             agent: selectedProvider?.cli || '',
             model: selectedModel || '',
             startup_script: startupScript || '',
+            dev_server_script: devServerScript || '',
             title: title || '',
             // params url too long for attachments/message probably, but generic fallback
           });
@@ -512,6 +537,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
           agent: session.agent || 'agent',
           model: session.model || '',
           startupScript: '', // No startup script on resume
+          devServerScript: session.devServerScript || '',
           initialMessage: '',
           title: session.title,
           attachments: [],
@@ -526,6 +552,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
           agent: session.agent || 'agent',
           model: session.model || '',
           startup_script: '',
+          dev_server_script: session.devServerScript || '',
           title: session.title || '',
           isResume: 'true'
         });
@@ -716,75 +743,106 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                 </h2>
 
                 <div className="mt-4 space-y-6">
-                  {/* Agent Selection Moved Here */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium opacity-70">Agent Provider</label>
-                      <div className="join w-full">
-                        <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
-                          <Bot className="w-4 h-4" />
-                        </div>
-                        <select
-                          className="select select-bordered join-item w-full focus:outline-none"
-                          value={selectedProvider?.cli || ''}
-                          onChange={handleProviderChange}
-                          disabled={loading}
-                        >
-                          {agentProvidersData.map(provider => (
-                            <option key={provider.cli} value={provider.cli}>
-                              {provider.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      {selectedProvider?.description && (
-                        <p className="text-[10px] opacity-60 mt-1 pl-1 italic leading-tight">
-                          {selectedProvider.description}
-                        </p>
-                      )}
-                    </div>
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm px-2 h-auto min-h-0 normal-case justify-start gap-2"
+                      onClick={() => setShowSessionAdvanced(prev => !prev)}
+                    >
+                      <ChevronRight className={`w-4 h-4 transition-transform ${showSessionAdvanced ? 'rotate-90' : ''}`} />
+                      {showSessionAdvanced ? 'Hide Session Setup' : 'Show Session Setup'}
+                    </button>
 
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium opacity-70">Model</label>
-                      <div className="join w-full">
-                        <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
-                          <Cpu className="w-4 h-4" />
-                        </div>
-                        <select
-                          className="select select-bordered join-item w-full focus:outline-none"
-                          value={selectedModel}
-                          onChange={handleModelChange}
-                          disabled={loading || !selectedProvider}
-                        >
-                          {selectedProvider?.models.map(model => (
-                            <option key={model.id} value={model.id}>
-                              {model.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      {selectedProvider?.models.find(m => m.id === selectedModel)?.description && (
-                        <p className="text-[10px] opacity-60 mt-1 pl-1 italic leading-tight">
-                          {selectedProvider.models.find(m => m.id === selectedModel)?.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                    {showSessionAdvanced && (
+                      <>
+                        {/* Agent Selection */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium opacity-70">Agent Provider</label>
+                            <div className="join w-full">
+                              <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
+                                <Bot className="w-4 h-4" />
+                              </div>
+                              <select
+                                className="select select-bordered join-item w-full focus:outline-none"
+                                value={selectedProvider?.cli || ''}
+                                onChange={handleProviderChange}
+                                disabled={loading}
+                              >
+                                {agentProvidersData.map(provider => (
+                                  <option key={provider.cli} value={provider.cli}>
+                                    {provider.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            {selectedProvider?.description && (
+                              <p className="text-[10px] opacity-60 mt-1 pl-1 italic leading-tight">
+                                {selectedProvider.description}
+                              </p>
+                            )}
+                          </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium opacity-70">Start up script (Optional)</label>
-                    <input
-                      type="text"
-                      className="input input-bordered w-full font-mono text-sm"
-                      placeholder="npm i"
-                      value={startupScript}
-                      onChange={handleStartupScriptChange}
-                      onBlur={saveStartupScript}
-                      disabled={loading}
-                    />
-                    <div className="text-xs opacity-50 px-1">
-                      Script to run in the terminal agent iframe upon startup.
-                    </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium opacity-70">Model</label>
+                            <div className="join w-full">
+                              <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
+                                <Cpu className="w-4 h-4" />
+                              </div>
+                              <select
+                                className="select select-bordered join-item w-full focus:outline-none"
+                                value={selectedModel}
+                                onChange={handleModelChange}
+                                disabled={loading || !selectedProvider}
+                              >
+                                {selectedProvider?.models.map(model => (
+                                  <option key={model.id} value={model.id}>
+                                    {model.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            {selectedProvider?.models.find(m => m.id === selectedModel)?.description && (
+                              <p className="text-[10px] opacity-60 mt-1 pl-1 italic leading-tight">
+                                {selectedProvider.models.find(m => m.id === selectedModel)?.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium opacity-70">Start up script (Optional)</label>
+                          <input
+                            type="text"
+                            className="input input-bordered w-full font-mono text-sm"
+                            placeholder="npm i"
+                            value={startupScript}
+                            onChange={handleStartupScriptChange}
+                            onBlur={saveStartupScript}
+                            disabled={loading}
+                          />
+                          <div className="text-xs opacity-50 px-1">
+                            Script to run in the terminal agent iframe upon startup.
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium opacity-70">Dev server script (Optional)</label>
+                          <input
+                            type="text"
+                            className="input input-bordered w-full font-mono text-sm"
+                            placeholder="npm run dev"
+                            value={devServerScript}
+                            onChange={handleDevServerScriptChange}
+                            onBlur={saveDevServerScript}
+                            disabled={loading}
+                          />
+                          <div className="text-xs opacity-50 px-1">
+                            Script for the Session View Start Dev Server button in the right terminal.
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <div className="divider"></div>

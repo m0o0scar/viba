@@ -13,6 +13,7 @@ export type SessionMetadata = {
   agent: string;
   model: string;
   title?: string;
+  devServerScript?: string;
   timestamp: string;
 };
 
@@ -80,7 +81,7 @@ export async function listSessions(repoPath?: string): Promise<SessionMetadata[]
 export async function createSession(
   repoPath: string,
   baseBranch: string,
-  metadata: { agent: string; model: string; title?: string }
+  metadata: { agent: string; model: string; title?: string; devServerScript?: string }
 ): Promise<{ success: boolean; sessionName?: string; worktreePath?: string; branchName?: string; error?: string }> {
   try {
     // 1. Prepare worktree
@@ -99,6 +100,7 @@ export async function createSession(
       agent: metadata.agent,
       model: metadata.model,
       title: metadata.title,
+      devServerScript: metadata.devServerScript,
       timestamp: new Date().toISOString(),
     };
 
