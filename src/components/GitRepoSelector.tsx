@@ -889,6 +889,12 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                             value={startupScript}
                             onChange={handleStartupScriptChange}
                             onBlur={saveStartupScript}
+                            onKeyDown={(e) => {
+                              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                e.preventDefault();
+                                handleStartSession();
+                              }
+                            }}
                             disabled={loading}
                           />
                           <div className="text-xs opacity-50 px-1">
@@ -905,6 +911,12 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
                             value={devServerScript}
                             onChange={handleDevServerScriptChange}
                             onBlur={saveDevServerScript}
+                            onKeyDown={(e) => {
+                              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                e.preventDefault();
+                                handleStartSession();
+                              }
+                            }}
                             disabled={loading}
                           />
                           <div className="text-xs opacity-50 px-1">
