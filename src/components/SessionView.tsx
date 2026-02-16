@@ -2,7 +2,7 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 // import { useRouter } from 'next/navigation';
-import { deleteSession, getSessionDivergence, mergeSessionToBase } from '@/app/actions/session';
+import { deleteSession, getSessionDivergence, getSessionUncommittedFileCount, mergeSessionToBase } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
 import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, ArrowUp, ArrowDown } from 'lucide-react';
 
@@ -62,6 +62,7 @@ export function SessionView({
     const [isRequestingCommit, setIsRequestingCommit] = useState(false);
     const [isMerging, setIsMerging] = useState(false);
     const [divergence, setDivergence] = useState({ ahead: 0, behind: 0 });
+    const [uncommittedFileCount, setUncommittedFileCount] = useState(0);
 
     // Resize state
     const [agentWidth, setAgentWidth] = useState(66.666);
@@ -282,6 +283,30 @@ export function SessionView({
 
         return () => window.clearInterval(timer);
     }, [baseBranch, loadSessionDivergence, sessionName]);
+
+    const loadUncommittedFileCount = useCallback(async () => {
+        if (!sessionName) return;
+
+        try {
+            const result = await getSessionUncommittedFileCount(sessionName);
+            if (result.success && typeof result.count === 'number') {
+                setUncommittedFileCount(result.count);
+            }
+        } catch (e) {
+            console.error('Failed to load uncommitted file count:', e);
+        }
+    }, [sessionName]);
+
+    useEffect(() => {
+        if (!sessionName) return;
+
+        void loadUncommittedFileCount();
+        const timer = window.setInterval(() => {
+            void loadUncommittedFileCount();
+        }, 10000);
+
+        return () => window.clearInterval(timer);
+    }, [loadUncommittedFileCount, sessionName]);
 
     const handleMerge = async () => {
         if (!sessionName) return;
@@ -620,7 +645,7 @@ export function SessionView({
                         title="Ask agent to create a commit with current changes"
                     >
                         {isRequestingCommit ? <span className="loading loading-spinner loading-xs"></span> : <GitCommitHorizontal className="w-3 h-3" />}
-                        Commit
+                        Commit ({uncommittedFileCount})
                     </button>
 
                     <button
