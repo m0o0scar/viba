@@ -31,6 +31,7 @@ interface GitRepoSelectorProps {
     repo: string;
     worktree: string;
     branch: string;
+    baseBranch?: string;
     sessionName: string;
     agent: string;
     model: string;
@@ -487,6 +488,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
             repo: selectedRepo, // Keep original repo for context if needed
             worktree: wtResult.worktreePath,
             branch: wtResult.branchName,
+            baseBranch,
             sessionName: wtResult.sessionName || '',
             agent: selectedProvider?.cli || '',
             model: selectedModel || '',
@@ -501,6 +503,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
             repo: selectedRepo, // Keep original repo for context if needed
             worktree: wtResult.worktreePath,
             branch: wtResult.branchName,
+            base_branch: baseBranch,
             session: wtResult.sessionName || '',
             agent: selectedProvider?.cli || '',
             model: selectedModel || '',
@@ -547,6 +550,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
           repo: selectedRepo,
           worktree: session.worktreePath,
           branch: session.branchName,
+          baseBranch: session.baseBranch,
           sessionName: session.sessionName,
           agent: session.agent || 'agent',
           model: session.model || '',
@@ -562,6 +566,7 @@ export default function GitRepoSelector({ onStartSession }: GitRepoSelectorProps
           repo: selectedRepo,
           worktree: session.worktreePath,
           branch: session.branchName,
+          base_branch: session.baseBranch || '',
           session: session.sessionName,
           agent: session.agent || 'agent',
           model: session.model || '',

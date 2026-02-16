@@ -2,9 +2,9 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 // import { useRouter } from 'next/navigation';
-import { deleteSession } from '@/app/actions/session';
+import { deleteSession, mergeSessionToBase } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge } from 'lucide-react';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -23,6 +23,7 @@ export interface SessionViewProps {
     repo: string;
     worktree: string;
     branch: string;
+    baseBranch?: string;
     sessionName: string;
     agent?: string;
     model?: string;
@@ -39,6 +40,7 @@ export function SessionView({
     repo,
     worktree,
     branch,
+    baseBranch,
     sessionName,
     agent,
     model,
@@ -57,6 +59,8 @@ export function SessionView({
     const [feedback, setFeedback] = useState<string>('Initializing...');
     const [isCleaningUp, setIsCleaningUp] = useState(false);
     const [isStartingDevServer, setIsStartingDevServer] = useState(false);
+    const [isRequestingCommit, setIsRequestingCommit] = useState(false);
+    const [isMerging, setIsMerging] = useState(false);
 
     // Resize state
     const [agentWidth, setAgentWidth] = useState(66.666);
@@ -161,6 +165,107 @@ export function SessionView({
         } catch (e) {
             setFeedback('Cleanup error');
             setIsCleaningUp(false);
+        }
+    };
+
+    const sendPromptToAgentIframe = useCallback((prompt: string, action: string): Promise<boolean> => {
+        return new Promise((resolve) => {
+            const iframe = iframeRef.current;
+            if (!iframe) {
+                resolve(false);
+                return;
+            }
+
+            const checkAndSend = (attempts = 0) => {
+                if (attempts > 30) {
+                    resolve(false);
+                    return;
+                }
+
+                try {
+                    const win = iframe.contentWindow as TerminalWindow | null;
+                    if (!win) {
+                        setTimeout(() => checkAndSend(attempts + 1), 300);
+                        return;
+                    }
+
+                    win.postMessage(
+                        {
+                            type: 'viba:agent-request',
+                            action,
+                            prompt,
+                            sessionName,
+                            branch,
+                            baseBranch,
+                            timestamp: Date.now(),
+                        },
+                        '*'
+                    );
+
+                    if (!win.term) {
+                        setTimeout(() => checkAndSend(attempts + 1), 300);
+                        return;
+                    }
+
+                    win.term.paste(prompt);
+
+                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                    if (textarea) {
+                        textarea.dispatchEvent(new KeyboardEvent('keypress', {
+                            bubbles: true,
+                            cancelable: true,
+                            charCode: 13,
+                            keyCode: 13,
+                            key: 'Enter',
+                            view: win
+                        }));
+                        (textarea as HTMLElement).focus();
+                    } else {
+                        win.term.paste('\r');
+                    }
+
+                    win.focus();
+                    resolve(true);
+                } catch (e) {
+                    console.error('Failed to send prompt to agent iframe:', e);
+                    setTimeout(() => checkAndSend(attempts + 1), 300);
+                }
+            };
+
+            checkAndSend();
+        });
+    }, [baseBranch, branch, sessionName]);
+
+    const handleCommit = async () => {
+        setIsRequestingCommit(true);
+        setFeedback('Requesting commit from agent...');
+
+        const prompt = 'Please create a git commit with the current changes in this worktree.';
+        const sent = await sendPromptToAgentIframe(prompt, 'commit');
+
+        setFeedback(sent ? 'Commit request sent to agent' : 'Failed to send commit request to agent');
+        setIsRequestingCommit(false);
+    };
+
+    const handleMerge = async () => {
+        if (!sessionName) return;
+        if (!confirm(`Merge ${branch} into ${baseBranch || 'the base branch'}?`)) return;
+
+        setIsMerging(true);
+        setFeedback('Merging session branch...');
+
+        try {
+            const result = await mergeSessionToBase(sessionName);
+            if (result.success) {
+                setFeedback(`Merged ${result.branchName} into ${result.baseBranch}`);
+            } else {
+                setFeedback(`Merge failed: ${result.error}`);
+            }
+        } catch (e) {
+            console.error('Merge request failed:', e);
+            setFeedback('Merge failed');
+        } finally {
+            setIsMerging(false);
         }
     };
 
@@ -471,10 +576,30 @@ export function SessionView({
                         </button>
                     )}
 
+                    <button
+                        className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
+                        onClick={handleCommit}
+                        disabled={isRequestingCommit}
+                        title="Ask agent to create a commit with current changes"
+                    >
+                        {isRequestingCommit ? <span className="loading loading-spinner loading-xs"></span> : <GitCommitHorizontal className="w-3 h-3" />}
+                        Commit
+                    </button>
+
+                    <button
+                        className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
+                        onClick={handleMerge}
+                        disabled={isMerging || !baseBranch}
+                        title={baseBranch ? `Merge ${branch} into ${baseBranch}` : 'Base branch unavailable for this session'}
+                    >
+                        {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
+                        Merge
+                    </button>
+
                     <div className="w-[1px] h-4 bg-base-content/20 mx-2"></div>
 
                     <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') ? 'bg-success' : 'bg-warning'}`}></span>
+                        <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') || feedback.includes('Merged') || feedback.includes('sent') ? 'bg-success' : 'bg-warning'}`}></span>
                         <span>{feedback}</span>
                     </div>
 

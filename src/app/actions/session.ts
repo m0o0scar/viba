@@ -3,6 +3,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import simpleGit from 'simple-git';
 import { prepareSessionWorktree, removeWorktree } from './git';
 
 export type SessionMetadata = {
@@ -10,12 +11,18 @@ export type SessionMetadata = {
   repoPath: string;
   worktreePath: string;
   branchName: string;
+  baseBranch?: string;
   agent: string;
   model: string;
   title?: string;
   devServerScript?: string;
   timestamp: string;
 };
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
 
 async function getSessionsDir(): Promise<string> {
   const homedir = os.homedir();
@@ -97,6 +104,7 @@ export async function createSession(
       repoPath,
       worktreePath: result.worktreePath,
       branchName: result.branchName,
+      baseBranch,
       agent: metadata.agent,
       model: metadata.model,
       title: metadata.title,
@@ -107,9 +115,9 @@ export async function createSession(
     await saveSessionMetadata(sessionData);
 
     return result;
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("Failed to create session:", e);
-    return { success: false, error: e.message || String(e) };
+    return { success: false, error: getErrorMessage(e) };
   }
 }
 
@@ -132,8 +140,65 @@ export async function deleteSession(sessionName: string): Promise<{ success: boo
     await fs.rm(filePath, { force: true });
 
     return { success: true };
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("Failed to delete session:", e);
-    return { success: false, error: e.message || String(e) };
+    return { success: false, error: getErrorMessage(e) };
+  }
+}
+
+export async function mergeSessionToBase(
+  sessionName: string
+): Promise<{ success: boolean; branchName?: string; baseBranch?: string; error?: string }> {
+  try {
+    const metadata = await getSessionMetadata(sessionName);
+    if (!metadata) {
+      return { success: false, error: 'Session metadata not found' };
+    }
+
+    const baseBranch = metadata.baseBranch?.trim();
+    if (!baseBranch) {
+      return {
+        success: false,
+        error: 'Base branch is missing for this session. This session may be from an older version.',
+      };
+    }
+
+    const worktreeGit = simpleGit(metadata.worktreePath);
+    const worktreeStatus = await worktreeGit.status();
+    if (!worktreeStatus.isClean()) {
+      return {
+        success: false,
+        error: 'Worktree has uncommitted changes. Commit your changes first.',
+      };
+    }
+
+    const git = simpleGit(metadata.repoPath);
+    const branchSummary = await git.branchLocal();
+    if (!branchSummary.all.includes(baseBranch)) {
+      return { success: false, error: `Base branch "${baseBranch}" not found in repository.` };
+    }
+    if (!branchSummary.all.includes(metadata.branchName)) {
+      return { success: false, error: `Session branch "${metadata.branchName}" not found in repository.` };
+    }
+
+    const originalBranch = branchSummary.current;
+    if (originalBranch !== baseBranch) {
+      await git.checkout(baseBranch);
+    }
+
+    await git.merge([metadata.branchName]);
+
+    if (originalBranch && originalBranch !== baseBranch) {
+      await git.checkout(originalBranch);
+    }
+
+    return {
+      success: true,
+      branchName: metadata.branchName,
+      baseBranch,
+    };
+  } catch (e: unknown) {
+    console.error('Failed to merge session branch:', e);
+    return { success: false, error: getErrorMessage(e) };
   }
 }

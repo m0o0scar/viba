@@ -8,6 +8,7 @@ type SessionState = {
   repo: string;
   worktree: string;
   branch: string;
+  baseBranch?: string;
   sessionName: string;
   agent: string;
   model: string;
@@ -45,6 +46,7 @@ export default function Home() {
         repo={session.repo}
         worktree={session.worktree}
         branch={session.branch}
+        baseBranch={session.baseBranch}
         sessionName={session.sessionName}
         agent={session.agent}
         model={session.model}
