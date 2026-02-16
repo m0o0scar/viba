@@ -6,7 +6,7 @@
     "find-port": "node -e \"p=3200;var s=require('net').createServer;var c=()=>s().listen(p,()=>console.log(p)||process.exit()).on('error',()=>++p&&c());c()\"",
     "dev": "next dev --webpack -p $(npm run find-port -s)",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3200",
     "lint": "eslint"
   },
   "dependencies": {
