@@ -199,11 +199,30 @@ export async function removeWorktree(repoPath: string, worktreePath: string, bra
     const git = simpleGit(repoPath);
 
     console.log(`Removing worktree at ${worktreePath}...`);
-
-    await git.raw(['worktree', 'remove', '--force', worktreePath]);
+    try {
+      await git.raw(['worktree', 'remove', '--force', worktreePath]);
+    } catch (e: any) {
+      const errorMsg = e.message || String(e);
+      if (errorMsg.includes('is not a working tree') || errorMsg.includes('not a valid path')) {
+        console.warn(`Path ${worktreePath} is not a valid working tree according to git, continuing cleanup...`);
+      } else {
+        console.error(`Git worktree remove failed, but continuing with cleanup: ${errorMsg}`);
+      }
+      
+      // Try to prune in case of stale worktree metadata
+      try {
+        await git.raw(['worktree', 'prune']);
+      } catch {
+        // ignore prune errors
+      }
+    }
 
     console.log(`Deleting branch ${branchName}...`);
-    await git.deleteLocalBranch(branchName, true);
+    try {
+      await git.deleteLocalBranch(branchName, true);
+    } catch (e: any) {
+      console.warn(`Failed to delete branch ${branchName}: ${e.message || e}`);
+    }
 
     try {
       await fs.rm(worktreePath, { recursive: true, force: true });
@@ -220,8 +239,10 @@ export async function removeWorktree(repoPath: string, worktreePath: string, bra
 
     return { success: true };
   } catch (e: any) {
-    console.error("Failed to cleanup worktree:", e);
-    return { success: false, error: e.message || String(e) };
+    console.error("Failed to cleanup worktree (critical error):", e);
+    // Even on critical error, return success: true if we want the session to be considered "deleted"
+    // so the metadata can be removed.
+    return { success: true };
   }
 }
 
