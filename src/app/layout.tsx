@@ -13,7 +13,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Viba",
+  title: {
+    default: "Viba",
+    template: "%s | Viba",
+  },
   icons: {
     icon: "/icon.png",
   },
