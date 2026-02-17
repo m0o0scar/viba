@@ -119,7 +119,7 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
     const { spawn } = await import('child_process');
     console.log('Starting ttyd process...');
 
-    const env = { ...process.env };
+    const env: any = { ...process.env };
     // Clean up environment variables to prevent conflicts
     // Specifically remove TURBOPACK which causes "Multiple bundler flags set" error
     // when running next dev inside the terminal if the parent process has it set.
@@ -218,7 +218,7 @@ export async function removeWorktree(repoPath: string, worktreePath: string, bra
       } else {
         console.error(`Git worktree remove failed, but continuing with cleanup: ${errorMsg}`);
       }
-      
+
       // Try to prune in case of stale worktree metadata
       try {
         await git.raw(['worktree', 'prune']);
