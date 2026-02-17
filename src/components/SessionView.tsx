@@ -90,6 +90,7 @@ export function SessionView({
     const [agentWidth, setAgentWidth] = useState(66.666);
     const [isResizing, setIsResizing] = useState(false);
     const agentWidthRef = useRef(agentWidth);
+    const suppressBeforeUnloadRef = useRef(false);
 
     useEffect(() => {
         agentWidthRef.current = agentWidth;
@@ -132,6 +133,9 @@ export function SessionView({
     // Prevent accidental reload/close
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (suppressBeforeUnloadRef.current) {
+                return;
+            }
             e.preventDefault();
             e.returnValue = ''; // Chrome requires returnValue to be set
         };
@@ -200,6 +204,7 @@ export function SessionView({
         if (!repo || !worktree || !branch) return;
         if (!confirm('Are you sure you want to delete this session? This will remove the branch and worktree.')) return;
 
+        suppressBeforeUnloadRef.current = true;
         setCleanupError(null);
         setCleanupPhase('running');
         setFeedback('Cleaning up session...');
@@ -210,12 +215,14 @@ export function SessionView({
             if (result.success) {
                 onExit();
             } else {
+                suppressBeforeUnloadRef.current = false;
                 const message = result.error || 'Failed to clean up session';
                 setCleanupError(message);
                 setFeedback(`Cleanup failed: ${message}`);
                 setCleanupPhase('error');
             }
         } catch (e) {
+            suppressBeforeUnloadRef.current = false;
             const message = e instanceof Error ? e.message : 'Unexpected cleanup error';
             setCleanupError(message);
             setFeedback(`Cleanup failed: ${message}`);
