@@ -90,7 +90,6 @@ export function SessionView({
     const [agentWidth, setAgentWidth] = useState(66.666);
     const [isResizing, setIsResizing] = useState(false);
     const agentWidthRef = useRef(agentWidth);
-    const suppressBeforeUnloadRef = useRef(false);
 
     useEffect(() => {
         agentWidthRef.current = agentWidth;
@@ -129,20 +128,6 @@ export function SessionView({
         setCurrentBaseBranch(baseBranch?.trim() || '');
         setBaseBranchOptions([]);
     }, [baseBranch, sessionName]);
-
-    // Prevent accidental reload/close
-    useEffect(() => {
-        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (suppressBeforeUnloadRef.current) {
-                return;
-            }
-            e.preventDefault();
-            e.returnValue = ''; // Chrome requires returnValue to be set
-        };
-
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, []);
 
     const handleIdeChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
         const value = e.target.value;
@@ -204,7 +189,6 @@ export function SessionView({
         if (!repo || !worktree || !branch) return;
         if (!confirm('Are you sure you want to delete this session? This will remove the branch and worktree.')) return;
 
-        suppressBeforeUnloadRef.current = true;
         setCleanupError(null);
         setCleanupPhase('running');
         setFeedback('Cleaning up session...');
@@ -215,14 +199,12 @@ export function SessionView({
             if (result.success) {
                 onExit();
             } else {
-                suppressBeforeUnloadRef.current = false;
                 const message = result.error || 'Failed to clean up session';
                 setCleanupError(message);
                 setFeedback(`Cleanup failed: ${message}`);
                 setCleanupPhase('error');
             }
         } catch (e) {
-            suppressBeforeUnloadRef.current = false;
             const message = e instanceof Error ? e.message : 'Unexpected cleanup error';
             setCleanupError(message);
             setFeedback(`Cleanup failed: ${message}`);
@@ -581,6 +563,16 @@ export function SessionView({
             return;
         }
 
+        if (iframe.contentWindow) {
+            // Attempt to nullify the internal ttyd handler
+            iframe.contentWindow.onbeforeunload = null;
+
+            // Or add a high-priority listener that stops the popup
+            iframe.contentWindow.addEventListener('beforeunload', (event) => {
+                event.stopImmediatePropagation();
+            }, true);
+        }
+
         console.log('Iframe loaded, starting injection check...');
         setFeedback('Connecting to terminal...');
 
@@ -718,6 +710,16 @@ export function SessionView({
         } catch (e) {
             console.error("Secondary terminal: Cross-Origin access blocked.");
             return;
+        }
+
+        if (iframe.contentWindow) {
+            // Attempt to nullify the internal ttyd handler
+            iframe.contentWindow.onbeforeunload = null;
+
+            // Or add a high-priority listener that stops the popup
+            iframe.contentWindow.addEventListener('beforeunload', (event) => {
+                event.stopImmediatePropagation();
+            }, true);
         }
 
         const checkAndInject = (attempts = 0) => {
