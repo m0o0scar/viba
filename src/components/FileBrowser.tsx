@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { listDirectories, getHomeDirectory } from '@/app/actions/git';
-import { Folder, ArrowLeft, Check, GitBranch } from 'lucide-react';
+import { Folder, ArrowLeft, Check } from 'lucide-react';
 
 interface FileSystemItem {
   name: string;
@@ -68,9 +68,9 @@ export default function FileBrowser({ initialPath, onSelect, onCancel, checkRepo
 
   // ... handleNavigate, handleGoUp ...
 
-  const handleSelect = async () => {
+  const handleSelectPath = async (path: string) => {
     if (checkRepo) {
-      const isValid = await checkRepo(currentPath);
+      const isValid = await checkRepo(path);
       if (!isValid) {
         setError("Selected directory is not a valid git repository.");
         // Clear error after 3 seconds
@@ -78,7 +78,11 @@ export default function FileBrowser({ initialPath, onSelect, onCancel, checkRepo
         return;
       }
     }
-    onSelect(currentPath);
+    onSelect(path);
+  };
+
+  const handleSelect = async () => {
+    await handleSelectPath(currentPath);
   };
 
   const handleNavigate = (path: string) => {
@@ -91,7 +95,6 @@ export default function FileBrowser({ initialPath, onSelect, onCancel, checkRepo
     // Since we receive absolute paths, we can split by separator.
     // However, simplest way is to ask server for parent, or just manipulation.
     // Let's use simple string manipulation for now, assuming standard path separators.
-    const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/';
     // Handle root on windows/unix might need care, but for now '/' or 'C:\' logic
     // Actually, handling 'Go Up' robustly is better done by just taking the dirname
     // We don't have 'path.dirname' on client easily without polyfill.
@@ -166,6 +169,19 @@ export default function FileBrowser({ initialPath, onSelect, onCancel, checkRepo
                       <span className="badge badge-xs badge-primary">git</span>
                     )}
                   </div>
+                  {item.isGitRepo && (
+                    <button
+                      className="btn btn-xs btn-primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleSelectPath(item.path);
+                      }}
+                      title={`Select ${item.name}`}
+                    >
+                      <Check className="w-3 h-3" />
+                      Select
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -174,7 +190,7 @@ export default function FileBrowser({ initialPath, onSelect, onCancel, checkRepo
 
         {/* Footer info */}
         <div className="p-3 border-t border-base-300 text-xs text-base-content/50 text-center">
-          Navigate to a folder and click "Select Current Folder" to choose it.
+          Navigate to a folder and click &quot;Select Current Folder&quot; to choose it.
         </div>
       </div>
     </div>
