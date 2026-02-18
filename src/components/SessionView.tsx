@@ -528,6 +528,9 @@ export function SessionView({
         const script = devServerScript?.trim();
         if (!script || !terminalRef.current) return;
 
+        // Auto-show terminal if minimized
+        setIsTerminalMinimized(false);
+
         const iframe = terminalRef.current;
         setIsStartingDevServer(true);
         setFeedback('Starting dev server...');
