@@ -12,7 +12,7 @@ import {
     updateSessionBaseBranch
 } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName } from '@/lib/path';
 
@@ -91,6 +91,67 @@ export function SessionView({
     const [uncommittedFileCount, setUncommittedFileCount] = useState(0);
 
     const [isTerminalMinimized, setIsTerminalMinimized] = useState(true);
+
+    // Terminal resize state
+    const [terminalSize, setTerminalSize] = useState({ width: 460, height: 320 });
+    const [isResizing, setIsResizing] = useState(false);
+    const [isLoaded, setIsLoaded] = useState(false);
+    const resizeRef = useRef({ startX: 0, startY: 0, startWidth: 0, startHeight: 0 });
+
+    useEffect(() => {
+        const saved = localStorage.getItem('viba-terminal-size');
+        if (saved) {
+            try {
+                setTerminalSize(JSON.parse(saved));
+            } catch (e) {
+                console.error('Failed to parse saved terminal size', e);
+            }
+        }
+        setIsLoaded(true);
+    }, []);
+
+    const startResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsResizing(true);
+        resizeRef.current = {
+            startX: e.clientX,
+            startY: e.clientY,
+            startWidth: terminalSize.width,
+            startHeight: terminalSize.height
+        };
+    };
+
+    useEffect(() => {
+        if (!isResizing) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const deltaX = resizeRef.current.startX - e.clientX; // Dragging left increases width
+            const deltaY = resizeRef.current.startY - e.clientY; // Dragging up increases height
+
+            setTerminalSize({
+                width: Math.max(300, Math.min(window.innerWidth - 32, resizeRef.current.startWidth + deltaX)),
+                height: Math.max(100, Math.min(window.innerHeight - 32, resizeRef.current.startHeight + deltaY))
+            });
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
+
+    useEffect(() => {
+        if (isLoaded && !isResizing) {
+            localStorage.setItem('viba-terminal-size', JSON.stringify(terminalSize));
+        }
+    }, [isLoaded, isResizing, terminalSize]);
 
     // IDE Selection
     const [selectedIde, setSelectedIde] = useState<string>('vscode');
@@ -974,10 +1035,25 @@ export function SessionView({
 
             {/* floating terminal panel */}
             <div
-                className={`absolute bottom-4 right-4 z-30 w-[min(460px,calc(100vw-2rem))] overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm transition-all ${isTerminalMinimized ? 'h-10' : 'h-[min(320px,45vh)]'}`}
+                className={`absolute bottom-4 right-4 z-30 overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm ${isResizing ? '' : 'transition-all'}`}
+                style={{
+                    width: terminalSize.width,
+                    height: isTerminalMinimized ? 40 : terminalSize.height,
+                    maxWidth: 'calc(100vw - 2rem)',
+                    maxHeight: 'calc(100vh - 2rem)'
+                }}
             >
+                {!isTerminalMinimized && (
+                    <div
+                        className="absolute left-0 top-0 z-50 cursor-nwse-resize p-2 text-base-content/30 hover:text-base-content/60"
+                        onMouseDown={startResize}
+                        title="Drag to resize"
+                    >
+                        <Grip size={14} />
+                    </div>
+                )}
                 <button
-                    className="flex h-10 w-full items-center justify-between px-3 text-xs font-mono hover:bg-base-content/10"
+                    className="flex h-10 w-full items-center justify-between px-3 pl-8 text-xs font-mono hover:bg-base-content/10"
                     onClick={() => setIsTerminalMinimized((prev) => !prev)}
                     title={isTerminalMinimized ? 'Expand terminal' : 'Minimize terminal'}
                     type="button"
@@ -989,7 +1065,7 @@ export function SessionView({
                     <iframe
                         ref={terminalRef}
                         src="/terminal"
-                        className="h-full w-full border-none dark:invert dark:brightness-90"
+                        className={`h-full w-full border-none dark:invert dark:brightness-90 ${isResizing ? 'pointer-events-none' : ''}`}
                         allow="clipboard-read; clipboard-write"
                         onLoad={handleTerminalLoad}
                     />
