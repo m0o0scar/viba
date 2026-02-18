@@ -48,7 +48,7 @@ export interface SessionViewProps {
     initialMessage?: string;
     title?: string;
     attachmentNames?: string[];
-    onExit: () => void;
+    onExit: (force?: boolean) => void;
     isResume?: boolean;
     onSessionStart?: () => void;
 }
@@ -202,7 +202,7 @@ export function SessionView({
         try {
             const result = await deleteSession(sessionName);
             if (result.success) {
-                onExit();
+                onExit(true);
             } else {
                 const message = result.error || 'Failed to clean up session';
                 setCleanupError(message);
@@ -822,7 +822,7 @@ export function SessionView({
                         <h2 className="card-title text-error">Cleanup failed</h2>
                         <p>{cleanupError || 'An unknown error occurred while cleaning up this session.'}</p>
                         <div className="card-actions justify-end">
-                            <button className="btn btn-primary" onClick={onExit}>Back to Home</button>
+                            <button className="btn btn-primary" onClick={() => onExit()}>Back to Home</button>
                         </div>
                     </div>
                 </div>
@@ -841,7 +841,7 @@ export function SessionView({
                 <div className="flex items-center gap-4">
                     <button
                         className="btn btn-ghost btn-xs h-6 min-h-6 px-1 hover:bg-base-content/10"
-                        onClick={onExit}
+                        onClick={() => onExit()}
                         title="Back to Home"
                     >
                         <ChevronLeft className="w-4 h-4" />

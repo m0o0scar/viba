@@ -85,8 +85,14 @@ export default function SessionPage() {
         loadSession();
     }, [sessionId]);
 
-    const handleExit = () => {
-        router.push('/');
+    const handleExit = (force?: boolean) => {
+        if (force) {
+            // Force a full page navigation — used after cleanup where
+            // router.push can get stuck due to iframe teardown state
+            window.location.href = '/';
+        } else {
+            router.push('/');
+        }
     };
 
     // Called by SessionView once the agent command has been sent for the first time
@@ -115,7 +121,7 @@ export default function SessionPage() {
                         <h2 className="card-title text-error">Error</h2>
                         <p>{error || 'Session not found'}</p>
                         <div className="card-actions justify-end">
-                            <button className="btn btn-primary" onClick={handleExit}>Back to Home</button>
+                            <button className="btn btn-primary" onClick={() => handleExit()}>Back to Home</button>
                         </div>
                     </div>
                 </div>
