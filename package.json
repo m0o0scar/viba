@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/find-port.js 3200 -- next dev --webpack -p {PORT}",
+    "dev": "npx gfport 3200 -- next dev --webpack -p {PORT}",
     "build": "next build",
     "start": "next start -p 3200",
     "lint": "eslint"
@@ -27,6 +27,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "gfport": "^1.0.1",
     "tailwindcss": "^4",
     "typescript": "5.9.3"
   }
