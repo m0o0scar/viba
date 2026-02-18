@@ -12,7 +12,7 @@ import {
     updateSessionBaseBranch
 } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 
 const SUPPORTED_IDES = [
@@ -817,6 +817,13 @@ export function SessionView({
         <div className="w-full h-screen flex flex-col bg-base-100">
             <div className="bg-base-300 p-2 text-xs flex justify-between px-4 font-mono select-none items-center shadow-md z-10">
                 <div className="flex items-center gap-4">
+                    <button
+                        className="btn btn-ghost btn-xs h-6 min-h-6 px-1 hover:bg-base-content/10"
+                        onClick={onExit}
+                        title="Back to Home"
+                    >
+                        <ChevronLeft className="w-4 h-4" />
+                    </button>
                     <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                             <span className="opacity-50">Repo:</span>
@@ -832,9 +839,9 @@ export function SessionView({
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center border border-base-content/20 rounded overflow-hidden">
                         <select
-                            className="select select-bordered select-xs w-auto h-6 min-h-6 bg-base-200"
+                            className="select select-xs h-6 min-h-6 bg-base-200 border-none focus:outline-none rounded-none pr-7"
                             value={selectedIde}
                             onChange={handleIdeChange}
                         >
@@ -842,8 +849,9 @@ export function SessionView({
                                 <option key={ide.id} value={ide.id}>{ide.name}</option>
                             ))}
                         </select>
+                        <div className="w-[1px] h-4 bg-base-content/20"></div>
                         <button
-                            className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
+                            className="btn btn-ghost btn-xs rounded-none h-6 min-h-6 border-none hover:bg-base-content/10"
                             onClick={handleOpenIde}
                             title={`Open in ${SUPPORTED_IDES.find(i => i.id === selectedIde)?.name}`}
                         >

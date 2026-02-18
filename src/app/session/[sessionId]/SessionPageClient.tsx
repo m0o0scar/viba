@@ -67,8 +67,8 @@ export default function SessionPage() {
                             shouldResume = true;
                         }
                     } else {
-                         // Already initialized, so we resume.
-                         shouldResume = true;
+                        // Already initialized, so we resume.
+                        shouldResume = true;
                     }
 
                     if (context) {
