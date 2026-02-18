@@ -127,16 +127,21 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
     delete env.PORT;
     delete env.NODE_ENV;
 
+    const shell = os.platform() === 'win32' ? 'powershell' : 'bash';
+    const workingDir = os.homedir();
+
     const child = spawn('ttyd', [
       '-p', '7681',
       '-t', 'theme={"background": "white", "foreground": "black", "cursor": "black"}',
       '-t', 'fontSize=12',
       '-t', 'fontWeight=300',
       '-t', 'fontWeightBold=500',
-      '-W', 'bash'
+      '-w', workingDir,
+      '-W', shell
     ], {
       stdio: 'ignore',
       detached: false,
+      cwd: workingDir,
       env: {
         ...env,
         TERM: 'xterm-256color',

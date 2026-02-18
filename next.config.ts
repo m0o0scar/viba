@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/terminal/:path*',
-        destination: 'http://localhost:7681/:path*',
+        destination: 'http://127.0.0.1:7681/:path*',
       },
     ];
   },
