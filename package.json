@@ -3,8 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "find-port": "node -e \"p=3200;var s=require('net').createServer;var c=()=>s().listen(p,()=>console.log(p)||process.exit()).on('error',()=>++p&&c());c()\"",
-    "dev": "next dev --webpack -p $(npm run find-port -s)",
+    "dev": "node scripts/find-port.js 3200 -- next dev --webpack -p {PORT}",
     "build": "next build",
     "start": "next start -p 3200",
     "lint": "eslint"
