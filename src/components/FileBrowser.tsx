@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { listDirectories, getHomeDirectory } from '@/app/actions/git';
 import { Folder, ArrowLeft, Check } from 'lucide-react';
+import { getDirName } from '@/lib/path';
 
 interface FileSystemItem {
   name: string;
@@ -91,21 +92,10 @@ export default function FileBrowser({ initialPath, onSelect, onCancel, checkRepo
 
   const handleGoUp = () => {
     // Navigate up one directory
-    // Basic implementation assuming unix/windows paths handled by server or string manipulation
-    // Since we receive absolute paths, we can split by separator.
-    // However, simplest way is to ask server for parent, or just manipulation.
-    // Let's use simple string manipulation for now, assuming standard path separators.
-    // Handle root on windows/unix might need care, but for now '/' or 'C:\' logic
-    // Actually, handling 'Go Up' robustly is better done by just taking the dirname
-    // We don't have 'path.dirname' on client easily without polyfill.
-    // But we know currentPath.
-    // Let's just find the last separator.
-    const lastSepIndex = currentPath.lastIndexOf('/');
-    if (lastSepIndex > 0) {
-      setCurrentPath(currentPath.substring(0, lastSepIndex));
-    } else if (currentPath.length > 1) {
-      // Handle root
-      setCurrentPath('/');
+    // Use the cross-platform getDirName utility to handle Windows and POSIX paths.
+    const parent = getDirName(currentPath);
+    if (parent && parent !== currentPath) {
+      setCurrentPath(parent);
     }
   };
 

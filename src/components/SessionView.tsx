@@ -14,6 +14,7 @@ import {
 import { getConfig, updateConfig } from '@/app/actions/config';
 import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
+import { getBaseName } from '@/lib/path';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -848,7 +849,7 @@ export function SessionView({
                     <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                             <span className="opacity-50">Repo:</span>
-                            <span className="font-bold">{repo.split('/').pop()}</span>
+                            <span className="font-bold">{getBaseName(repo)}</span>
                         </div>
                         {sessionName && (
                             <div className="flex items-center gap-2 text-[10px] opacity-70">

@@ -8,6 +8,7 @@ import { createSession, listSessions, SessionMetadata, deleteSession, saveSessio
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
 import { useRouter } from 'next/navigation';
 import { Play } from 'lucide-react'; // Added Play icon for resume
+import { getBaseName } from '@/lib/path';
 
 import agentProvidersDataRaw from '@/data/agent-providers.json';
 
@@ -621,7 +622,7 @@ export default function GitRepoSelector() {
                           <div className="flex items-center gap-3 overflow-hidden shrink min-w-0">
                             <FolderGit2 className="w-5 h-5 text-secondary shrink-0" />
                             <div className="flex flex-col overflow-hidden">
-                              <span className="font-medium truncate">{repo.split('/').pop()}</span>
+                              <span className="font-medium truncate">{getBaseName(repo)}</span>
                               <span className="text-xs opacity-50 truncate">{repo}</span>
                             </div>
                           </div>
