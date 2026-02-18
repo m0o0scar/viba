@@ -129,7 +129,7 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
 
     const child = spawn('ttyd', [
       '-p', '7681',
-      '-t', 'theme={"background": "white", "foreground": "black", "cursor": "black"}',
+      '-t', 'theme={"background": "white", "foreground": "black", "cursor": "black", "selection": "rgba(255, 255, 255, 0.3)"}',
       '-t', 'fontSize=12',
       '-t', 'fontWeight=300',
       '-t', 'fontWeightBold=500',
