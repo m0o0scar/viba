@@ -72,7 +72,6 @@ export function SessionView({
 }: SessionViewProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const terminalRef = useRef<HTMLIFrameElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
 
     const [feedback, setFeedback] = useState<string>('Initializing...');
     const [cleanupPhase, setCleanupPhase] = useState<CleanupPhase>('idle');
@@ -91,14 +90,7 @@ export function SessionView({
     const [divergence, setDivergence] = useState({ ahead: 0, behind: 0 });
     const [uncommittedFileCount, setUncommittedFileCount] = useState(0);
 
-    // Resize state
-    const [agentWidth, setAgentWidth] = useState(66.666);
-    const [isResizing, setIsResizing] = useState(false);
-    const agentWidthRef = useRef(agentWidth);
-
-    useEffect(() => {
-        agentWidthRef.current = agentWidth;
-    }, [agentWidth]);
+    const [isTerminalMinimized, setIsTerminalMinimized] = useState(true);
 
     // IDE Selection
     const [selectedIde, setSelectedIde] = useState<string>('vscode');
@@ -119,9 +111,6 @@ export function SessionView({
     useEffect(() => {
         const loadConfig = async () => {
             const config = await getConfig();
-            if (config.agentWidth) {
-                setAgentWidth(config.agentWidth);
-            }
             if (config.selectedIde && SUPPORTED_IDES.some(ide => ide.id === config.selectedIde)) {
                 setSelectedIde(config.selectedIde);
             }
@@ -148,35 +137,6 @@ export function SessionView({
         const uri = `${ide.protocol}://file/${encodeURI(worktree)}`;
         window.open(uri, '_blank');
     };
-
-    const startResizing = useCallback(() => {
-        setIsResizing(true);
-    }, []);
-
-    const stopResizing = useCallback(() => {
-        setIsResizing(false);
-        updateConfig({ agentWidth: agentWidthRef.current });
-    }, []);
-
-    const resize = useCallback((e: MouseEvent) => {
-        if (isResizing && containerRef.current) {
-            const containerRect = containerRef.current.getBoundingClientRect();
-            const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
-            const clamped = Math.min(Math.max(newWidth, 20), 80);
-            setAgentWidth(clamped);
-        }
-    }, [isResizing]);
-
-    useEffect(() => {
-        if (isResizing) {
-            window.addEventListener('mousemove', resize);
-            window.addEventListener('mouseup', stopResizing);
-        }
-        return () => {
-            window.removeEventListener('mousemove', resize);
-            window.removeEventListener('mouseup', stopResizing);
-        };
-    }, [isResizing, resize, stopResizing]);
 
     const handleCleanup = async () => {
         const unloadSessionIframes = () => {
@@ -836,8 +796,8 @@ export function SessionView({
     ])).filter((branchOption) => branchOption !== branch || branchOption === currentBaseBranch);
 
     return (
-        <div className="w-full h-screen flex flex-col bg-base-100">
-            <div className="bg-base-300 p-2 text-xs flex justify-between px-4 font-mono select-none items-center shadow-md z-10">
+        <div className="relative h-screen w-full overflow-hidden bg-base-100">
+            <div className="absolute left-0 right-0 top-0 z-20 bg-base-300/95 p-2 text-xs flex justify-between px-4 font-mono select-none items-center shadow-md backdrop-blur-sm">
                 <div className="flex items-center gap-4">
                     <button
                         className="btn btn-ghost btn-xs h-6 min-h-6 px-1 hover:bg-base-content/10"
@@ -1003,46 +963,36 @@ export function SessionView({
                 </div>
             </div>
 
+            {/* coding agent iframe */}
+            <iframe
+                ref={iframeRef}
+                src="/terminal"
+                className="h-full w-full border-none dark:invert dark:brightness-90"
+                allow="clipboard-read; clipboard-write"
+                onLoad={handleIframeLoad}
+            />
+
+            {/* floating terminal panel */}
             <div
-                className={`flex flex-row w-full flex-grow overflow-hidden ${isResizing ? 'select-none cursor-col-resize' : ''}`}
-                ref={containerRef}
+                className={`absolute bottom-4 right-4 z-30 w-[min(460px,calc(100vw-2rem))] overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm transition-all ${isTerminalMinimized ? 'h-10' : 'h-[min(320px,45vh)]'}`}
             >
-                {/* coding agent iframe */}
-                <div
-                    className="h-full relative"
-                    style={{ width: `${agentWidth}%` }}
+                <button
+                    className="flex h-10 w-full items-center justify-between px-3 text-xs font-mono hover:bg-base-content/10"
+                    onClick={() => setIsTerminalMinimized((prev) => !prev)}
+                    title={isTerminalMinimized ? 'Expand terminal' : 'Minimize terminal'}
+                    type="button"
                 >
-                    <iframe
-                        ref={iframeRef}
-                        src="/terminal"
-                        className={`w-full h-full border-none dark:invert dark:brightness-90 ${isResizing ? 'pointer-events-none' : ''}`}
-                        allow="clipboard-read; clipboard-write"
-                        onLoad={handleIframeLoad}
-                    />
-                    {isResizing && <div className="absolute inset-0 z-50 bg-transparent" />}
-                </div>
-
-                {/* Resizer Handle */}
-                <div
-                    className="w-1 h-full cursor-col-resize bg-base-300 hover:bg-primary transition-colors flex items-center justify-center z-20"
-                    onMouseDown={startResizing}
-                >
-                    <div className="w-[1px] h-4 bg-base-content opacity-20" />
-                </div>
-
-                {/* terminal iframe */}
-                <div
-                    className="h-full relative border-l border-base-300"
-                    style={{ width: `${100 - agentWidth}%` }}
-                >
+                    <span>Terminal</span>
+                    <span className="opacity-70">{isTerminalMinimized ? 'Show' : 'Hide'}</span>
+                </button>
+                <div className={isTerminalMinimized ? 'h-0 overflow-hidden' : 'h-[calc(100%-2.5rem)]'}>
                     <iframe
                         ref={terminalRef}
                         src="/terminal"
-                        className={`w-full h-full border-none dark:invert dark:brightness-90 ${isResizing ? 'pointer-events-none' : ''}`}
+                        className="h-full w-full border-none dark:invert dark:brightness-90"
                         allow="clipboard-read; clipboard-write"
                         onLoad={handleTerminalLoad}
                     />
-                    {isResizing && <div className="absolute inset-0 z-50 bg-transparent" />}
                 </div>
             </div>
 
