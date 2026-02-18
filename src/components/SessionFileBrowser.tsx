@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { getHomeDirectory, listPathEntries } from '@/app/actions/git';
 import { ArrowLeft, Check, FileText, Folder, House } from 'lucide-react';
+import { getDirName } from '@/lib/path';
 
 type FileSystemItem = {
   name: string;
@@ -85,18 +86,10 @@ export default function SessionFileBrowser({
   const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
 
   const handleGoUp = () => {
-    const normalized = currentPath.replace(/[\\/]+$/, '');
-    if (!normalized || normalized === '/') return;
-    if (/^[A-Za-z]:$/.test(normalized)) return;
-
-    const lastSlash = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));
-    if (lastSlash <= 0) {
-      setCurrentPath('/');
-      return;
+    const parent = getDirName(currentPath);
+    if (parent && parent !== currentPath) {
+      setCurrentPath(parent);
     }
-
-    const parent = normalized.slice(0, lastSlash);
-    setCurrentPath(parent || '/');
   };
 
   const handleGoHome = () => {
