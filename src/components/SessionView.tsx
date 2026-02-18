@@ -25,6 +25,10 @@ const SUPPORTED_IDES = [
 type TerminalWindow = Window & {
     term?: {
         paste: (text: string) => void;
+        options: {
+            theme?: Record<string, string>;
+            [key: string]: unknown;
+        };
     };
 };
 
@@ -587,6 +591,15 @@ export function SessionView({
                 if (win && win.term) {
                     const term = win.term;
                     console.log('Terminal instance found');
+
+                    // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
+                    try {
+                        term.options.theme = {
+                            ...(term.options.theme || {}),
+                            selectionBackground: 'rgba(59, 130, 246, 0.4)',
+                        };
+                    } catch { /* ignore if API unavailable */ }
+
                     // Attempt injection
 
                     // User instructions:
@@ -733,6 +746,14 @@ export function SessionView({
                 if (win && win.term) {
                     const term = win.term;
                     console.log('Secondary terminal instance found');
+
+                    // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
+                    try {
+                        term.options.theme = {
+                            ...(term.options.theme || {}),
+                            selectionBackground: 'rgba(59, 130, 246, 0.4)',
+                        };
+                    } catch { /* ignore if API unavailable */ }
 
                     const targetPath = worktree || repo;
                     const cmd = `cd "${targetPath}"`;
