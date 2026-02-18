@@ -16,13 +16,16 @@ export default function SessionPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Startup params — only populated on first open (initialized === false)
     const [initialMessage, setInitialMessage] = useState<string | undefined>(undefined);
     const [startupScript, setStartupScript] = useState<string | undefined>(undefined);
     const [attachmentNames, setAttachmentNames] = useState<string[]>([]);
     const [contextTitle, setContextTitle] = useState<string | undefined>(undefined);
     const [contextAgentProvider, setContextAgentProvider] = useState<string | undefined>(undefined);
     const [contextModel, setContextModel] = useState<string | undefined>(undefined);
-    const [isResumeParam, setIsResumeParam] = useState<boolean>(false);
+
+    // True = send --resume to agent; False = send fresh start params
+    const [isResume, setIsResume] = useState<boolean>(true);
 
     useEffect(() => {
         if (!sessionId) return;
@@ -38,55 +41,40 @@ export default function SessionPage() {
                 }
 
                 const data = await getSessionMetadata(sessionId);
-                if (data) {
-                    setMetadata(data);
-
-                    // Logic to determine if we should resume or start fresh
-                    // Old sessions (initialized undefined) are considered initialized.
-                    // New sessions (initialized false) are not.
-                    const isAlreadyInitialized = data.initialized !== false;
-
-                    let context = undefined;
-                    let shouldResume = isAlreadyInitialized;
-
-                    if (!isAlreadyInitialized) {
-                        const contextResult = await consumeSessionLaunchContext(sessionId);
-                        if (contextResult.success && contextResult.context) {
-                            context = contextResult.context;
-                            // If context says resume (e.g. from "resume session" button), then resume.
-                            if (context.isResume) {
-                                shouldResume = true;
-                            } else {
-                                shouldResume = false;
-                                // We have a new session context.
-                                // We will mark it initialized via callback from SessionView.
-                            }
-                        } else {
-                            // Failed to load context (file missing/deleted).
-                            // Assume it was already consumed or lost. Treat as resume.
-                            shouldResume = true;
-                        }
-                    } else {
-                        // Already initialized, so we resume.
-                        shouldResume = true;
-                    }
-
-                    if (context) {
-                        setInitialMessage(context.initialMessage);
-                        setStartupScript(context.startupScript);
-                        setAttachmentNames(context.attachmentNames || []);
-                        setContextTitle(context.title);
-                        setContextAgentProvider(context.agentProvider);
-                        setContextModel(context.model);
-                    }
-
-                    setIsResumeParam(shouldResume);
+                if (!data) {
+                    setError('Session not found');
                     setLoading(false);
-                } else {
-                    // Session not found - redirect to home
-                    router.push('/');
-                    // Keep loading as true to avoid showing error card during redirect
+                    return;
                 }
+
+                setMetadata(data);
+
+                // Determine fresh start vs resume purely from the initialized flag:
+                // - initialized === false  → first open, send startup params
+                // - initialized === true   → already started before, resume
+                // - initialized === undefined → legacy session (no flag), treat as resume
+                const isFirstOpen = data.initialized === false;
+
+                if (isFirstOpen) {
+                    // Consume the launch context (startup params) written by GitRepoSelector
+                    const contextResult = await consumeSessionLaunchContext(sessionId);
+                    if (contextResult.success && contextResult.context) {
+                        const ctx = contextResult.context;
+                        setInitialMessage(ctx.initialMessage);
+                        setStartupScript(ctx.startupScript);
+                        setAttachmentNames(ctx.attachmentNames || []);
+                        setContextTitle(ctx.title);
+                        setContextAgentProvider(ctx.agentProvider);
+                        setContextModel(ctx.model);
+                    }
+                    // Whether or not we got context, this is a fresh start
+                    setIsResume(false);
+                } else {
+                    // Already initialized (or legacy) — resume
+                    setIsResume(true);
+                }
+
+                setLoading(false);
             } catch (e) {
                 console.error('Failed to load session:', e);
                 setError('Failed to load session');
@@ -95,29 +83,13 @@ export default function SessionPage() {
         };
 
         loadSession();
-    }, [sessionId, router]);
-
-    // Prevent browser back/forward navigation
-    useEffect(() => {
-        // Push a dummy state to history
-        window.history.pushState(null, '', window.location.href);
-
-        const handlePopState = () => {
-            // When back is pressed, push state again to stay on page
-            window.history.pushState(null, '', window.location.href);
-        };
-
-        window.addEventListener('popstate', handlePopState);
-
-        return () => {
-            window.removeEventListener('popstate', handlePopState);
-        };
-    }, []);
+    }, [sessionId]);
 
     const handleExit = () => {
         router.push('/');
     };
 
+    // Called by SessionView once the agent command has been sent for the first time
     const handleSessionStart = async () => {
         if (sessionId) {
             await markSessionInitialized(sessionId);
@@ -166,7 +138,7 @@ export default function SessionPage() {
             title={contextTitle || metadata.title}
             attachmentNames={attachmentNames}
             onExit={handleExit}
-            isResume={isResumeParam || (!initialMessage && !startupScript)} // If no init action, treat as resume
+            isResume={isResume}
             onSessionStart={handleSessionStart}
         />
     );

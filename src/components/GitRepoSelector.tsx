@@ -283,8 +283,8 @@ export default function GitRepoSelector() {
 
   const saveStartupScript = async () => {
     if (selectedRepo) {
-        const newConfig = await updateRepoSettings(selectedRepo, { startupScript });
-        setConfig(newConfig);
+      const newConfig = await updateRepoSettings(selectedRepo, { startupScript });
+      setConfig(newConfig);
     }
   }
 
@@ -410,9 +410,9 @@ export default function GitRepoSelector() {
   const handleRemoveRecent = async (e: React.MouseEvent, repo: string) => {
     e.stopPropagation();
     if (config) {
-        const newRecent = config.recentRepos.filter(r => r !== repo);
-        const newConfig = await updateConfig({ recentRepos: newRecent });
-        setConfig(newConfig);
+      const newRecent = config.recentRepos.filter(r => r !== repo);
+      const newConfig = await updateConfig({ recentRepos: newRecent });
+      setConfig(newConfig);
     }
   };
 
@@ -473,7 +473,6 @@ export default function GitRepoSelector() {
           attachmentNames: attachments.map(file => file.name),
           agentProvider: selectedProvider?.cli || 'agent',
           model: selectedModel || '',
-          isResume: false,
         });
 
         if (!launchContextResult.success) {
@@ -485,6 +484,7 @@ export default function GitRepoSelector() {
         // 4. Navigate to session page by path only
         const dest = `/session/${wtResult.sessionName}`;
         router.push(dest);
+        setLoading(false);
 
         // No need to refresh sessions as we are navigating away
       } else {
@@ -512,23 +512,10 @@ export default function GitRepoSelector() {
         return;
       }
 
-      // 2. Persist launch context for resume
-      const launchContextResult = await saveSessionLaunchContext(session.sessionName, {
-        title: session.title,
-        agentProvider: session.agent,
-        model: session.model,
-        isResume: true,
-      });
-
-      if (!launchContextResult.success) {
-        setError(launchContextResult.error || 'Failed to save session context');
-        setLoading(false);
-        return;
-      }
-
-      // 3. Resume - session already exists so just navigate
+      // 2. Navigate — session already has initialized=true so SessionPageClient will resume
       const dest = `/session/${session.sessionName}`;
       router.push(dest);
+      setLoading(false);
 
     } catch (e) {
       console.error(e);
