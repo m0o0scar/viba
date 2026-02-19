@@ -12,7 +12,7 @@ import {
     updateSessionBaseBranch
 } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName } from '@/lib/path';
 
@@ -535,15 +535,43 @@ export function SessionView({
         await runMerge(true);
     };
 
-    const handleRebase = async () => {
+    const [isRebaseDropdownOpen, setIsRebaseDropdownOpen] = useState(false);
+    const rebaseDropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (rebaseDropdownRef.current && !rebaseDropdownRef.current.contains(event.target as Node)) {
+                setIsRebaseDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleRebaseSelect = async (targetBranch: string) => {
+        setIsRebaseDropdownOpen(false);
         if (!sessionName) return;
-        if (!currentBaseBranch) return;
-        if (!confirm(`Rebase ${branch} onto ${currentBaseBranch}?`)) return;
+
+        const isNewBranch = targetBranch !== currentBaseBranch;
+
+        // Ask for confirmation
+        if (!confirm(`Rebase ${branch} onto ${targetBranch}?`)) return;
 
         setIsRebasing(true);
-        setFeedback('Rebasing session branch...');
+        setFeedback(isNewBranch ? `Updating base to ${targetBranch} and rebasing...` : 'Rebasing session branch...');
 
         try {
+            if (isNewBranch) {
+                const updateResult = await updateSessionBaseBranch(sessionName, targetBranch);
+                if (!updateResult.success) {
+                    setFeedback(`Failed to update base branch: ${updateResult.error}`);
+                    setIsRebasing(false);
+                    return;
+                }
+                setCurrentBaseBranch(updateResult.baseBranch!);
+                await loadBaseBranchOptions();
+            }
+
             const result = await rebaseSessionOntoBase(sessionName);
             if (result.success) {
                 setFeedback(`Rebased ${result.branchName} onto ${result.baseBranch}`);
@@ -557,6 +585,10 @@ export function SessionView({
         } finally {
             setIsRebasing(false);
         }
+    };
+
+    const handleRebase = () => {
+        setIsRebaseDropdownOpen(!isRebaseDropdownOpen);
     };
 
     const handleMergeAndPurge = async () => {
@@ -1012,54 +1044,56 @@ export function SessionView({
                         Commit ({uncommittedFileCount})
                     </button>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] opacity-70">Base</span>
-                        <div className="relative w-40 shrink-0">
-                            <select
-                                className="select select-bordered select-xs w-full h-6 min-h-6 bg-base-200 pr-7"
-                                value={currentBaseBranch}
-                                onChange={handleBaseBranchChange}
-                                onFocus={() => { void loadBaseBranchOptions(); }}
-                                onMouseDown={() => { void loadBaseBranchOptions(); }}
-                                disabled={isUpdatingBaseBranch || !sessionName}
-                                title={currentBaseBranch ? `Current base branch: ${currentBaseBranch}` : 'Select base branch'}
-                            >
-                                {!currentBaseBranch && (
-                                    <option value="" disabled>
-                                        Select base branch
-                                    </option>
-                                )}
-                                {selectableBaseBranches.map((branchOption) => (
-                                    <option
-                                        key={branchOption}
-                                        value={branchOption}
-                                        disabled={branchOption === currentBaseBranch}
-                                        className={branchOption === currentBaseBranch ? 'text-base-content/50' : ''}
-                                    >
-                                        {branchOption}
-                                    </option>
-                                ))}
-                            </select>
-                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-3 w-3 items-center justify-center">
-                                {(isLoadingBaseBranches || isUpdatingBaseBranch) && (
-                                    <span className="loading loading-spinner loading-xs"></span>
-                                )}
-                            </span>
-                        </div>
-                    </div>
 
-                    <div className="join border border-base-content/20 rounded overflow-hidden">
+
+                    <div className="flex items-center border border-base-content/20 rounded relative bg-base-100" ref={rebaseDropdownRef}>
+                        <div className="relative">
+                            <button
+                                className="btn btn-ghost btn-xs rounded-none rounded-l h-6 min-h-6 border-none px-2 hover:bg-base-content/10"
+                                onClick={handleRebase}
+                                disabled={isRebasing || isMerging || isUpdatingBaseBranch || (cleanupPhase as string) === 'running'}
+                                title="Select base branch and rebase"
+                            >
+                                {isRebasing ? <span className="loading loading-spinner loading-xs"></span> : <GitPullRequestArrow className="w-3 h-3" />}
+                                Rebase
+                                <ChevronDown className="w-3 h-3 opacity-50 ml-0.5" />
+                            </button>
+                            {isRebaseDropdownOpen && (
+                                <div className="absolute top-full left-0 z-50 mt-1 w-64 p-0 shadow-xl dropdown-content bg-base-200 rounded-box border border-base-content/20 flex flex-col max-h-80 overflow-hidden">
+                                    <div className="px-4 py-2 text-[10px] uppercase font-bold tracking-wider opacity-50 border-b border-base-content/10 bg-base-200 flex justify-between items-center shrink-0">
+                                        <span>Select Base Branch</span>
+                                        {(isLoadingBaseBranches || isUpdatingBaseBranch) && <span className="loading loading-spinner loading-xs"></span>}
+                                    </div>
+                                    <ul className="menu p-0 overflow-y-auto flex-nowrap custom-scrollbar overflow-x-hidden w-full">
+                                        {selectableBaseBranches.length > 0 ? (
+                                            selectableBaseBranches.map((branchOption) => (
+                                                <li key={branchOption}>
+                                                    <button
+                                                        onClick={() => handleRebaseSelect(branchOption)}
+                                                        className={`flex justify-between items-center text-xs py-2 truncate max-w-full rounded-none ${branchOption === currentBaseBranch ? 'active font-bold' : ''}`}
+                                                        title={branchOption}
+                                                    >
+                                                        <span className="truncate">{branchOption}</span>
+                                                        {branchOption === currentBaseBranch && <span className="opacity-70 text-[10px] ml-2 shrink-0">(Current)</span>}
+                                                    </button>
+                                                </li>
+                                            ))
+                                        ) : (
+                                            <li className="text-xs px-4 py-2 opacity-50 italic text-center">No other branches found</li>
+                                        )}
+                                        <div className="divider my-1 opacity-50"></div>
+                                        <li>
+                                            <button onClick={() => void loadBaseBranchOptions()} className="text-[10px] justify-center opacity-70 hover:opacity-100">
+                                                Refresh Branches
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                        <div className="w-[1px] h-4 bg-base-content/10"></div>
                         <button
-                            className="btn btn-ghost btn-xs join-item gap-1 h-6 min-h-6 border-none"
-                            onClick={handleRebase}
-                            disabled={isRebasing || isMerging || isUpdatingBaseBranch || (cleanupPhase as string) === 'running' || !currentBaseBranch}
-                            title={currentBaseBranch ? `Rebase current branch (${branch}) onto target branch (${currentBaseBranch})` : 'Target branch unavailable for this session'}
-                        >
-                            {isRebasing ? <span className="loading loading-spinner loading-xs"></span> : <GitPullRequestArrow className="w-3 h-3" />}
-                            Rebase
-                        </button>
-                        <button
-                            className="btn btn-ghost btn-xs btn-success join-item gap-1 h-6 min-h-6 border-none"
+                            className="btn btn-ghost btn-xs btn-success rounded-none h-6 min-h-6 border-none px-2 hover:bg-success/20 hover:border-transparent"
                             onClick={handleMerge}
                             disabled={isMerging || isRebasing || isUpdatingBaseBranch || (cleanupPhase as string) === 'running' || !currentBaseBranch}
                             title={currentBaseBranch ? `Merge current branch (${branch}) into target branch (${currentBaseBranch})` : 'Target branch unavailable for this session'}
@@ -1067,8 +1101,9 @@ export function SessionView({
                             {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
                             Merge
                         </button>
+                        <div className="w-[1px] h-4 bg-base-content/10"></div>
                         <button
-                            className="btn btn-ghost btn-xs btn-warning join-item gap-1 h-6 min-h-6 border-none"
+                            className="btn btn-ghost btn-xs btn-warning rounded-none h-6 min-h-6 border-none px-2 hover:bg-warning/20 hover:border-transparent"
                             onClick={handleMergeAndPurge}
                             disabled={isMerging || isRebasing || isUpdatingBaseBranch || (cleanupPhase as string) === 'running' || !currentBaseBranch || !worktree}
                             title={currentBaseBranch ? `Merge current branch (${branch}) into target branch (${currentBaseBranch}), then clean up and exit` : 'Target branch unavailable for this session'}
@@ -1076,8 +1111,9 @@ export function SessionView({
                             {isMerging || (cleanupPhase as string) === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
                             Merge & Purge
                         </button>
+                        <div className="w-[1px] h-4 bg-base-content/10"></div>
                         <button
-                            className="btn btn-ghost btn-error btn-xs join-item gap-1 h-6 min-h-6 border-none rounded-none"
+                            className="btn btn-ghost btn-error btn-xs rounded-none rounded-r h-6 min-h-6 border-none px-2 hover:bg-error/20 hover:border-transparent"
                             onClick={handleCleanup}
                             disabled={(cleanupPhase as string) === 'running' || isMerging || isRebasing || !worktree}
                             title="Clean up and exit"
