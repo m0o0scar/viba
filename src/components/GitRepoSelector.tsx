@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, Check, Settings, FolderCog, Bot, Cpu, Trash2 } from 'lucide-react';
+import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2 } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, getStartupScript, listRepoFiles, saveAttachments } from '@/app/actions/git';
 import { createSession, listSessions, SessionMetadata, deleteSession, saveSessionLaunchContext } from '@/app/actions/session';
@@ -9,6 +9,7 @@ import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actio
 import { useRouter } from 'next/navigation';
 import { Play } from 'lucide-react'; // Added Play icon for resume
 import { getBaseName } from '@/lib/path';
+import Image from 'next/image';
 
 import agentProvidersDataRaw from '@/data/agent-providers.json';
 
@@ -27,9 +28,12 @@ type AgentProvider = {
 
 const agentProvidersData = agentProvidersDataRaw as unknown as AgentProvider[];
 
+type GitRepoSelectorProps = {
+  mode?: 'home' | 'new';
+  repoPath?: string | null;
+};
 
-export default function GitRepoSelector() {
-  const [view, setView] = useState<'list' | 'details'>('list');
+export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitRepoSelectorProps) {
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
 
@@ -78,11 +82,26 @@ export default function GitRepoSelector() {
     loadData();
   }, []);
 
-  const handleSelectRepo = async (
-    path: string,
-    options?: { navigateToDetails?: boolean }
-  ) => {
-    const navigateToDetails = options?.navigateToDetails ?? true;
+  const loadSelectedRepoData = async (path: string) => {
+    setSelectedRepo(path);
+    setRepoFilesCache([]);
+
+    // Load saved provider/model
+    await loadSavedAgentSettings(path);
+
+    // Load branches
+    await loadBranches(path);
+
+    // Load sessions
+    const sessions = await listSessions(path);
+    setExistingSessions(sessions);
+
+    // Refresh all sessions to keep home badges accurate
+    const allSess = await listSessions();
+    setAllSessions(allSess);
+  };
+
+  const handleSelectRepo = async (path: string) => {
     setLoading(true);
     setError(null);
     try {
@@ -108,27 +127,12 @@ export default function GitRepoSelector() {
 
       setIsBrowsing(false);
 
-      if (!navigateToDetails) {
+      if (mode === 'home') {
+        router.push(`/new?repo=${encodeURIComponent(path)}`);
         return;
       }
 
-      setSelectedRepo(path);
-      setView('details');
-
-      // Load saved provider/model
-      await loadSavedAgentSettings(path);
-
-      // Load branches
-      await loadBranches(path);
-
-      // Load sessions
-      const sessions = await listSessions(path);
-      setExistingSessions(sessions);
-
-      // Also refresh all sessions to keep the list view count accurate
-      const allSess = await listSessions();
-      setAllSessions(allSess);
-
+      await loadSelectedRepoData(path);
     } catch (err) {
       console.error(err);
       setError('Failed to open repository.');
@@ -136,6 +140,23 @@ export default function GitRepoSelector() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (mode !== 'new') return;
+
+    if (!repoPath) {
+      setSelectedRepo(null);
+      setExistingSessions([]);
+      setBranches([]);
+      setCurrentBranchName('');
+      return;
+    }
+
+    if (repoPath === selectedRepo) return;
+    void handleSelectRepo(repoPath);
+    // `handleSelectRepo` is intentionally excluded to avoid retriggering from function identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, repoPath, selectedRepo]);
 
   const loadSavedAgentSettings = async (repoPath: string) => {
     // Refresh config to ensure we have latest settings?
@@ -239,7 +260,7 @@ export default function GitRepoSelector() {
 
       const data = await getBranches(selectedRepo);
       setBranches(data);
-    } catch (e) {
+    } catch {
       setError(`Failed to checkout branch ${newBranch}`);
     } finally {
       setLoading(false);
@@ -563,13 +584,13 @@ export default function GitRepoSelector() {
 
   return (
     <>
-      {view === 'list' && (
+      {mode === 'home' && (
         <div className="card w-full max-w-2xl bg-base-200 shadow-xl">
           <div className="card-body">
             <h2 className="card-title flex justify-between items-center">
               <div className="flex items-center gap-2">
-                <FolderGit2 className="w-6 h-6 text-primary" />
-                Git Repository Selector
+                <Image src="/icon.png" alt="Trident" width={24} height={24} className="rounded-sm" />
+                Trident
               </div>
             </h2>
 
@@ -644,7 +665,7 @@ export default function GitRepoSelector() {
         </div>
       )}
 
-      {view === 'details' && selectedRepo && (
+      {mode === 'new' && selectedRepo && (
         <div className="w-full max-w-6xl space-y-4">
           {error && <div className="alert alert-error text-sm py-2 px-3">{error}</div>}
           <div className="flex flex-col gap-4 w-full">
@@ -655,7 +676,7 @@ export default function GitRepoSelector() {
                     <FolderGit2 className="w-6 h-6 text-primary" />
                     Git Repository Selector
                   </div>
-                  <button className="btn btn-sm btn-ghost" onClick={() => setView('list')}>
+                  <button className="btn btn-sm btn-ghost" onClick={() => router.push('/')}>
                     Change Repo
                   </button>
                 </h2>
@@ -965,18 +986,33 @@ export default function GitRepoSelector() {
         </div>
       )}
 
+      {mode === 'new' && !selectedRepo && (
+        <div className="card w-full max-w-2xl bg-base-200 shadow-xl">
+          <div className="card-body">
+            {error && <div className="alert alert-error text-sm py-2 px-3">{error}</div>}
+            <h2 className="card-title">Select a Repository</h2>
+            <p className="opacity-70 text-sm">Choose a repository first, then start or resume a session.</p>
+            <div className="card-actions justify-end mt-4">
+              <button className="btn btn-primary" onClick={() => router.push('/')}>
+                Go to Home
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
 
-      {isBrowsing && (
+
+      {mode === 'home' && isBrowsing && (
         <FileBrowser
           initialPath={config?.defaultRoot || undefined}
-          onSelect={(path) => handleSelectRepo(path, { navigateToDetails: false })}
+          onSelect={handleSelectRepo}
           onCancel={() => setIsBrowsing(false)}
           checkRepo={checkIsGitRepo}
         />
       )}
 
-      {isSelectingRoot && (
+      {mode === 'home' && isSelectingRoot && (
         <FileBrowser
           initialPath={config?.defaultRoot || undefined}
           onSelect={handleSetDefaultRoot}
