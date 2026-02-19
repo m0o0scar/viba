@@ -13,13 +13,14 @@ interface FileSystemItem {
 }
 
 interface FileBrowserProps {
+  title?: string;
   initialPath?: string;
   onSelect: (path: string) => void;
   onCancel: () => void;
   checkRepo?: (path: string) => Promise<boolean>;
 }
 
-export default function FileBrowser({ initialPath, onSelect, onCancel, checkRepo }: FileBrowserProps) {
+export default function FileBrowser({ title, initialPath, onSelect, onCancel, checkRepo }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [items, setItems] = useState<FileSystemItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -106,7 +107,7 @@ export default function FileBrowser({ initialPath, onSelect, onCancel, checkRepo
         <div className="flex items-center justify-between p-4 border-b border-base-300">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Folder className="w-5 h-5" />
-            Browse Local Repository
+            {title || "Browse Local Repository"}
           </h2>
           <button onClick={onCancel} className="btn btn-sm btn-ghost btn-circle">
             ✕

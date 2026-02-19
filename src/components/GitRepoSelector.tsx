@@ -1019,6 +1019,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
 
       {mode === 'home' && isSelectingRoot && (
         <FileBrowser
+          title="Default Root Folder"
           initialPath={config?.defaultRoot || undefined}
           onSelect={handleSetDefaultRoot}
           onCancel={() => setIsSelectingRoot(false)}
