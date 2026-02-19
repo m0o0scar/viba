@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { getHomeDirectory, listPathEntries, saveAttachments } from '@/app/actions/git';
-import { ArrowLeft, Check, FileText, Folder, House, Clipboard } from 'lucide-react';
+import { ArrowLeft, Clipboard, FileText, Folder, Grid2x2, House, List } from 'lucide-react';
 import { getDirName } from '@/lib/path';
 
 type FileSystemItem = {
@@ -25,6 +26,10 @@ export default function SessionFileBrowser({
   onConfirm,
   onCancel,
 }: SessionFileBrowserProps) {
+  const imageExtensions = useMemo(
+    () => new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif']),
+    []
+  );
   const [currentPath, setCurrentPath] = useState('');
   const [items, setItems] = useState<FileSystemItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -32,6 +37,8 @@ export default function SessionFileBrowser({
   const [homePath, setHomePath] = useState('');
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [brokenThumbnails, setBrokenThumbnails] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let isMounted = true;
@@ -83,9 +90,15 @@ export default function SessionFileBrowser({
   useEffect(() => {
     setSelectedPaths([]);
     setAnchorIndex(null);
+    setBrokenThumbnails({});
   }, [currentPath]);
 
   const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
+  const isImageFile = (fileName: string) => {
+    const dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex === -1) return false;
+    return imageExtensions.has(fileName.slice(dotIndex).toLowerCase());
+  };
 
   const handleGoUp = () => {
     const parent = getDirName(currentPath);
@@ -99,7 +112,7 @@ export default function SessionFileBrowser({
     setCurrentPath(homePath);
   };
 
-  const handleItemClick = (item: FileSystemItem, index: number, e: React.MouseEvent<HTMLDivElement>) => {
+  const handleItemClick = (item: FileSystemItem, index: number, e: React.MouseEvent<HTMLElement>) => {
     if (item.isDirectory) {
       setCurrentPath(item.path);
       return;
@@ -201,9 +214,10 @@ export default function SessionFileBrowser({
         }
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
       console.error('Paste error:', err);
-      setError(`Failed to read from clipboard: ${err.message || String(err)}`);
+      setError(`Failed to read from clipboard: ${message}`);
     } finally {
       setLoading(false);
     }
@@ -248,6 +262,24 @@ export default function SessionFileBrowser({
           <div className="flex-1 overflow-x-auto whitespace-nowrap px-2 font-mono text-sm">
             {currentPath}
           </div>
+          <div className="join">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`btn btn-sm join-item ${viewMode === 'list' ? 'btn-active' : 'btn-ghost'}`}
+              title="List view"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={`btn btn-sm join-item ${viewMode === 'grid' ? 'btn-active' : 'btn-ghost'}`}
+              title="Grid view"
+            >
+              <Grid2x2 className="w-4 h-4" />
+            </button>
+          </div>
           <button
             onClick={handleConfirm}
             className="btn btn-sm btn-primary gap-2"
@@ -279,7 +311,7 @@ export default function SessionFileBrowser({
             <div className="alert alert-error">{error}</div>
           ) : items.length === 0 ? (
             <div className="text-center text-base-content/50 mt-10">Empty directory</div>
-          ) : (
+          ) : viewMode === 'list' ? (
             <div className="grid grid-cols-1 gap-1">
               {items.map((item, index) => {
                 const isSelected = selectedSet.has(item.path);
@@ -305,6 +337,53 @@ export default function SessionFileBrowser({
                       {item.isDirectory ? 'folder' : 'file'}
                     </span>
                   </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {items.map((item, index) => {
+                const isSelected = selectedSet.has(item.path);
+                const isImage = !item.isDirectory && isImageFile(item.name);
+                const thumbnailUrl = `/api/file-thumbnail?path=${encodeURIComponent(item.path)}`;
+
+                return (
+                  <button
+                    key={item.path}
+                    type="button"
+                    className={`rounded-lg border text-left overflow-hidden transition-colors ${isSelected
+                      ? 'border-primary bg-primary/15'
+                      : 'border-base-300 hover:bg-base-100'
+                      }`}
+                    onClick={(e) => handleItemClick(item, index, e)}
+                    title={item.path}
+                  >
+                    <div className="aspect-square bg-base-300 flex items-center justify-center overflow-hidden relative">
+                      {isImage && !brokenThumbnails[item.path] ? (
+                        <Image
+                          src={thumbnailUrl}
+                          alt={item.name}
+                          fill
+                          sizes="(max-width: 768px) 50vw, (max-width: 1024px) 25vw, 20vw"
+                          className="object-cover"
+                          unoptimized
+                          onError={() =>
+                            setBrokenThumbnails((prev) => ({ ...prev, [item.path]: true }))
+                          }
+                        />
+                      ) : item.isDirectory ? (
+                        <Folder className="w-10 h-10 opacity-80" />
+                      ) : (
+                        <FileText className="w-10 h-10 opacity-80" />
+                      )}
+                    </div>
+                    <div className="px-2 py-2">
+                      <div className="truncate text-sm font-medium" title={item.name}>{item.name}</div>
+                      <div className="text-[10px] opacity-70">
+                        {item.isDirectory ? 'folder' : isImage ? 'image' : 'file'}
+                      </div>
+                    </div>
+                  </button>
                 );
               })}
             </div>
