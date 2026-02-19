@@ -56,18 +56,18 @@ Open the local URL printed in your terminal, then:
 ## Run with npx
 
 ```bash
-npx viba
+npx viba-cli
 ```
 
 This starts Viba on an available local port (default `3200`).  
 You can also pass options:
 
 ```bash
-npx viba --port 3300
-npx viba --dev
+npx viba-cli --port 3300
+npx viba-cli --dev
 ```
 
-Published npm packages are expected to include a prebuilt `.next` output, so `npx viba` does not build on the end user's machine.
+Published npm packages are expected to include a prebuilt `.next` output, so `npx viba-cli` does not build on the end user's machine.
 
 ## Build and Run
 

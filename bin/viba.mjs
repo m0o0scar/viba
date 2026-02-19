@@ -15,7 +15,7 @@ const NEXT_BIN = require.resolve("next/dist/bin/next");
 const DEFAULT_PORT = 3200;
 
 function printHelp() {
-  console.log(`Usage: viba [options]
+  console.log(`Usage: viba-cli [options]
 
 Options:
   -p, --port <port>  Port to run on (default: 3200)
