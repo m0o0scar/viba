@@ -72,6 +72,29 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     ? `Show Session Setup (${selectedProvider.name} / ${selectedModel})`
     : 'Show Session Setup';
 
+  const notifySessionsChanged = useCallback(() => {
+    try {
+      localStorage.setItem('viba:sessions-updated-at', new Date().toISOString());
+    } catch {
+      // Ignore localStorage failures.
+    }
+  }, []);
+
+  const refreshSessionData = useCallback(async (repo: string | null = selectedRepo) => {
+    try {
+      const [allSess, repoSess] = await Promise.all([
+        listSessions(),
+        repo ? listSessions(repo) : Promise.resolve([] as SessionMetadata[]),
+      ]);
+      setAllSessions(allSess);
+      if (repo) {
+        setExistingSessions(repoSess);
+      }
+    } catch (e) {
+      console.error('Failed to refresh sessions', e);
+    }
+  }, [selectedRepo]);
+
   // Load config and all sessions on mount
   useEffect(() => {
     const loadData = async () => {
@@ -91,6 +114,31 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     loadData();
   }, []);
 
+  useEffect(() => {
+    const refresh = () => {
+      const repoForList = mode === 'new' ? selectedRepo : null;
+      void refreshSessionData(repoForList);
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'viba:sessions-updated-at') {
+        refresh();
+      }
+    };
+
+    const handleFocus = () => {
+      refresh();
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [mode, refreshSessionData, selectedRepo]);
+
   const loadSelectedRepoData = async (path: string) => {
     setSelectedRepo(path);
     setRepoFilesCache([]);
@@ -101,13 +149,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     // Load branches
     await loadBranches(path);
 
-    // Load sessions
-    const sessions = await listSessions(path);
-    setExistingSessions(sessions);
-
-    // Refresh all sessions to keep home badges accurate
-    const allSess = await listSessions();
-    setAllSessions(allSess);
+    await refreshSessionData(path);
   };
 
   const handleSelectRepo = async (path: string) => {
@@ -725,6 +767,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
       // Also refresh all sessions
       const allSess = await listSessions();
       setAllSessions(allSess);
+      notifySessionsChanged();
     } catch (e) {
       console.error(e);
       setError('Failed to delete session');
