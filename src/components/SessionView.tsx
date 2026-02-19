@@ -72,7 +72,7 @@ export function SessionView({
     isResume,
     onSessionStart
 }: SessionViewProps) {
-    const headerButtonLabelClass = 'hidden min-[1500px]:inline';
+    const headerButtonLabelClass = 'hidden min-[1600px]:inline';
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const terminalRef = useRef<HTMLIFrameElement>(null);
@@ -983,9 +983,9 @@ export function SessionView({
                             <span className="font-bold">{getBaseName(repo)}</span>
                         </div>
                         {sessionName && (
-                            <div className="flex items-center gap-2 text-[10px] opacity-70">
+                            <div className="hidden min-[1200px]:flex min-w-0 items-center gap-2 text-[10px] opacity-70">
                                 <span>Session:</span>
-                                <span>{sessionName}</span>
+                                <span className="truncate max-w-[220px]" title={sessionName}>{sessionName}</span>
                             </div>
                         )}
                     </div>
@@ -1146,11 +1146,11 @@ export function SessionView({
                         </div>
                     )}
 
-                    <div className="w-[1px] h-4 bg-base-content/20 mx-2"></div>
+                    <div className="hidden min-[1200px]:block w-[1px] h-4 bg-base-content/20 mx-2"></div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="hidden min-[1200px]:flex min-w-0 max-w-[280px] items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') || feedback.includes('Merged') || feedback.includes('Rebased') || feedback.includes('sent') ? 'bg-success' : 'bg-warning'}`}></span>
-                        <span>{feedback}</span>
+                        <span className="truncate" title={feedback}>{feedback}</span>
                     </div>
 
                 </div>
