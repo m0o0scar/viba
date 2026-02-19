@@ -8,6 +8,7 @@ Viba is a local session manager for AI coding agents. It lets you pick a Git rep
 - **New Attempt Flow**: Start new sessions pre-filled with context (title, model, prompt, attachments) from any previous session to iterate quickly.
 - **Enhanced File Browser**:
     - **Grid & List Views**: Browse files with rich thumbnails or a compact list.
+    - **Pinned Shortcuts**: Pin frequently used directories for quick navigation across session restarts.
     - **Clipboard Paste**: Quickly add attachments by pasting files or images directly into the browser.
     - **@ Mention Suggestions**: Intelligent file path suggestions from your tracked repository files.
 - **Dual Terminal Workspace**:
