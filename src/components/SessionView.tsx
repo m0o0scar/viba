@@ -254,6 +254,11 @@ export function SessionView({
             const result = await deleteSessionInBackground(sessionName);
             if (result.success) {
                 setCleanupPhase('idle');
+                try {
+                    localStorage.setItem('viba:sessions-updated-at', new Date().toISOString());
+                } catch {
+                    // Ignore localStorage failures (private mode, quota, etc.)
+                }
                 onExit(true);
                 return true;
             }
