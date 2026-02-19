@@ -1,13 +1,38 @@
 {
   "name": "viba",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.1",
+  "private": false,
+  "description": "Local session manager for AI coding agents.",
+  "bin": {
+    "viba": "bin/viba.mjs"
+  },
+  "files": [
+    "bin",
+    ".next/BUILD_ID",
+    ".next/server",
+    ".next/static",
+    ".next/*.json",
+    ".next/*.js",
+    "public",
+    "next.config.mjs",
+    "README.md"
+  ],
   "scripts": {
     "dev": "npx gfport 3200 -- next dev --webpack -p {PORT}",
     "build": "next build",
+    "prepack": "rm -rf .next && npm run build",
     "start": "next start -p 3200",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cli": "node ./bin/viba.mjs",
+    "pack:preview": "npm pack --dry-run"
   },
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "git-worktree",
+    "nextjs"
+  ],
+  "license": "MIT",
   "dependencies": {
     "@types/uuid": "^10.0.0",
     "clsx": "^2.1.1",

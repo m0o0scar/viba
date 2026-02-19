@@ -53,6 +53,22 @@ Open the local URL printed in your terminal, then:
 2. Pick branch/agent/model and optional scripts.
 3. Start a session and work inside the generated worktree.
 
+## Run with npx
+
+```bash
+npx viba
+```
+
+This starts Viba on an available local port (default `3200`).  
+You can also pass options:
+
+```bash
+npx viba --port 3300
+npx viba --dev
+```
+
+Published npm packages are expected to include a prebuilt `.next` output, so `npx viba` does not build on the end user's machine.
+
 ## Build and Run
 
 ```bash
@@ -61,3 +77,10 @@ npm run start
 ```
 
 Production start uses port `3200` by default.
+
+Useful package scripts:
+
+```bash
+npm run cli          # run the packaged launcher locally
+npm run pack:preview # preview files that will be published
+```
