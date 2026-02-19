@@ -4,24 +4,23 @@ Viba is a local session manager for AI coding agents. It lets you pick a Git rep
 
 ## Major Features
 
-- Repository picker with local filesystem browsing and Git repo validation.
-- Isolated session worktrees using `git worktree`, with per-session branch naming (`viba/<session>`).
-- Start new sessions or resume existing sessions for a repository.
-- Multi-agent setup with provider/model selection (Codex, Gemini, Cursor Agent data included).
-- Dual terminal workspace:
+- **Isolated Sessions**: Uses `git worktree` to create clean, isolated environments for every task, with automatic per-session branch naming (`viba/<session>`).
+- **New Attempt Flow**: Start new sessions pre-filled with context (title, model, prompt, attachments) from any previous session to iterate quickly.
+- **Enhanced File Browser**:
+    - **Grid & List Views**: Browse files with rich thumbnails or a compact list.
+    - **Clipboard Paste**: Quickly add attachments by pasting files or images directly into the browser.
+    - **@ Mention Suggestions**: Intelligent file path suggestions from your tracked repository files.
+- **Dual Terminal Workspace**:
   - Left terminal for agent execution.
   - Right terminal for startup/dev scripts.
-- Session prompt tooling:
-  - Optional title and initial message.
-  - `@` file suggestions from tracked repo files.
-  - File attachments saved per session.
-- Session operations in the active view:
-  - Ask agent to create a commit.
-  - Merge session branch into base branch.
-  - Rebase session branch onto base branch.
-  - Live ahead/behind divergence and uncommitted file count.
-- IDE deep-links for opening the session worktree (VS Code, Cursor, Windsurf, Antigravity).
-- Persistent local config and session metadata under `~/.viba`.
+- **Session Lifecycle Management**:
+  - Real-time Git status (ahead/behind counts, uncommitted changes).
+  - One-click **Commit**, **Merge**, and **Rebase** operations.
+  - **IDE Deep-links**: Open session worktrees directly in VS Code, Cursor, Windsurf, or Antigravity.
+- **Robust Session Resume**: Resume any session with full context, preserving original startup flags and model overrides.
+- **Async Operations**: Performance-optimized background tasks like session purging to keep the UI responsive.
+- **Multi-Agent Support**: Out-of-the-box support for Codex, Gemini, and Cursor Agent, with a customizable provider/model selector.
+- **Persistent Metadata**: All session data and configurations are stored locally under `~/.viba`.
 
 ## Tech Stack
 
