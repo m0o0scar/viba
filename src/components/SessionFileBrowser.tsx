@@ -142,6 +142,10 @@ export default function SessionFileBrowser({
     try {
       setLoading(true);
       
+      if (!navigator.clipboard || !navigator.clipboard.read) {
+        throw new Error("Clipboard API not supported in this browser");
+      }
+
       // Request clipboard access
       const clipboardItems = await navigator.clipboard.read();
       const formData = new FormData();
@@ -156,13 +160,8 @@ export default function SessionFileBrowser({
             const blob = await item.getType(type);
             const ext = type.split('/')[1] || 'png';
             const filename = `pasted-image-${Date.now()}.${ext}`;
-            formData.append('files', blob, filename); // 'files' is the field name used in the hypothetical server action logic?
-            // Actually in saveAttachments we iterate all entries, so key name doesn't matter much but let's use filename as key
-            // Wait, saveAttachments iterates entries: const [name, entry] of files. 
-            // It relies on entry.name. Blob doesn't have name prop?
-            // File constructor does.
             const file = new File([blob], filename, { type });
-            formData.append(filename, file);
+            formData.append(filename, file); // Use filename as key
             hasFiles = true;
             break; // Found an image representation, stop checking other types for this item
           } else if (type === 'text/plain') {
@@ -202,9 +201,9 @@ export default function SessionFileBrowser({
         }
       }
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('Paste error:', err);
-      setError("Failed to read from clipboard. permission denied or invalid content.");
+      setError(`Failed to read from clipboard: ${err.message || String(err)}`);
     } finally {
       setLoading(false);
     }
