@@ -1165,17 +1165,15 @@ export function SessionView({
                     maxHeight: 'calc(100vh - 2rem)'
                 }}
             >
-                {!isTerminalMinimized && (
-                    <div
-                        className="absolute left-0 top-0 z-50 cursor-nwse-resize p-2 text-base-content/30 hover:text-base-content/60"
-                        onMouseDown={startResize}
-                        title="Drag to resize"
-                    >
-                        <Grip size={14} />
-                    </div>
-                )}
+                <div
+                    className={`absolute left-0 top-0 h-10 w-10 z-50 flex items-center justify-center text-base-content/30 hover:text-base-content/60 ${isTerminalMinimized ? 'pointer-events-none opacity-50' : 'cursor-nwse-resize'}`}
+                    onMouseDown={!isTerminalMinimized ? startResize : undefined}
+                    title={isTerminalMinimized ? undefined : "Drag to resize"}
+                >
+                    <Grip size={14} />
+                </div>
                 <button
-                    className="flex h-10 w-full items-center justify-between px-3 pl-8 text-xs font-mono hover:bg-base-content/10"
+                    className="flex h-10 w-full items-center justify-between px-3 pl-10 text-xs font-mono hover:bg-base-content/10"
                     onClick={() => setIsTerminalMinimized((prev) => !prev)}
                     title={isTerminalMinimized ? 'Expand terminal' : 'Minimize terminal'}
                     type="button"
