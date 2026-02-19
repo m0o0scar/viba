@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2 } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, getStartupScript, listRepoFiles, saveAttachments } from '@/app/actions/git';
@@ -331,6 +331,34 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
   const [title, setTitle] = useState<string>('');
   const [attachments, setAttachments] = useState<File[]>([]);
 
+  const normalizeAttachmentFile = useCallback((file: File, index: number): File => {
+    if (file.name && file.name.trim().length > 0) {
+      return file;
+    }
+
+    const extension = file.type
+      ? file.type.split('/')[1]?.split('+')[0] || 'bin'
+      : 'bin';
+    const generatedName = `pasted-file-${Date.now()}-${index + 1}.${extension}`;
+
+    return new File([file], generatedName, {
+      type: file.type,
+      lastModified: file.lastModified || Date.now(),
+    });
+  }, []);
+
+  const appendAttachments = useCallback((incomingFiles: File[]) => {
+    if (incomingFiles.length === 0) return;
+
+    setAttachments(prev => {
+      const byName = new Map(prev.map(file => [file.name, file]));
+      incomingFiles.forEach(file => {
+        byName.set(file.name, file);
+      });
+      return Array.from(byName.values());
+    });
+  }, []);
+
   // Suggestion state
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestionList, setSuggestionList] = useState<string[]>([]);
@@ -425,10 +453,39 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setAttachments(prev => [...prev, ...Array.from(e.target.files!)]);
-    }
+    if (!e.target.files) return;
+
+    const selectedFiles = Array.from(e.target.files).map((file, index) => normalizeAttachmentFile(file, index));
+    appendAttachments(selectedFiles);
+    e.target.value = '';
   };
+
+  useEffect(() => {
+    if (mode !== 'new' || !selectedRepo) return;
+
+    const handlePaste = (event: ClipboardEvent) => {
+      const clipboardData = event.clipboardData;
+      if (!clipboardData) return;
+
+      const fromItems = Array.from(clipboardData.items)
+        .filter(item => item.kind === 'file')
+        .map(item => item.getAsFile())
+        .filter((file): file is File => file !== null);
+
+      const pastedFiles = (fromItems.length > 0 ? fromItems : Array.from(clipboardData.files))
+        .map((file, index) => normalizeAttachmentFile(file, index));
+
+      if (pastedFiles.length === 0) return;
+
+      event.preventDefault();
+      appendAttachments(pastedFiles);
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+    };
+  }, [appendAttachments, mode, normalizeAttachmentFile, selectedRepo]);
 
   const removeAttachment = (idx: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== idx));
@@ -961,6 +1018,9 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
                       onChange={handleFileSelect}
                       disabled={loading}
                     />
+                    <div className="text-xs opacity-50 px-1">
+                      Paste files from clipboard with Cmd/Ctrl+V anywhere on this page.
+                    </div>
                     {attachments.length > 0 && (
                       <div className="flex flex-wrap gap-2 mt-2">
                         {attachments.map((file, idx) => (
