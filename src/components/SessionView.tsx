@@ -220,7 +220,7 @@ export function SessionView({
         window.open(uri, '_blank');
     };
 
-    const handleCleanup = async () => {
+    const runCleanup = async (requireConfirmation = true): Promise<boolean> => {
         const unloadSessionIframes = () => {
             for (const frame of [iframeRef.current, terminalRef.current]) {
                 if (!frame) continue;
@@ -233,8 +233,8 @@ export function SessionView({
             }
         };
 
-        if (!repo || !worktree || !branch) return;
-        if (!confirm('Are you sure you want to delete this session? This will remove the branch and worktree.')) return;
+        if (!repo || !worktree || !branch) return false;
+        if (requireConfirmation && !confirm('Are you sure you want to delete this session? This will remove the branch and worktree.')) return false;
 
         setCleanupError(null);
         setCleanupPhase('running');
@@ -245,18 +245,25 @@ export function SessionView({
             const result = await deleteSession(sessionName);
             if (result.success) {
                 onExit(true);
-            } else {
-                const message = result.error || 'Failed to clean up session';
-                setCleanupError(message);
-                setFeedback(`Cleanup failed: ${message}`);
-                setCleanupPhase('error');
+                return true;
             }
+
+            const message = result.error || 'Failed to clean up session';
+            setCleanupError(message);
+            setFeedback(`Cleanup failed: ${message}`);
+            setCleanupPhase('error');
+            return false;
         } catch (e) {
             const message = e instanceof Error ? e.message : 'Unexpected cleanup error';
             setCleanupError(message);
             setFeedback(`Cleanup failed: ${message}`);
             setCleanupPhase('error');
+            return false;
         }
+    };
+
+    const handleCleanup = async () => {
+        await runCleanup(true);
     };
 
     const sendPromptToAgentIframe = useCallback((prompt: string, action: string): Promise<boolean> => {
@@ -497,10 +504,10 @@ export function SessionView({
         return () => window.clearInterval(timer);
     }, [loadUncommittedFileCount, sessionName]);
 
-    const handleMerge = async () => {
-        if (!sessionName) return;
-        if (!currentBaseBranch) return;
-        if (!confirm(`Merge ${branch} into ${currentBaseBranch}?`)) return;
+    const runMerge = async (requireConfirmation = true): Promise<boolean> => {
+        if (!sessionName) return false;
+        if (!currentBaseBranch) return false;
+        if (requireConfirmation && !confirm(`Merge ${branch} into ${currentBaseBranch}?`)) return false;
 
         setIsMerging(true);
         setFeedback('Merging session branch...');
@@ -510,15 +517,22 @@ export function SessionView({
             if (result.success) {
                 setFeedback(`Merged ${result.branchName} into ${result.baseBranch}`);
                 void loadSessionDivergence();
+                return true;
             } else {
                 setFeedback(`Merge failed: ${result.error}`);
+                return false;
             }
         } catch (e) {
             console.error('Merge request failed:', e);
             setFeedback('Merge failed');
+            return false;
         } finally {
             setIsMerging(false);
         }
+    };
+
+    const handleMerge = async () => {
+        await runMerge(true);
     };
 
     const handleRebase = async () => {
@@ -543,6 +557,17 @@ export function SessionView({
         } finally {
             setIsRebasing(false);
         }
+    };
+
+    const handleMergeAndPurge = async () => {
+        if (!worktree) return;
+        if (!currentBaseBranch) return;
+        if (!confirm(`Merge ${branch} into ${currentBaseBranch}, then clean up and exit?`)) return;
+
+        const merged = await runMerge(false);
+        if (!merged) return;
+
+        await runCleanup(false);
     };
 
     const handleStartDevServer = () => {
@@ -1023,25 +1048,44 @@ export function SessionView({
                         </div>
                     </div>
 
-                    <button
-                        className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
-                        onClick={handleMerge}
-                        disabled={isMerging || isRebasing || isUpdatingBaseBranch || !currentBaseBranch}
-                        title={currentBaseBranch ? `Merge ${branch} into ${currentBaseBranch}` : 'Base branch unavailable for this session'}
-                    >
-                        {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
-                        Merge
-                    </button>
-
-                    <button
-                        className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
-                        onClick={handleRebase}
-                        disabled={isRebasing || isMerging || isUpdatingBaseBranch || !currentBaseBranch}
-                        title={currentBaseBranch ? `Rebase ${branch} onto ${currentBaseBranch}` : 'Base branch unavailable for this session'}
-                    >
-                        {isRebasing ? <span className="loading loading-spinner loading-xs"></span> : <GitPullRequestArrow className="w-3 h-3" />}
-                        Rebase
-                    </button>
+                    <div className="join">
+                        <button
+                            className="btn btn-ghost btn-xs join-item gap-1 h-6 min-h-6"
+                            onClick={handleRebase}
+                            disabled={isRebasing || isMerging || isUpdatingBaseBranch || cleanupPhase === 'running' || !currentBaseBranch}
+                            title={currentBaseBranch ? `Rebase current branch (${branch}) onto target branch (${currentBaseBranch})` : 'Target branch unavailable for this session'}
+                        >
+                            {isRebasing ? <span className="loading loading-spinner loading-xs"></span> : <GitPullRequestArrow className="w-3 h-3" />}
+                            Rebase
+                        </button>
+                        <button
+                            className="btn btn-ghost btn-xs join-item gap-1 h-6 min-h-6"
+                            onClick={handleMerge}
+                            disabled={isMerging || isRebasing || isUpdatingBaseBranch || cleanupPhase === 'running' || !currentBaseBranch}
+                            title={currentBaseBranch ? `Merge current branch (${branch}) into target branch (${currentBaseBranch})` : 'Target branch unavailable for this session'}
+                        >
+                            {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
+                            Merge
+                        </button>
+                        <button
+                            className="btn btn-ghost btn-xs join-item gap-1 h-6 min-h-6"
+                            onClick={handleMergeAndPurge}
+                            disabled={isMerging || isRebasing || isUpdatingBaseBranch || cleanupPhase === 'running' || !currentBaseBranch || !worktree}
+                            title={currentBaseBranch ? `Merge current branch (${branch}) into target branch (${currentBaseBranch}), then clean up and exit` : 'Target branch unavailable for this session'}
+                        >
+                            {isMerging || cleanupPhase === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
+                            Merge & Purge
+                        </button>
+                        <button
+                            className="btn btn-error btn-xs join-item gap-1 h-6 min-h-6"
+                            onClick={handleCleanup}
+                            disabled={cleanupPhase === 'running' || isMerging || isRebasing || !worktree}
+                            title="Clean up and exit"
+                        >
+                            {cleanupPhase === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="w-3 h-3" />}
+                            Purge
+                        </button>
+                    </div>
 
                     {currentBaseBranch && (
                         <div className="flex items-center gap-2 text-xs opacity-80" title={`Divergence against ${currentBaseBranch}`}>
@@ -1063,16 +1107,6 @@ export function SessionView({
                         <span>{feedback}</span>
                     </div>
 
-                    {worktree && (
-                        <button
-                            className="btn btn-error btn-xs gap-1"
-                            onClick={handleCleanup}
-                            disabled={(cleanupPhase as string) === 'running'}
-                        >
-                            {(cleanupPhase as string) === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="w-3 h-3" />}
-                            Clean Up & Exit
-                        </button>
-                    )}
                 </div>
             </div>
 
