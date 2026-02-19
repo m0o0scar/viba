@@ -34,7 +34,6 @@ type TerminalWindow = Window & {
 };
 
 type CleanupPhase = 'idle' | 'running' | 'error';
-type ExitIntent = 'back' | 'cleanup';
 
 export interface SessionViewProps {
     repo: string;
@@ -49,7 +48,7 @@ export interface SessionViewProps {
     initialMessage?: string;
     title?: string;
     attachmentNames?: string[];
-    onExit: (intent?: ExitIntent) => void;
+    onExit: (force?: boolean) => void;
     isResume?: boolean;
     onSessionStart?: () => void;
 }
@@ -245,7 +244,7 @@ export function SessionView({
         try {
             const result = await deleteSession(sessionName);
             if (result.success) {
-                onExit('cleanup');
+                onExit(true);
             } else {
                 const message = result.error || 'Failed to clean up session';
                 setCleanupError(message);

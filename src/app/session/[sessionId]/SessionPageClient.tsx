@@ -5,9 +5,6 @@ import { useRouter, useParams } from 'next/navigation';
 import { SessionView } from '@/components/SessionView';
 import { consumeSessionLaunchContext, getSessionMetadata, SessionMetadata, markSessionInitialized } from '@/app/actions/session';
 import { startTtydProcess } from '@/app/actions/git';
-import { CleanupExitBehavior, getConfig } from '@/app/actions/config';
-
-type ExitIntent = 'back' | 'cleanup';
 
 export default function SessionPage() {
     const params = useParams<{ sessionId: string }>();
@@ -29,7 +26,6 @@ export default function SessionPage() {
 
     // True = send --resume to agent; False = send fresh start params
     const [isResume, setIsResume] = useState<boolean>(true);
-    const [cleanupExitBehavior, setCleanupExitBehavior] = useState<CleanupExitBehavior>('back_to_home');
 
     useEffect(() => {
         if (!sessionId) return;
@@ -51,8 +47,6 @@ export default function SessionPage() {
                     return;
                 }
 
-                const currentConfig = await getConfig();
-                setCleanupExitBehavior(currentConfig.cleanupExitBehavior);
                 setMetadata(data);
 
                 // Determine fresh start vs resume purely from the initialized flag:
@@ -91,27 +85,14 @@ export default function SessionPage() {
         loadSession();
     }, [sessionId]);
 
-    const handleExit = (intent: ExitIntent = 'back') => {
-        if (intent === 'cleanup' && cleanupExitBehavior === 'close_tab') {
-            window.close();
-
-            // Some browsers block `window.close()` when the tab was not script-opened.
-            window.setTimeout(() => {
-                if (!window.closed) {
-                    window.location.href = '/';
-                }
-            }, 150);
-            return;
-        }
-
-        if (intent === 'cleanup') {
+    const handleExit = (force?: boolean) => {
+        if (force) {
             // Force a full page navigation — used after cleanup where
             // router.push can get stuck due to iframe teardown state
             window.location.href = '/';
-            return;
+        } else {
+            router.push('/');
         }
-
-        router.push('/');
     };
 
     // Called by SessionView once the agent command has been sent for the first time
