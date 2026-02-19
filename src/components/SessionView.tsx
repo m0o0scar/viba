@@ -12,7 +12,7 @@ import {
     updateSessionBaseBranch
 } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName } from '@/lib/path';
 
@@ -220,6 +220,12 @@ export function SessionView({
 
         const uri = `${ide.protocol}://file/${encodeURI(worktree)}`;
         window.open(uri, '_blank');
+    };
+
+    const handleNewAttempt = () => {
+        if (!repo || !sessionName) return;
+        const nextUrl = `/new?repo=${encodeURIComponent(repo)}&prefillFromSession=${encodeURIComponent(sessionName)}`;
+        window.open(nextUrl, '_blank', 'noopener,noreferrer');
     };
 
     const runCleanup = async (requireConfirmation = true): Promise<boolean> => {
@@ -1024,6 +1030,15 @@ export function SessionView({
                     >
                         {isInsertingFilePaths ? <span className="loading loading-spinner loading-xs"></span> : <FolderOpen className="w-3 h-3" />}
                         Insert Files
+                    </button>
+
+                    <button
+                        className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
+                        onClick={handleNewAttempt}
+                        title="Start a new attempt in a new tab with this session context"
+                    >
+                        <Plus className="w-3 h-3" />
+                        New Attempt
                     </button>
 
                     {devServerScript?.trim() && (

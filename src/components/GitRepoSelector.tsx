@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2 } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, getStartupScript, listRepoFiles, saveAttachments } from '@/app/actions/git';
-import { createSession, listSessions, SessionMetadata, deleteSession, saveSessionLaunchContext } from '@/app/actions/session';
+import { copySessionAttachments, createSession, deleteSession, getSessionPrefillContext, listSessions, saveSessionLaunchContext, SessionMetadata } from '@/app/actions/session';
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
 import { useRouter } from 'next/navigation';
 import { Play } from 'lucide-react'; // Added Play icon for resume
@@ -33,9 +33,10 @@ const AUTO_COMMIT_INSTRUCTION =
 type GitRepoSelectorProps = {
   mode?: 'home' | 'new';
   repoPath?: string | null;
+  prefillFromSession?: string | null;
 };
 
-export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitRepoSelectorProps) {
+export default function GitRepoSelector({ mode = 'home', repoPath = null, prefillFromSession = null }: GitRepoSelectorProps) {
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSelectingRoot, setIsSelectingRoot] = useState(false);
 
@@ -55,6 +56,12 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
   const [startupScript, setStartupScript] = useState<string>('');
   const [devServerScript, setDevServerScript] = useState<string>('');
   const [showSessionAdvanced, setShowSessionAdvanced] = useState(false);
+  const [initialMessage, setInitialMessage] = useState<string>('');
+  const [title, setTitle] = useState<string>('');
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [prefilledAttachmentNames, setPrefilledAttachmentNames] = useState<string[]>([]);
+  const [prefillSourceSessionName, setPrefillSourceSessionName] = useState<string | null>(null);
+  const [hasAppliedPrefill, setHasAppliedPrefill] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [deletingSessionName, setDeletingSessionName] = useState<string | null>(null);
@@ -159,6 +166,62 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
     // `handleSelectRepo` is intentionally excluded to avoid retriggering from function identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, repoPath, selectedRepo]);
+
+  useEffect(() => {
+    setHasAppliedPrefill(false);
+    setPrefilledAttachmentNames([]);
+    setPrefillSourceSessionName(null);
+  }, [prefillFromSession]);
+
+  useEffect(() => {
+    if (mode !== 'new' || !selectedRepo || !prefillFromSession || hasAppliedPrefill) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadPrefill = async () => {
+      const prefillResult = await getSessionPrefillContext(prefillFromSession);
+      if (isCancelled) return;
+
+      if (!prefillResult.success || !prefillResult.context) {
+        if (prefillResult.error) {
+          setError(prefillResult.error);
+        }
+        setHasAppliedPrefill(true);
+        return;
+      }
+
+      const context = prefillResult.context;
+      if (context.repoPath !== selectedRepo) {
+        setHasAppliedPrefill(true);
+        return;
+      }
+
+      const provider = agentProvidersData.find(p => p.cli === context.agentProvider);
+      if (provider) {
+        setSelectedProvider(provider);
+        if (context.model && provider.models.some(m => m.id === context.model)) {
+          setSelectedModel(context.model);
+        } else {
+          setSelectedModel(provider.models[0].id);
+        }
+      }
+
+      setTitle(context.title || '');
+      setInitialMessage(context.initialMessage || '');
+      setPrefilledAttachmentNames(context.attachmentNames || []);
+      setPrefillSourceSessionName(context.sourceSessionName);
+      setShowSessionAdvanced(true);
+      setHasAppliedPrefill(true);
+    };
+
+    void loadPrefill();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [hasAppliedPrefill, mode, prefillFromSession, selectedRepo]);
 
   const loadSavedAgentSettings = async (repoPath: string) => {
     // Refresh config to ensure we have latest settings?
@@ -327,10 +390,6 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
     }
   };
 
-  const [initialMessage, setInitialMessage] = useState<string>('');
-  const [title, setTitle] = useState<string>('');
-  const [attachments, setAttachments] = useState<File[]>([]);
-
   const normalizeAttachmentFile = useCallback((file: File, index: number): File => {
     if (file.name && file.name.trim().length > 0) {
       return file;
@@ -369,10 +428,10 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
   // Cache filtered files
   const [repoFilesCache, setRepoFilesCache] = useState<string[]>([]);
 
-  const updateSuggestions = (query: string, files: string[], currentAttachments: File[]) => {
+  const updateSuggestions = (query: string, files: string[], currentAttachments: File[], carriedAttachments: string[]) => {
     const lowerQ = query.toLowerCase();
 
-    const attachmentNames = currentAttachments.map(f => f.name);
+    const attachmentNames = [...currentAttachments.map(f => f.name), ...carriedAttachments];
     // prioritize attachments
     const matchedAttachments = attachmentNames.filter(n => n.toLowerCase().includes(lowerQ));
     const matchedFiles = files.filter(f => f.toLowerCase().includes(lowerQ)).slice(0, 20);
@@ -429,7 +488,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
             files = await listRepoFiles(selectedRepo);
             setRepoFilesCache(files);
           }
-          updateSuggestions(query, files, attachments);
+          updateSuggestions(query, files, attachments, prefilledAttachmentNames);
         }
         return;
       }
@@ -491,6 +550,10 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
     setAttachments(prev => prev.filter((_, i) => i !== idx));
   };
 
+  const removePrefilledAttachment = (idx: number) => {
+    setPrefilledAttachmentNames(prev => prev.filter((_, i) => i !== idx));
+  };
+
 
   const handleRemoveRecent = async (e: React.MouseEvent, repo: string) => {
     e.stopPropagation();
@@ -530,15 +593,40 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
       });
 
       if (wtResult.success && wtResult.sessionName && wtResult.worktreePath && wtResult.branchName) {
-        // NEW: Upload attachments
+        let uploadedAttachmentNames: string[] = [];
+        let carriedAttachmentNames: string[] = [];
+
+        // Upload newly selected attachments.
         if (attachments.length > 0) {
           const formData = new FormData();
           attachments.forEach(file => formData.append(file.name, file)); // Use filename as key or just 'files'
           // Backend iterates entries [name, file].
-          await saveAttachments(wtResult.worktreePath, formData);
+          uploadedAttachmentNames = await saveAttachments(wtResult.worktreePath, formData);
         }
 
-        // NEW: Process initial message mentions
+        // Copy carried attachments from the source session.
+        if (prefillSourceSessionName && prefilledAttachmentNames.length > 0) {
+          const copiedResult = await copySessionAttachments(
+            prefillSourceSessionName,
+            wtResult.worktreePath,
+            prefilledAttachmentNames
+          );
+
+          if (!copiedResult.success) {
+            setError(copiedResult.error || 'Failed to carry over attachments from source session');
+            setLoading(false);
+            return;
+          }
+
+          carriedAttachmentNames = copiedResult.copiedAttachmentNames;
+        }
+
+        const allAttachmentNames = Array.from(new Set([
+          ...uploadedAttachmentNames,
+          ...carriedAttachmentNames,
+        ]));
+
+        // Process initial message mentions
         const trimmedInitialMessage = initialMessage.trim();
         let processedMessage = trimmedInitialMessage
           ? `${trimmedInitialMessage}\n\n${AUTO_COMMIT_INSTRUCTION}`
@@ -546,7 +634,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
 
         // Helper to match replacement
         processedMessage = processedMessage.replace(/@(\S+)/g, (match, name) => {
-          if (attachments.some(a => a.name === name)) {
+          if (allAttachmentNames.includes(name)) {
             return `${wtResult.worktreePath}-attachments/${name}`;
           }
           // Assume repo file - keep relative path as we run in worktree root
@@ -557,8 +645,9 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
         const launchContextResult = await saveSessionLaunchContext(wtResult.sessionName, {
           title: title || undefined,
           initialMessage: processedMessage || undefined,
+          rawInitialMessage: trimmedInitialMessage || undefined,
           startupScript: startupScript || undefined,
-          attachmentNames: attachments.map(file => file.name),
+          attachmentNames: allAttachmentNames,
           agentProvider: selectedProvider?.cli || 'agent',
           model: selectedModel || '',
         });
@@ -1024,9 +1113,25 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
                     {attachments.length > 0 && (
                       <div className="flex flex-wrap gap-2 mt-2">
                         {attachments.map((file, idx) => (
-                          <span key={idx} className="badge badge-neutral gap-2 p-3">
+                          <span key={`upload-${idx}`} className="badge badge-neutral gap-2 p-3">
                             {file.name}
                             <button onClick={() => removeAttachment(idx)} className="btn btn-ghost btn-xs btn-circle text-error">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {prefilledAttachmentNames.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {prefilledAttachmentNames.map((name, idx) => (
+                          <span key={`prefill-${name}-${idx}`} className="badge badge-secondary gap-2 p-3">
+                            {name}
+                            <button
+                              onClick={() => removePrefilledAttachment(idx)}
+                              className="btn btn-ghost btn-xs btn-circle text-error"
+                              title="Remove carried attachment"
+                            >
                               <X className="w-3 h-3" />
                             </button>
                           </span>
