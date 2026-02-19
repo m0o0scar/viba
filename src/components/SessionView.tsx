@@ -153,6 +153,27 @@ export function SessionView({
         }
     }, [isLoaded, isResizing, terminalSize]);
 
+    // Auto-scroll and focus terminal when restored from minimized state
+    useEffect(() => {
+        if (!isTerminalMinimized && terminalRef.current) {
+            const iframe = terminalRef.current;
+            // Small delay to allow layout to update and iframe to render
+            setTimeout(() => {
+                try {
+                    const win = iframe.contentWindow as any;
+                    if (win && win.term) {
+                        win.term.scrollToBottom();
+                        win.focus();
+                        const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                        if (textarea) (textarea as HTMLElement).focus();
+                    }
+                } catch (e) {
+                    console.error('Failed to focus/scroll terminal on restore:', e);
+                }
+            }, 100);
+        }
+    }, [isTerminalMinimized]);
+
     // IDE Selection
     const [selectedIde, setSelectedIde] = useState<string>('vscode');
 
@@ -779,6 +800,33 @@ export function SessionView({
                             selectionBackground: 'rgba(59, 130, 246, 0.4)',
                         };
                     } catch { /* ignore if API unavailable */ }
+
+                    // Enable auto-scroll to bottom on output
+                    try {
+                        const xterm = term as any;
+                        const scrollHandler = () => {
+                            // Only scroll if we are close to the bottom to allow reviewing history
+                            if (xterm.buffer?.active && (xterm.buffer.active.baseY - xterm.buffer.active.viewportY < 10)) {
+                                xterm.scrollToBottom();
+                            } else {
+                                // Fallback if buffer access fails or simple mode
+                                xterm.scrollToBottom();
+                            }
+                        };
+
+                        if (xterm.onWriteParsed) {
+                            xterm.onWriteParsed(scrollHandler);
+                        } else {
+                            // Fallback for older xterm or different setups
+                            const screen = iframe.contentDocument?.querySelector('.xterm-screen') || iframe.contentDocument?.body;
+                            if (screen) {
+                                const observer = new MutationObserver(scrollHandler);
+                                observer.observe(screen, { childList: true, subtree: true, characterData: true });
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Failed to setup auto-scroll:', e);
+                    }
 
                     const targetPath = worktree || repo;
                     const cmd = `cd "${targetPath}"`;
