@@ -28,7 +28,7 @@ type AgentProvider = {
 
 const agentProvidersData = agentProvidersDataRaw as unknown as AgentProvider[];
 const AUTO_COMMIT_INSTRUCTION =
-  'After each round of conversation, if work is completed and files changed, commit all changes with an appropriate git commit message. No need to confirm when creating commits.';
+  'After each round of conversation, if work is completed and files changed, commit all changes with an appropriate git commit message. The commit message must include a clear title and a detailed body describing what changed and why, not just a title. No need to confirm when creating commits.';
 
 type GitRepoSelectorProps = {
   mode?: 'home' | 'new';
