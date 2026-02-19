@@ -24,12 +24,23 @@ export type SessionLaunchContext = {
   sessionName: string;
   title?: string;
   initialMessage?: string;
+  rawInitialMessage?: string;
   startupScript?: string;
   attachmentNames?: string[];
   agentProvider?: string;
   model?: string;
   isResume?: boolean;
   timestamp: string;
+};
+
+export type SessionPrefillContext = {
+  sourceSessionName: string;
+  repoPath: string;
+  title?: string;
+  initialMessage?: string;
+  attachmentNames: string[];
+  agentProvider: string;
+  model: string;
 };
 
 function getErrorMessage(error: unknown): string {
@@ -95,7 +106,6 @@ export async function consumeSessionLaunchContext(
   try {
     const filePath = await getSessionContextFilePath(sessionName);
     const content = await fs.readFile(filePath, 'utf-8');
-    await fs.rm(filePath, { force: true });
     const context = JSON.parse(content) as SessionLaunchContext;
     return { success: true, context };
   } catch (e: unknown) {
@@ -108,6 +118,115 @@ export async function consumeSessionLaunchContext(
     }
     console.error('Failed to consume session launch context:', e);
     return { success: false, error: getErrorMessage(e) };
+  }
+}
+
+async function getSessionLaunchContext(
+  sessionName: string
+): Promise<{ success: boolean; context?: SessionLaunchContext; error?: string }> {
+  try {
+    const filePath = await getSessionContextFilePath(sessionName);
+    const content = await fs.readFile(filePath, 'utf-8');
+    const context = JSON.parse(content) as SessionLaunchContext;
+    return { success: true, context };
+  } catch (e: unknown) {
+    const errorCode =
+      typeof e === 'object' && e !== null && 'code' in e
+        ? (e as { code?: string }).code
+        : undefined;
+    if (errorCode === 'ENOENT') {
+      return { success: true };
+    }
+    console.error('Failed to read session launch context:', e);
+    return { success: false, error: getErrorMessage(e) };
+  }
+}
+
+export async function getSessionPrefillContext(
+  sessionName: string
+): Promise<{ success: boolean; context?: SessionPrefillContext; error?: string }> {
+  const metadata = await getSessionMetadata(sessionName);
+  if (!metadata) {
+    return { success: false, error: 'Session metadata not found' };
+  }
+
+  const launchContextResult = await getSessionLaunchContext(sessionName);
+  if (!launchContextResult.success) {
+    return { success: false, error: launchContextResult.error || 'Failed to load session launch context' };
+  }
+
+  const launchContext = launchContextResult.context;
+  const prefill: SessionPrefillContext = {
+    sourceSessionName: sessionName,
+    repoPath: metadata.repoPath,
+    title: launchContext?.title || metadata.title,
+    initialMessage: launchContext?.rawInitialMessage || launchContext?.initialMessage,
+    attachmentNames: launchContext?.attachmentNames || [],
+    agentProvider: launchContext?.agentProvider || metadata.agent,
+    model: launchContext?.model || metadata.model,
+  };
+
+  return { success: true, context: prefill };
+}
+
+export async function copySessionAttachments(
+  sourceSessionName: string,
+  targetWorktreePath: string,
+  requestedAttachmentNames: string[]
+): Promise<{ success: boolean; copiedAttachmentNames: string[]; missingAttachmentNames: string[]; error?: string }> {
+  try {
+    const metadata = await getSessionMetadata(sourceSessionName);
+    if (!metadata) {
+      return {
+        success: false,
+        copiedAttachmentNames: [],
+        missingAttachmentNames: [],
+        error: 'Source session metadata not found',
+      };
+    }
+
+    const sourceAttachmentsDir = `${metadata.worktreePath}-attachments`;
+    const targetAttachmentsDir = `${targetWorktreePath}-attachments`;
+    await fs.mkdir(targetAttachmentsDir, { recursive: true });
+
+    const copiedAttachmentNames: string[] = [];
+    const missingAttachmentNames: string[] = [];
+    const dedupedRequestedNames = Array.from(
+      new Set(requestedAttachmentNames.map((name) => name.trim()).filter(Boolean))
+    );
+
+    for (const name of dedupedRequestedNames) {
+      const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const sourcePath = path.join(sourceAttachmentsDir, safeName);
+      const targetPath = path.join(targetAttachmentsDir, safeName);
+
+      try {
+        await fs.copyFile(sourcePath, targetPath);
+        copiedAttachmentNames.push(safeName);
+      } catch (e: unknown) {
+        const errorCode =
+          typeof e === 'object' && e !== null && 'code' in e
+            ? (e as { code?: string }).code
+            : undefined;
+
+        if (errorCode === 'ENOENT') {
+          missingAttachmentNames.push(name);
+          continue;
+        }
+
+        throw e;
+      }
+    }
+
+    return { success: true, copiedAttachmentNames, missingAttachmentNames };
+  } catch (e: unknown) {
+    console.error('Failed to copy session attachments:', e);
+    return {
+      success: false,
+      copiedAttachmentNames: [],
+      missingAttachmentNames: [],
+      error: getErrorMessage(e),
+    };
   }
 }
 
