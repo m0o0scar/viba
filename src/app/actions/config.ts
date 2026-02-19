@@ -18,6 +18,7 @@ export interface Config {
   selectedIde: string;
   agentWidth: number;
   repoSettings: Record<string, RepoSettings>;
+  pinnedFolderShortcuts: string[];
 }
 
 const DEFAULT_CONFIG: Config = {
@@ -26,6 +27,7 @@ const DEFAULT_CONFIG: Config = {
   selectedIde: 'vscode',
   agentWidth: 66.666,
   repoSettings: {},
+  pinnedFolderShortcuts: [],
 };
 
 async function getConfigPath(): Promise<string> {

@@ -3,7 +3,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { getHomeDirectory, listPathEntries, saveAttachments } from '@/app/actions/git';
-import { ArrowLeft, Clipboard, FileText, Folder, Grid2x2, House, List } from 'lucide-react';
+import { getConfig, updateConfig } from '@/app/actions/config';
+import { ArrowLeft, Clipboard, FileText, Folder, Grid2x2, House, List, Pin, PinOff } from 'lucide-react';
 import { getDirName } from '@/lib/path';
 
 type FileSystemItem = {
@@ -39,6 +40,7 @@ export default function SessionFileBrowser({
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [brokenThumbnails, setBrokenThumbnails] = useState<Record<string, boolean>>({});
+  const [pinnedFolderShortcuts, setPinnedFolderShortcuts] = useState<string[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -66,6 +68,29 @@ export default function SessionFileBrowser({
       isMounted = false;
     };
   }, [initialPath]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPinnedFolderShortcuts = async () => {
+      try {
+        const config = await getConfig();
+        if (!isMounted) return;
+        const pinned = Array.isArray(config.pinnedFolderShortcuts)
+          ? config.pinnedFolderShortcuts.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          : [];
+        setPinnedFolderShortcuts(Array.from(new Set(pinned)));
+      } catch (err) {
+        console.error('Failed to load pinned folder shortcuts:', err);
+      }
+    };
+
+    void loadPinnedFolderShortcuts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!currentPath) return;
@@ -223,6 +248,26 @@ export default function SessionFileBrowser({
     }
   };
 
+  const savePinnedFolderShortcuts = async (nextShortcuts: string[]) => {
+    setPinnedFolderShortcuts(nextShortcuts);
+    try {
+      await updateConfig({ pinnedFolderShortcuts: nextShortcuts });
+    } catch (err) {
+      console.error('Failed to save pinned folder shortcuts:', err);
+      setError('Failed to save pinned shortcuts');
+    }
+  };
+
+  const handleTogglePinFolder = async (folderPath: string) => {
+    setError(null);
+    const alreadyPinned = pinnedFolderShortcuts.includes(folderPath);
+    if (alreadyPinned) {
+      await savePinnedFolderShortcuts(pinnedFolderShortcuts.filter((path) => path !== folderPath));
+      return;
+    }
+    await savePinnedFolderShortcuts([...pinnedFolderShortcuts, folderPath]);
+  };
+
   const handleConfirm = async () => {
     if (selectedPaths.length === 0) return;
     await onConfirm(selectedPaths);
@@ -301,6 +346,37 @@ export default function SessionFileBrowser({
             Paste
           </button>
         </div>
+        {pinnedFolderShortcuts.length > 0 && (
+          <div className="px-3 py-2 border-b border-base-300 bg-base-200/50">
+            <div className="flex items-center gap-2 overflow-x-auto">
+              {pinnedFolderShortcuts.map((folderPath) => {
+                const isCurrent = folderPath === currentPath;
+                const label = folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath;
+                return (
+                  <div key={folderPath} className="join shrink-0">
+                    <button
+                      type="button"
+                      className={`btn btn-xs join-item ${isCurrent ? 'btn-primary' : 'btn-ghost'}`}
+                      onClick={() => setCurrentPath(folderPath)}
+                      title={folderPath}
+                    >
+                      <Folder className="w-3 h-3" />
+                      {label}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-ghost join-item"
+                      onClick={() => void handleTogglePinFolder(folderPath)}
+                      title={`Unpin ${folderPath}`}
+                    >
+                      <PinOff className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-2">
           {loading ? (
@@ -334,7 +410,19 @@ export default function SessionFileBrowser({
                       <span className="truncate">{item.name}</span>
                     </div>
                     <span className="text-[10px] opacity-70 shrink-0">
-                      {item.isDirectory ? 'folder' : 'file'}
+                      {item.isDirectory ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs h-6 min-h-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleTogglePinFolder(item.path);
+                          }}
+                          title={pinnedFolderShortcuts.includes(item.path) ? 'Unpin folder' : 'Pin folder'}
+                        >
+                          <Pin className={`w-3 h-3 ${pinnedFolderShortcuts.includes(item.path) ? 'fill-current' : ''}`} />
+                        </button>
+                      ) : 'file'}
                     </span>
                   </div>
                 );
@@ -375,6 +463,19 @@ export default function SessionFileBrowser({
                         <Folder className="w-10 h-10 opacity-80" />
                       ) : (
                         <FileText className="w-10 h-10 opacity-80" />
+                      )}
+                      {item.isDirectory && (
+                        <button
+                          type="button"
+                          className={`absolute top-1 right-1 btn btn-xs btn-circle ${pinnedFolderShortcuts.includes(item.path) ? 'btn-primary' : 'btn-ghost bg-base-100/70'}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleTogglePinFolder(item.path);
+                          }}
+                          title={pinnedFolderShortcuts.includes(item.path) ? 'Unpin folder' : 'Pin folder'}
+                        >
+                          <Pin className={`w-3 h-3 ${pinnedFolderShortcuts.includes(item.path) ? 'fill-current' : ''}`} />
+                        </button>
                       )}
                     </div>
                     <div className="px-2 py-2">
