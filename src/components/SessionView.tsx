@@ -741,16 +741,18 @@ export function SessionView({
                             let agentCmd = '';
 
                             if (isResume) {
-                                // Resume Logic
+                                // Resume logic (include the same provider flags used for fresh starts)
                                 if (agent.toLowerCase().includes('gemini')) {
-                                    agentCmd = `gemini --resume latest`;
+                                    agentCmd = `gemini --resume latest --model ${quoteShellArg(model || 'gemini-3-pro-preview')} --yolo`;
                                 } else if (agent.toLowerCase().includes('codex')) {
-                                    agentCmd = `codex resume --last`;
+                                    agentCmd = `codex resume --last --model ${quoteShellArg(model || 'gpt-5.3-codex')} --sandbox danger-full-access --ask-for-approval on-request --search`;
                                 } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
-                                    agentCmd = `agent resume`;
+                                    agentCmd = `agent resume --model ${quoteShellArg(model || 'opus-4.6-thinking')}`;
                                 } else {
-                                    // Fallback for others? assuming generic resume
-                                    agentCmd = `${agent} resume`;
+                                    // Generic fallback: <agent> resume --model <model>
+                                    const fallbackModel = model?.trim();
+                                    const fallbackModelArg = fallbackModel ? ` --model ${quoteShellArg(fallbackModel)}` : '';
+                                    agentCmd = `${quoteShellArg(agent)} resume${fallbackModelArg}`;
                                 }
                             } else {
                                 // Normal Start Logic
