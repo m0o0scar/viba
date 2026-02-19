@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2 } from 'lucide-react';
+import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2, Settings2 } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, getStartupScript, listRepoFiles, saveAttachments } from '@/app/actions/git';
 import { createSession, listSessions, SessionMetadata, deleteSession, saveSessionLaunchContext } from '@/app/actions/session';
@@ -603,6 +603,14 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
 
             <div className="mt-4 space-y-4">
               <div className="flex justify-end gap-2">
+                <button
+                  className="btn btn-ghost btn-sm gap-2"
+                  onClick={() => router.push('/settings')}
+                  title="Open settings"
+                >
+                  <Settings2 className="w-4 h-4" />
+                  Settings
+                </button>
                 <button
                   className="btn btn-ghost btn-sm gap-2"
                   onClick={() => setIsSelectingRoot(true)}
