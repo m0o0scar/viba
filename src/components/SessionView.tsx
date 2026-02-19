@@ -741,18 +741,16 @@ export function SessionView({
                             let agentCmd = '';
 
                             if (isResume) {
-                                // Resume logic (include the same provider flags used for fresh starts)
+                                // Resume logic (keep startup runtime flags but do not override model)
                                 if (agent.toLowerCase().includes('gemini')) {
-                                    agentCmd = `gemini --resume latest --model ${quoteShellArg(model || 'gemini-3-pro-preview')} --yolo`;
+                                    agentCmd = `gemini --resume latest --yolo`;
                                 } else if (agent.toLowerCase().includes('codex')) {
-                                    agentCmd = `codex resume --last --model ${quoteShellArg(model || 'gpt-5.3-codex')} --sandbox danger-full-access --ask-for-approval on-request --search`;
+                                    agentCmd = `codex resume --last --sandbox danger-full-access --ask-for-approval on-request --search`;
                                 } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
-                                    agentCmd = `agent resume --model ${quoteShellArg(model || 'opus-4.6-thinking')}`;
+                                    agentCmd = `agent resume`;
                                 } else {
-                                    // Generic fallback: <agent> resume --model <model>
-                                    const fallbackModel = model?.trim();
-                                    const fallbackModelArg = fallbackModel ? ` --model ${quoteShellArg(fallbackModel)}` : '';
-                                    agentCmd = `${quoteShellArg(agent)} resume${fallbackModelArg}`;
+                                    // Generic fallback: <agent> resume
+                                    agentCmd = `${quoteShellArg(agent)} resume`;
                                 }
                             } else {
                                 // Normal Start Logic
