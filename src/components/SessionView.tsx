@@ -35,6 +35,8 @@ type TerminalWindow = Window & {
 
 type CleanupPhase = 'idle' | 'running' | 'error';
 
+const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
+
 export interface SessionViewProps {
     repo: string;
     worktree: string;
@@ -710,7 +712,7 @@ export function SessionView({
                     // 2. dispatch keypress 13
 
                     const targetPath = worktree || repo; // Fallback to repo if no worktree
-                    const cmd = `cd "${targetPath}"`;
+                    const cmd = `cd ${quoteShellArg(targetPath)}`;
                     // Send cd command
                     term.paste(cmd);
 
@@ -761,20 +763,22 @@ export function SessionView({
                                     ].join('\n');
                                     fullMessage = fullMessage ? `${fullMessage}\n\n${attachmentSection}` : attachmentSection;
                                 }
-                                const safeMessage = fullMessage ? ` "${fullMessage.replace(/"/g, '\\"')}"` : '';
+                                const safeMessage = fullMessage ? ` ${quoteShellArg(fullMessage)}` : '';
 
                                 if (agent.toLowerCase().includes('codex')) {
                                     // Codex: codex --model gpt-5.3-codex --sandbox danger-full-access --ask-for-approval on-request --search
-                                    agentCmd = `codex --model ${model || 'gpt-5.3-codex'} --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`;
+                                    agentCmd = `codex --model ${quoteShellArg(model || 'gpt-5.3-codex')} --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`;
                                 } else if (agent.toLowerCase().includes('gemini')) {
                                     // Gemini: gemini --model gemini-3-pro-preview --yolo
-                                    agentCmd = `gemini --model ${model || 'gemini-3-pro-preview'} --yolo${safeMessage}`;
+                                    agentCmd = `gemini --model ${quoteShellArg(model || 'gemini-3-pro-preview')} --yolo${safeMessage}`;
                                 } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
                                     // Cursor: agent --model opus-4.6-thinking
-                                    agentCmd = `agent --model ${model || 'opus-4.6-thinking'}${safeMessage}`;
+                                    agentCmd = `agent --model ${quoteShellArg(model || 'opus-4.6-thinking')}${safeMessage}`;
                                 } else {
                                     // Generic fallback: <agent> --model <model>
-                                    agentCmd = `${agent} --model ${model}${safeMessage}`;
+                                    const fallbackModel = model?.trim();
+                                    const fallbackModelArg = fallbackModel ? ` --model ${quoteShellArg(fallbackModel)}` : '';
+                                    agentCmd = `${quoteShellArg(agent)}${fallbackModelArg}${safeMessage}`;
                                 }
                             }
 
@@ -886,7 +890,7 @@ export function SessionView({
                     }
 
                     const targetPath = worktree || repo;
-                    const cmd = `cd "${targetPath}"`;
+                    const cmd = `cd ${quoteShellArg(targetPath)}`;
                     term.paste(cmd);
 
                     const pressEnter = () => {
