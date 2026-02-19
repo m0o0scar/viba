@@ -651,8 +651,8 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
           <div className="card-body">
             <h2 className="card-title flex justify-between items-center">
               <div className="flex items-center gap-2">
-                <Image src="/icon.png" alt="Trident" width={24} height={24} className="rounded-sm" />
-                Trident
+                <Image src="/icon.png" alt="Viba" width={24} height={24} className="rounded-sm" />
+                Viba
               </div>
             </h2>
 
