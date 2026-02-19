@@ -12,11 +12,14 @@ export interface RepoSettings {
   lastBranch?: string;
 }
 
+export type CleanupExitBehavior = 'back_to_home' | 'close_tab';
+
 export interface Config {
   recentRepos: string[];
   defaultRoot: string;
   selectedIde: string;
   agentWidth: number;
+  cleanupExitBehavior: CleanupExitBehavior;
   repoSettings: Record<string, RepoSettings>;
 }
 
@@ -25,15 +28,20 @@ const DEFAULT_CONFIG: Config = {
   defaultRoot: '',
   selectedIde: 'vscode',
   agentWidth: 66.666,
+  cleanupExitBehavior: 'back_to_home',
   repoSettings: {},
 };
+
+function normalizeCleanupExitBehavior(value: unknown): CleanupExitBehavior {
+  return value === 'close_tab' ? 'close_tab' : 'back_to_home';
+}
 
 async function getConfigPath(): Promise<string> {
   const homedir = os.homedir();
   const vibaDir = path.join(homedir, '.viba');
   try {
     await fs.mkdir(vibaDir, { recursive: true });
-  } catch (error) {
+  } catch {
     // Ignore if exists
   }
   return path.join(vibaDir, 'config.json');
@@ -43,8 +51,12 @@ export async function getConfig(): Promise<Config> {
   try {
     const configPath = await getConfigPath();
     const content = await fs.readFile(configPath, 'utf-8');
-    const config = JSON.parse(content);
-    return { ...DEFAULT_CONFIG, ...config };
+    const config = JSON.parse(content) as Partial<Config>;
+    return {
+      ...DEFAULT_CONFIG,
+      ...config,
+      cleanupExitBehavior: normalizeCleanupExitBehavior(config.cleanupExitBehavior),
+    };
   } catch (error) {
     // Return default if file doesn't exist or is invalid
     return DEFAULT_CONFIG;
@@ -55,8 +67,8 @@ export async function saveConfig(config: Config): Promise<void> {
   try {
     const configPath = await getConfigPath();
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
-  } catch (error) {
-    console.error('Failed to save config:', error);
+  } catch (e) {
+    console.error('Failed to save config:', e);
     throw new Error('Failed to save configuration.');
   }
 }
