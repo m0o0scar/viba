@@ -741,16 +741,16 @@ export function SessionView({
                             let agentCmd = '';
 
                             if (isResume) {
-                                // Resume Logic
+                                // Resume logic (keep startup runtime flags but do not override model)
                                 if (agent.toLowerCase().includes('gemini')) {
-                                    agentCmd = `gemini --resume latest`;
+                                    agentCmd = `gemini --resume latest --yolo`;
                                 } else if (agent.toLowerCase().includes('codex')) {
-                                    agentCmd = `codex resume --last`;
+                                    agentCmd = `codex resume --last --sandbox danger-full-access --ask-for-approval on-request --search`;
                                 } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
                                     agentCmd = `agent resume`;
                                 } else {
-                                    // Fallback for others? assuming generic resume
-                                    agentCmd = `${agent} resume`;
+                                    // Generic fallback: <agent> resume
+                                    agentCmd = `${quoteShellArg(agent)} resume`;
                                 }
                             } else {
                                 // Normal Start Logic
