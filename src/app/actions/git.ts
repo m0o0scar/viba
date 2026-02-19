@@ -291,23 +291,26 @@ export async function listRepoFiles(repoPath: string, query: string = ''): Promi
   }
 }
 
-export async function saveAttachments(worktreePath: string, formData: FormData): Promise<boolean> {
+export async function saveAttachments(worktreePath: string, formData: FormData): Promise<string[]> {
   try {
     const attachmentsDir = `${worktreePath}-attachments`;
     await fs.mkdir(attachmentsDir, { recursive: true });
 
+    const savedPaths: string[] = [];
     const files = Array.from(formData.entries());
 
     for (const [name, entry] of files) {
       if (entry instanceof File) {
         const buffer = Buffer.from(await entry.arrayBuffer());
         const safeName = entry.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        await fs.writeFile(path.join(attachmentsDir, safeName), buffer);
+        const fullPath = path.join(attachmentsDir, safeName);
+        await fs.writeFile(fullPath, buffer);
+        savedPaths.push(fullPath);
       }
     }
-    return true;
+    return savedPaths;
   } catch (error) {
     console.error('Failed to save attachments:', error);
-    return false;
+    return [];
   }
 }

@@ -1199,6 +1199,7 @@ export function SessionView({
             {isFileBrowserOpen && (
                 <SessionFileBrowser
                     initialPath={worktree || repo}
+                    worktreePath={worktree}
                     onConfirm={(paths) => {
                         setIsFileBrowserOpen(false);
                         void handleInsertFilePaths(paths);

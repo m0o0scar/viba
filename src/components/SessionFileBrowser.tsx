@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { getHomeDirectory, listPathEntries } from '@/app/actions/git';
-import { ArrowLeft, Check, FileText, Folder, House } from 'lucide-react';
+import { getHomeDirectory, listPathEntries, saveAttachments } from '@/app/actions/git';
+import { ArrowLeft, Check, FileText, Folder, House, Clipboard } from 'lucide-react';
 import { getDirName } from '@/lib/path';
 
 type FileSystemItem = {
@@ -14,12 +14,14 @@ type FileSystemItem = {
 
 interface SessionFileBrowserProps {
   initialPath?: string;
+  worktreePath?: string;
   onConfirm: (paths: string[]) => void | Promise<void>;
   onCancel: () => void;
 }
 
 export default function SessionFileBrowser({
   initialPath,
+  worktreePath,
   onConfirm,
   onCancel,
 }: SessionFileBrowserProps) {
@@ -130,6 +132,84 @@ export default function SessionFileBrowser({
     setAnchorIndex(index);
   };
 
+  const handlePaste = async () => {
+    setError(null);
+    if (!worktreePath) {
+      setError("Cannot paste: Session worktree path is missing.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Request clipboard access
+      const clipboardItems = await navigator.clipboard.read();
+      const formData = new FormData();
+      let hasFiles = false;
+
+      for (const item of clipboardItems) {
+        // Look for image types or other file types
+        // We iterate through available types in the item
+        for (const type of item.types) {
+          // Prioritize images
+          if (type.startsWith('image/')) {
+            const blob = await item.getType(type);
+            const ext = type.split('/')[1] || 'png';
+            const filename = `pasted-image-${Date.now()}.${ext}`;
+            formData.append('files', blob, filename); // 'files' is the field name used in the hypothetical server action logic?
+            // Actually in saveAttachments we iterate all entries, so key name doesn't matter much but let's use filename as key
+            // Wait, saveAttachments iterates entries: const [name, entry] of files. 
+            // It relies on entry.name. Blob doesn't have name prop?
+            // File constructor does.
+            const file = new File([blob], filename, { type });
+            formData.append(filename, file);
+            hasFiles = true;
+            break; // Found an image representation, stop checking other types for this item
+          } else if (type === 'text/plain') {
+             // For now, ignore plain text unless we want to save it as a text file.
+             // If user copies text, they can paste directly into terminal. 
+             // This feature is "pasting file".
+          }
+        }
+      }
+
+      if (hasFiles) {
+        const savedPaths = await saveAttachments(worktreePath, formData);
+        if (savedPaths && savedPaths.length > 0) {
+          // Determine what to do with saved paths.
+          // Option 1: auto-insert them (call onConfirm).
+          // Option 2: select them in the browser (might be hard if they are in a different dir).
+          // Option 3: just call onConfirm because the user clicked "Paste" to insert.
+          await onConfirm(savedPaths);
+          return;
+        } else {
+            setError("Failed to save pasted files.");
+        }
+      } else {
+        // No files found, maybe check for text path?
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text && text.trim().startsWith('/')) {
+                 // Check if it's a valid path? 
+                 // Maybe just suggest it?
+                 // For now, let's just error if no files found.
+                 setError("No file content found in clipboard. Copy an image or file first.");
+            } else {
+                 setError("No file content found in clipboard.");
+            }
+        } catch {
+             setError("No file content found in clipboard.");
+        }
+      }
+
+    } catch (err) {
+      console.error('Paste error:', err);
+      setError("Failed to read from clipboard. permission denied or invalid content.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleConfirm = async () => {
     if (selectedPaths.length === 0) return;
     await onConfirm(selectedPaths);
@@ -175,8 +255,19 @@ export default function SessionFileBrowser({
             disabled={selectedPaths.length === 0}
             title="Insert selected absolute paths"
           >
-            <Check className="w-4 h-4" />
             Insert ({selectedPaths.length})
+          </button>
+          
+          <div className="w-[1px] h-6 bg-base-content/10 mx-1"></div>
+
+          <button
+            onClick={handlePaste}
+            className="btn btn-sm btn-ghost gap-2"
+            title="Paste file/image from clipboard"
+            disabled={!worktreePath}
+          >
+            <Clipboard className="w-4 h-4" />
+            Paste
           </button>
         </div>
 
