@@ -1048,41 +1048,41 @@ export function SessionView({
                         </div>
                     </div>
 
-                    <div className="join">
+                    <div className="join border border-base-content/20 rounded overflow-hidden">
                         <button
-                            className="btn btn-ghost btn-xs join-item gap-1 h-6 min-h-6"
+                            className="btn btn-ghost btn-xs join-item gap-1 h-6 min-h-6 border-none"
                             onClick={handleRebase}
-                            disabled={isRebasing || isMerging || isUpdatingBaseBranch || cleanupPhase === 'running' || !currentBaseBranch}
+                            disabled={isRebasing || isMerging || isUpdatingBaseBranch || (cleanupPhase as string) === 'running' || !currentBaseBranch}
                             title={currentBaseBranch ? `Rebase current branch (${branch}) onto target branch (${currentBaseBranch})` : 'Target branch unavailable for this session'}
                         >
                             {isRebasing ? <span className="loading loading-spinner loading-xs"></span> : <GitPullRequestArrow className="w-3 h-3" />}
                             Rebase
                         </button>
                         <button
-                            className="btn btn-ghost btn-xs join-item gap-1 h-6 min-h-6"
+                            className="btn btn-ghost btn-xs btn-success join-item gap-1 h-6 min-h-6 border-none"
                             onClick={handleMerge}
-                            disabled={isMerging || isRebasing || isUpdatingBaseBranch || cleanupPhase === 'running' || !currentBaseBranch}
+                            disabled={isMerging || isRebasing || isUpdatingBaseBranch || (cleanupPhase as string) === 'running' || !currentBaseBranch}
                             title={currentBaseBranch ? `Merge current branch (${branch}) into target branch (${currentBaseBranch})` : 'Target branch unavailable for this session'}
                         >
                             {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
                             Merge
                         </button>
                         <button
-                            className="btn btn-ghost btn-xs join-item gap-1 h-6 min-h-6"
+                            className="btn btn-ghost btn-xs btn-warning join-item gap-1 h-6 min-h-6 border-none"
                             onClick={handleMergeAndPurge}
-                            disabled={isMerging || isRebasing || isUpdatingBaseBranch || cleanupPhase === 'running' || !currentBaseBranch || !worktree}
+                            disabled={isMerging || isRebasing || isUpdatingBaseBranch || (cleanupPhase as string) === 'running' || !currentBaseBranch || !worktree}
                             title={currentBaseBranch ? `Merge current branch (${branch}) into target branch (${currentBaseBranch}), then clean up and exit` : 'Target branch unavailable for this session'}
                         >
-                            {isMerging || cleanupPhase === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
+                            {isMerging || (cleanupPhase as string) === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
                             Merge & Purge
                         </button>
                         <button
-                            className="btn btn-error btn-xs join-item gap-1 h-6 min-h-6"
+                            className="btn btn-ghost btn-error btn-xs join-item gap-1 h-6 min-h-6 border-none rounded-none"
                             onClick={handleCleanup}
-                            disabled={cleanupPhase === 'running' || isMerging || isRebasing || !worktree}
+                            disabled={(cleanupPhase as string) === 'running' || isMerging || isRebasing || !worktree}
                             title="Clean up and exit"
                         >
-                            {cleanupPhase === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="w-3 h-3" />}
+                            {(cleanupPhase as string) === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="w-3 h-3" />}
                             Purge
                         </button>
                     </div>
