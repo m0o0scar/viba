@@ -857,8 +857,9 @@ export function SessionView({
     ])).filter((branchOption) => branchOption !== branch || branchOption === currentBaseBranch);
 
     return (
-        <div className="relative h-screen w-full overflow-hidden bg-base-100">
-            <div className="absolute left-0 right-0 top-0 z-20 bg-base-300/95 p-2 text-xs flex justify-between px-4 font-mono select-none items-center shadow-md backdrop-blur-sm">
+        <div className={`flex flex-col h-screen w-full overflow-hidden bg-base-100 ${isResizing ? 'select-none' : ''}`}>
+            {isResizing && <div className="fixed inset-0 z-[9999] cursor-nwse-resize" />}
+            <div className="z-20 bg-base-300/95 p-2 text-xs flex justify-between px-4 font-mono select-none items-center shadow-md backdrop-blur-sm border-b border-base-content/10">
                 <div className="flex items-center gap-4">
                     <button
                         className="btn btn-ghost btn-xs h-6 min-h-6 px-1 hover:bg-base-content/10"
@@ -1028,7 +1029,7 @@ export function SessionView({
             <iframe
                 ref={iframeRef}
                 src="/terminal"
-                className="h-full w-full border-none dark:invert dark:brightness-90"
+                className={`flex-1 w-full border-none dark:invert dark:brightness-90 ${isResizing ? 'pointer-events-none' : ''}`}
                 allow="clipboard-read; clipboard-write"
                 onLoad={handleIframeLoad}
             />
