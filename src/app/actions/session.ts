@@ -347,6 +347,26 @@ export async function deleteSession(sessionName: string): Promise<{ success: boo
   }
 }
 
+export async function deleteSessionInBackground(sessionName: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const metadata = await getSessionMetadata(sessionName);
+    if (!metadata) {
+      return { success: false, error: 'Session metadata not found' };
+    }
+
+    void deleteSession(sessionName).then((result) => {
+      if (!result.success) {
+        console.error(`Background purge failed for ${sessionName}:`, result.error);
+      }
+    });
+
+    return { success: true };
+  } catch (e: unknown) {
+    console.error('Failed to schedule background session deletion:', e);
+    return { success: false, error: getErrorMessage(e) };
+  }
+}
+
 export async function mergeSessionToBase(
   sessionName: string
 ): Promise<{ success: boolean; branchName?: string; baseBranch?: string; error?: string }> {
