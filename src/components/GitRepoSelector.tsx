@@ -27,6 +27,8 @@ type AgentProvider = {
 };
 
 const agentProvidersData = agentProvidersDataRaw as unknown as AgentProvider[];
+const AUTO_COMMIT_INSTRUCTION =
+  'After each round of conversation, if work is completed and files changed, commit all changes with an appropriate git commit message.';
 
 type GitRepoSelectorProps = {
   mode?: 'home' | 'new';
@@ -480,7 +482,10 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
         }
 
         // NEW: Process initial message mentions
-        let processedMessage = initialMessage;
+        const trimmedInitialMessage = initialMessage.trim();
+        let processedMessage = trimmedInitialMessage
+          ? `${trimmedInitialMessage}\n\n${AUTO_COMMIT_INSTRUCTION}`
+          : '';
 
         // Helper to match replacement
         processedMessage = processedMessage.replace(/@(\S+)/g, (match, name) => {
