@@ -72,6 +72,8 @@ export function SessionView({
     isResume,
     onSessionStart
 }: SessionViewProps) {
+    const headerButtonLabelClass = 'hidden min-[1600px]:inline';
+
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const terminalRef = useRef<HTMLIFrameElement>(null);
 
@@ -981,9 +983,9 @@ export function SessionView({
                             <span className="font-bold">{getBaseName(repo)}</span>
                         </div>
                         {sessionName && (
-                            <div className="flex items-center gap-2 text-[10px] opacity-70">
+                            <div className="hidden min-[1200px]:flex min-w-0 items-center gap-2 text-[10px] opacity-70">
                                 <span>Session:</span>
-                                <span>{sessionName}</span>
+                                <span className="truncate max-w-[220px]" title={sessionName}>{sessionName}</span>
                             </div>
                         )}
                     </div>
@@ -1007,7 +1009,7 @@ export function SessionView({
                             title={`Open in ${SUPPORTED_IDES.find(i => i.id === selectedIde)?.name}`}
                         >
                             <ExternalLink className="w-3 h-3" />
-                            Open
+                            <span className={headerButtonLabelClass}>Open</span>
                         </button>
                     </div>
 
@@ -1018,7 +1020,7 @@ export function SessionView({
                         title="Browse files and insert absolute paths into the agent input"
                     >
                         {isInsertingFilePaths ? <span className="loading loading-spinner loading-xs"></span> : <FolderOpen className="w-3 h-3" />}
-                        Insert Files
+                        <span className={headerButtonLabelClass}>Insert Files</span>
                     </button>
 
                     <button
@@ -1027,7 +1029,7 @@ export function SessionView({
                         title="Start a new attempt in a new tab with this session context"
                     >
                         <Plus className="w-3 h-3" />
-                        New Attempt
+                        <span className={headerButtonLabelClass}>New Attempt</span>
                     </button>
 
                     {devServerScript?.trim() && (
@@ -1038,7 +1040,7 @@ export function SessionView({
                             title="Run dev server script in terminal"
                         >
                             {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="w-3 h-3" />}
-                            Start Dev Server
+                            <span className={headerButtonLabelClass}>Start Dev Server</span>
                         </button>
                     )}
 
@@ -1049,7 +1051,7 @@ export function SessionView({
                         title="Ask agent to create a commit with current changes"
                     >
                         {isRequestingCommit ? <span className="loading loading-spinner loading-xs"></span> : <GitCommitHorizontal className="w-3 h-3" />}
-                        Commit ({uncommittedFileCount})
+                        <span className={headerButtonLabelClass}>Commit ({uncommittedFileCount})</span>
                     </button>
 
 
@@ -1063,7 +1065,7 @@ export function SessionView({
                                 title="Select base branch and rebase"
                             >
                                 {isRebasing ? <span className="loading loading-spinner loading-xs"></span> : <GitPullRequestArrow className="w-3 h-3" />}
-                                Rebase
+                                <span className={headerButtonLabelClass}>Rebase</span>
                                 <ChevronDown className="w-3 h-3 opacity-50 ml-0.5" />
                             </button>
                             {isRebaseDropdownOpen && (
@@ -1107,7 +1109,7 @@ export function SessionView({
                             title={currentBaseBranch ? `Merge current branch (${branch}) into target branch (${currentBaseBranch})` : 'Target branch unavailable for this session'}
                         >
                             {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
-                            Merge
+                            <span className={headerButtonLabelClass}>Merge</span>
                         </button>
                         <div className="w-[1px] h-4 bg-base-content/10"></div>
                         <button
@@ -1117,7 +1119,7 @@ export function SessionView({
                             title={currentBaseBranch ? `Merge current branch (${branch}) into target branch (${currentBaseBranch}), then clean up and exit` : 'Target branch unavailable for this session'}
                         >
                             {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
-                            Merge & Purge
+                            <span className={headerButtonLabelClass}>Merge & Purge</span>
                         </button>
                         <div className="w-[1px] h-4 bg-base-content/10"></div>
                         <button
@@ -1127,7 +1129,7 @@ export function SessionView({
                             title="Clean up and exit"
                         >
                             <Trash2 className="w-3 h-3" />
-                            Purge
+                            <span className={headerButtonLabelClass}>Purge</span>
                         </button>
                     </div>
 
@@ -1144,11 +1146,11 @@ export function SessionView({
                         </div>
                     )}
 
-                    <div className="w-[1px] h-4 bg-base-content/20 mx-2"></div>
+                    <div className="hidden min-[1200px]:block w-[1px] h-4 bg-base-content/20 mx-2"></div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="hidden min-[1200px]:flex min-w-0 max-w-[280px] items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${feedback.includes('Error') || feedback.includes('failed') ? 'bg-error' : feedback.includes('started') || feedback.includes('Merged') || feedback.includes('Rebased') || feedback.includes('sent') ? 'bg-success' : 'bg-warning'}`}></span>
-                        <span>{feedback}</span>
+                        <span className="truncate" title={feedback}>{feedback}</span>
                     </div>
 
                 </div>
