@@ -3,7 +3,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 // import { useRouter } from 'next/navigation';
 import {
-    deleteSession,
+    deleteSessionInBackground,
     getSessionDivergence,
     getSessionUncommittedFileCount,
     listSessionBaseBranches,
@@ -33,7 +33,7 @@ type TerminalWindow = Window & {
     };
 };
 
-type CleanupPhase = 'idle' | 'running' | 'error';
+type CleanupPhase = 'idle' | 'error';
 
 const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
 
@@ -245,13 +245,13 @@ export function SessionView({
         if (requireConfirmation && !confirm('Are you sure you want to delete this session? This will remove the branch and worktree.')) return false;
 
         setCleanupError(null);
-        setCleanupPhase('running');
-        setFeedback('Cleaning up session...');
+        setFeedback('Purging session in background...');
         unloadSessionIframes();
 
         try {
-            const result = await deleteSession(sessionName);
+            const result = await deleteSessionInBackground(sessionName);
             if (result.success) {
+                setCleanupPhase('idle');
                 onExit(true);
                 return true;
             }
@@ -942,17 +942,6 @@ export function SessionView({
 
     if (!repo) return <div className="p-4 text-error">No repository specified</div>;
 
-    if (cleanupPhase === 'running') {
-        return (
-            <div className="flex h-screen w-full items-center justify-center bg-base-100">
-                <div className="flex flex-col items-center gap-4 text-center">
-                    <span className="loading loading-spinner loading-lg text-primary"></span>
-                    <p className="text-sm opacity-70">Cleaning up session and closing terminals...</p>
-                </div>
-            </div>
-        );
-    }
-
     if (cleanupPhase === 'error') {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-base-100">
@@ -1070,7 +1059,7 @@ export function SessionView({
                             <button
                                 className="btn btn-ghost btn-xs rounded-none rounded-l h-6 min-h-6 border-none px-2 hover:bg-base-content/10"
                                 onClick={handleRebase}
-                                disabled={isRebasing || isMerging || isUpdatingBaseBranch || (cleanupPhase as string) === 'running'}
+                                disabled={isRebasing || isMerging || isUpdatingBaseBranch}
                                 title="Select base branch and rebase"
                             >
                                 {isRebasing ? <span className="loading loading-spinner loading-xs"></span> : <GitPullRequestArrow className="w-3 h-3" />}
@@ -1114,7 +1103,7 @@ export function SessionView({
                         <button
                             className="btn btn-ghost btn-xs btn-success rounded-none h-6 min-h-6 border-none px-2 hover:bg-success/20 hover:border-transparent"
                             onClick={handleMerge}
-                            disabled={isMerging || isRebasing || isUpdatingBaseBranch || (cleanupPhase as string) === 'running' || !currentBaseBranch}
+                            disabled={isMerging || isRebasing || isUpdatingBaseBranch || !currentBaseBranch}
                             title={currentBaseBranch ? `Merge current branch (${branch}) into target branch (${currentBaseBranch})` : 'Target branch unavailable for this session'}
                         >
                             {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
@@ -1124,20 +1113,20 @@ export function SessionView({
                         <button
                             className="btn btn-ghost btn-xs btn-warning rounded-none h-6 min-h-6 border-none px-2 hover:bg-warning/20 hover:border-transparent"
                             onClick={handleMergeAndPurge}
-                            disabled={isMerging || isRebasing || isUpdatingBaseBranch || (cleanupPhase as string) === 'running' || !currentBaseBranch || !worktree}
+                            disabled={isMerging || isRebasing || isUpdatingBaseBranch || !currentBaseBranch || !worktree}
                             title={currentBaseBranch ? `Merge current branch (${branch}) into target branch (${currentBaseBranch}), then clean up and exit` : 'Target branch unavailable for this session'}
                         >
-                            {isMerging || (cleanupPhase as string) === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
+                            {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
                             Merge & Purge
                         </button>
                         <div className="w-[1px] h-4 bg-base-content/10"></div>
                         <button
                             className="btn btn-ghost btn-error btn-xs rounded-none rounded-r h-6 min-h-6 border-none px-2 hover:bg-error/20 hover:border-transparent"
                             onClick={handleCleanup}
-                            disabled={(cleanupPhase as string) === 'running' || isMerging || isRebasing || !worktree}
+                            disabled={isMerging || isRebasing || !worktree}
                             title="Clean up and exit"
                         >
-                            {(cleanupPhase as string) === 'running' ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="w-3 h-3" />}
+                            <Trash2 className="w-3 h-3" />
                             Purge
                         </button>
                     </div>
