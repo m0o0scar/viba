@@ -55,6 +55,10 @@ export default function GitRepoSelector() {
   const [error, setError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  const collapsedSessionSetupLabel = selectedProvider && selectedModel
+    ? `Show Session Setup (${selectedProvider.name} / ${selectedModel})`
+    : 'Show Session Setup';
+
   // Load config and all sessions on mount
   useEffect(() => {
     const loadData = async () => {
@@ -759,7 +763,7 @@ export default function GitRepoSelector() {
                       onClick={() => setShowSessionAdvanced(prev => !prev)}
                     >
                       <ChevronRight className={`w-4 h-4 transition-transform ${showSessionAdvanced ? 'rotate-90' : ''}`} />
-                      {showSessionAdvanced ? 'Hide Session Setup' : 'Show Session Setup'}
+                      {showSessionAdvanced ? 'Hide Session Setup' : collapsedSessionSetupLabel}
                     </button>
 
                     {showSessionAdvanced && (
