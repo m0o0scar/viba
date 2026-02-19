@@ -654,12 +654,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
                 <Image src="/icon.png" alt="Viba" width={24} height={24} className="rounded-sm" />
                 Viba
               </div>
-            </h2>
-
-            {error && <div className="alert alert-error text-sm py-2 px-3 mt-2">{error}</div>}
-
-            <div className="mt-4 space-y-4">
-              <div className="flex justify-end gap-2">
+              <div className="flex items-center gap-2">
                 <button
                   className="btn btn-ghost btn-sm gap-2"
                   onClick={() => setIsSelectingRoot(true)}
@@ -672,6 +667,11 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null }: GitR
                   <Plus className="w-4 h-4" /> Open Local Repo
                 </button>
               </div>
+            </h2>
+
+            {error && <div className="alert alert-error text-sm py-2 px-3 mt-2">{error}</div>}
+
+            <div className="mt-4 space-y-4">
 
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold opacity-70 uppercase tracking-wide">Recent Repositories</h3>
