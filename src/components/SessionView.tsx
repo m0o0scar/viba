@@ -144,6 +144,7 @@ export function SessionView({
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
     const [previewInputUrl, setPreviewInputUrl] = useState('');
     const [previewUrl, setPreviewUrl] = useState('');
+    const [isPreviewPickerActive, setIsPreviewPickerActive] = useState(false);
     const [agentPaneRatio, setAgentPaneRatio] = useState(DEFAULT_AGENT_PANE_RATIO);
     const [isSplitResizing, setIsSplitResizing] = useState(false);
 
@@ -720,17 +721,68 @@ export function SessionView({
         await runCleanup(false);
     };
 
-    const applyPreviewUrl = useCallback((rawUrl: string, openPreview: boolean): boolean => {
+    const loadPreviewViaProxy = useCallback(async (rawUrl: string, openPreview: boolean): Promise<boolean> => {
         const normalized = normalizePreviewUrl(rawUrl);
-        if (!normalized) return false;
+        if (!normalized) {
+            setFeedback('Please enter a preview URL');
+            return false;
+        }
 
         setPreviewInputUrl(normalized);
-        setPreviewUrl(normalized);
-        if (openPreview) {
-            setIsPreviewVisible(true);
+        setIsPreviewPickerActive(false);
+        setFeedback(`Loading preview: ${normalized}`);
+
+        try {
+            const response = await fetch('/api/preview-proxy/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    target: normalized,
+                }),
+            });
+
+            const payload = await response.json().catch(() => null) as { error?: string; proxyUrl?: string } | null;
+            if (!response.ok || !payload?.proxyUrl) {
+                throw new Error(payload?.error || 'Failed to start preview proxy');
+            }
+
+            setPreviewUrl(payload.proxyUrl);
+            if (openPreview) {
+                setIsPreviewVisible(true);
+            }
+            setFeedback(`Loaded preview: ${normalized}`);
+            return true;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to load preview';
+            console.error('Failed to load preview via proxy:', error);
+            setFeedback(`Failed to load preview: ${message}`);
+            return false;
         }
-        return true;
     }, []);
+
+    const handleTogglePreviewPicker = useCallback(() => {
+        if (!previewUrl) {
+            setFeedback('Load a preview before picking elements');
+            return;
+        }
+
+        const previewWindow = previewIframeRef.current?.contentWindow;
+        if (!previewWindow) {
+            setFeedback('Preview is not ready yet');
+            return;
+        }
+
+        const nextState = !isPreviewPickerActive;
+        previewWindow.postMessage({
+            type: 'viba:preview-picker-toggle',
+            active: nextState,
+        }, '*');
+
+        setIsPreviewPickerActive(nextState);
+        setFeedback(nextState ? 'Picker enabled: click an element in the preview' : 'Picker disabled');
+    }, [isPreviewPickerActive, previewUrl]);
 
     const handleTerminalLinkOpen = useCallback((rawUrl: string, openInNewTab: boolean): boolean => {
         const normalized = normalizePreviewUrl(rawUrl);
@@ -741,10 +793,9 @@ export function SessionView({
             return true;
         }
 
-        applyPreviewUrl(normalized, true);
-        setFeedback(`Loaded preview: ${normalized}`);
+        void loadPreviewViaProxy(normalized, true);
         return true;
-    }, [applyPreviewUrl]);
+    }, [loadPreviewViaProxy]);
 
     const attachTerminalLinkHandler = useCallback((
         iframe: HTMLIFrameElement,
@@ -926,16 +977,64 @@ export function SessionView({
         };
     }, [isPreviewVisible, previewInputUrl]);
 
+    useEffect(() => {
+        const handlePreviewMessage = (event: MessageEvent) => {
+            if (!previewIframeRef.current || event.source !== previewIframeRef.current.contentWindow) return;
+
+            const payload = event.data as { active?: boolean; element?: unknown; type?: string } | null;
+            if (!payload || typeof payload !== 'object') return;
+
+            if (payload.type === 'viba:preview-picker-state') {
+                setIsPreviewPickerActive(Boolean(payload.active));
+                return;
+            }
+
+            if (payload.type === 'viba:preview-element-selected') {
+                const selectedElement = (payload.element && typeof payload.element === 'object')
+                    ? payload.element as { reactComponentStack?: unknown[]; selector?: string | null }
+                    : null;
+                const reactStack = Array.isArray(selectedElement?.reactComponentStack)
+                    ? selectedElement.reactComponentStack
+                    : [];
+                const firstReactComponent = reactStack[0] && typeof reactStack[0] === 'object'
+                    ? (reactStack[0] as { name?: unknown }).name
+                    : undefined;
+                const identifier = typeof firstReactComponent === 'string' && firstReactComponent.trim().length > 0
+                    ? firstReactComponent.trim()
+                    : (typeof selectedElement?.selector === 'string' ? selectedElement.selector : '');
+
+                console.log('Preview selected element:', selectedElement);
+                console.log('Preview selected reactComponentStack:', reactStack);
+                console.log('Preview selected identifier:', identifier);
+                setIsPreviewPickerActive(false);
+
+                if (identifier) {
+                    void pasteIntoAgentIframe(`${identifier} `).then((inserted) => {
+                        setFeedback(
+                            inserted
+                                ? `Element identifier sent to agent: ${identifier}`
+                                : 'Element selected, but failed to send identifier to agent input'
+                        );
+                    });
+                } else {
+                    setFeedback('Element selected. No identifier was resolved.');
+                }
+            }
+        };
+
+        window.addEventListener('message', handlePreviewMessage);
+        return () => {
+            window.removeEventListener('message', handlePreviewMessage);
+        };
+    }, [pasteIntoAgentIframe]);
+
+    useEffect(() => {
+        setIsPreviewPickerActive(false);
+    }, [previewUrl]);
+
     const handlePreviewSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        const normalized = normalizePreviewUrl(previewInputUrl);
-        if (!normalized) {
-            setFeedback('Please enter a preview URL');
-            return;
-        }
-
-        applyPreviewUrl(normalized, true);
-        setFeedback(`Loading preview: ${normalized}`);
+        void loadPreviewViaProxy(previewInputUrl, true);
     };
 
     const handleStartDevServer = () => {
@@ -1555,6 +1654,15 @@ export function SessionView({
                                     placeholder="http://127.0.0.1:3000"
                                     spellCheck={false}
                                 />
+                                <button
+                                    className={`btn btn-ghost btn-xs ${isPreviewPickerActive ? 'btn-active text-success' : ''}`}
+                                    type="button"
+                                    onClick={handleTogglePreviewPicker}
+                                    disabled={!previewUrl}
+                                    title={isPreviewPickerActive ? 'Disable picker' : 'Pick element from preview'}
+                                >
+                                    <MousePointer2 className="h-3 w-3" />
+                                </button>
                                 <button className="btn btn-xs" type="submit">
                                     Go
                                 </button>

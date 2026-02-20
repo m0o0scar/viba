@@ -37,6 +37,7 @@
     "@types/uuid": "^10.0.0",
     "clsx": "^2.1.1",
     "daisyui": "^5.5.18",
+    "http-proxy-middleware": "^3.0.5",
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
     "react": "19.2.3",
