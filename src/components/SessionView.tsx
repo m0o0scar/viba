@@ -186,6 +186,14 @@ const buildComponentReferenceText = (reactStack: unknown[], workspaceRoot: strin
     return null;
 };
 
+const normalizeComponentLookupName = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    const match = trimmed.match(/[A-Za-z_$][\w$]*/);
+    return match ? match[0] : '';
+};
+
 export interface SessionViewProps {
     repo: string;
     worktree: string;
@@ -636,31 +644,49 @@ export function SessionView({
     }, [pasteIntoAgentIframe]);
 
     const resolveComponentSourcePathByName = useCallback(async (componentName: string): Promise<string | null> => {
-        const workspaceRoot = (worktree || repo || '').trim();
-        const trimmedName = componentName.trim();
-        if (!workspaceRoot || !trimmedName) return null;
+        const normalizedName = normalizeComponentLookupName(componentName);
+        if (!normalizedName) return null;
 
-        try {
-            const response = await fetch('/api/component-source/resolve', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    componentName: trimmedName,
-                    workspaceRoot,
-                }),
-            });
+        const roots = Array.from(
+            new Set(
+                [repo, worktree]
+                    .map((root) => (root || '').trim())
+                    .filter(Boolean)
+            )
+        );
+        if (roots.length === 0) return null;
 
-            const payload = await response.json().catch(() => null) as ResolveComponentSourceResponse | null;
-            if (!response.ok) return null;
+        for (const workspaceRoot of roots) {
+            try {
+                const response = await fetch('/api/component-source/resolve', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        componentName: normalizedName,
+                        workspaceRoot,
+                    }),
+                });
 
-            const sourcePath = typeof payload?.sourcePath === 'string' ? payload.sourcePath.trim() : '';
-            return sourcePath || null;
-        } catch (error) {
-            console.error('Failed to resolve component source path:', error);
-            return null;
+                const payload = await response.json().catch(() => null) as ResolveComponentSourceResponse | null;
+                if (!response.ok) {
+                    console.warn('Component source resolve miss', {
+                        componentName: normalizedName,
+                        workspaceRoot,
+                        error: payload?.error || response.statusText,
+                    });
+                    continue;
+                }
+
+                const sourcePath = typeof payload?.sourcePath === 'string' ? payload.sourcePath.trim() : '';
+                if (sourcePath) return sourcePath;
+            } catch (error) {
+                console.error('Failed to resolve component source path:', error);
+            }
         }
+
+        return null;
     }, [repo, worktree]);
 
     const loadBaseBranchOptions = useCallback(async () => {
@@ -1156,6 +1182,17 @@ export function SessionView({
                 const fallbackName = typeof firstReactComponent === 'string' && firstReactComponent.trim().length > 0
                     ? firstReactComponent.trim()
                     : '';
+                const stackComponentNames = Array.from(
+                    new Set(
+                        reactStack
+                            .map((entry) => {
+                                if (!entry || typeof entry !== 'object') return '';
+                                const name = (entry as { name?: unknown }).name;
+                                return typeof name === 'string' ? name.trim() : '';
+                            })
+                            .filter(Boolean)
+                    )
+                );
                 const identifier = componentReference
                     || fallbackName
                     || (typeof selectedElement?.selector === 'string' ? selectedElement.selector : '');
@@ -1171,14 +1208,25 @@ export function SessionView({
                 }
 
                 void (async () => {
-                    let finalIdentifier = identifier;
+                    let finalIdentifier = componentReference || '';
 
-                    // Fallback: when React stack has no source metadata, resolve the file path by component name.
-                    if (!componentReference && fallbackName) {
-                        const resolvedPath = await resolveComponentSourcePathByName(fallbackName);
-                        if (resolvedPath) {
-                            finalIdentifier = `${fallbackName} (${resolvedPath})`;
+                    // Fallback: when React stack has no source metadata, resolve the file path by component name(s).
+                    if (!finalIdentifier && stackComponentNames.length > 0) {
+                        for (const componentName of stackComponentNames) {
+                            const resolvedPath = await resolveComponentSourcePathByName(componentName);
+                            if (resolvedPath) {
+                                finalIdentifier = `${componentName} (${resolvedPath})`;
+                                break;
+                            }
                         }
+                    }
+
+                    if (!finalIdentifier) {
+                        if (stackComponentNames.length > 0) {
+                            setFeedback('Element selected, but source file path could not be resolved for the component');
+                            return;
+                        }
+                        finalIdentifier = identifier;
                     }
 
                     const inserted = await pasteIntoAgentIframe(`${finalIdentifier} `);

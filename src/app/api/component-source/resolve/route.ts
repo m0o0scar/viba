@@ -22,6 +22,19 @@ const SEARCH_GLOBS = [
   '!**/coverage/**',
   '*.{ts,tsx,js,jsx,mjs,cjs}',
 ];
+const SOURCE_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.cjs'] as const;
+const IGNORED_DIR_NAMES = new Set([
+  'node_modules',
+  '.git',
+  '.next',
+  'dist',
+  'build',
+  'coverage',
+  '.turbo',
+  '.cache',
+]);
+const MAX_WALKED_FILES = 10000;
+const MAX_FILE_BYTES = 512 * 1024;
 
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -32,6 +45,21 @@ const toKebabCase = (value: string): string =>
     .toLowerCase();
 
 const unique = (items: string[]): string[] => Array.from(new Set(items));
+
+const normalizeComponentLookupName = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  const match = trimmed.match(/[A-Za-z_$][\w$]*/);
+  return match ? match[0] : '';
+};
+
+const toPascalCase = (value: string): string =>
+  value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((segment) => segment[0] ? segment[0].toUpperCase() + segment.slice(1) : '')
+    .join('');
 
 const buildSearchPatterns = (componentName: string): string[] => {
   const escaped = escapeRegex(componentName);
@@ -62,12 +90,48 @@ const buildRgArgs = (pattern: string): string[] => {
   return args;
 };
 
+const buildDirectCandidates = (componentName: string): string[] => {
+  const kebab = toKebabCase(componentName);
+  const pascal = toPascalCase(componentName);
+  const snake = componentName
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[\s-]+/g, '_')
+    .toLowerCase();
+
+  const baseDirs = [
+    'src/components',
+    'components',
+    'src',
+  ];
+  const baseNames = unique([kebab, pascal, snake, componentName]);
+  const candidates: string[] = [];
+
+  for (const dir of baseDirs) {
+    for (const base of baseNames) {
+      for (const ext of SOURCE_EXTENSIONS) {
+        candidates.push(`${dir}/${base}${ext}`);
+      }
+    }
+  }
+
+  return candidates;
+};
+
+const fileExists = async (absolutePath: string): Promise<boolean> => {
+  try {
+    const stat = await fs.stat(absolutePath);
+    return stat.isFile();
+  } catch {
+    return false;
+  }
+};
+
 const runPatternSearch = async (workspaceRoot: string, pattern: string): Promise<string[]> => {
   try {
     const { stdout } = await execFileAsync('rg', buildRgArgs(pattern), {
       cwd: workspaceRoot,
       maxBuffer: 2 * 1024 * 1024,
-      timeout: 5000,
+      timeout: 20000,
     });
 
     return stdout
@@ -77,6 +141,72 @@ const runPatternSearch = async (workspaceRoot: string, pattern: string): Promise
   } catch {
     return [];
   }
+};
+
+const walkSourceFiles = async (workspaceRoot: string): Promise<string[]> => {
+  const files: string[] = [];
+  const queue: string[] = [workspaceRoot];
+
+  while (queue.length > 0 && files.length < MAX_WALKED_FILES) {
+    const currentDir = queue.shift();
+    if (!currentDir) continue;
+
+    let entries: Array<{ isDirectory: () => boolean; isFile: () => boolean; name: string }>;
+    try {
+      entries = await fs.readdir(currentDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        if (!IGNORED_DIR_NAMES.has(entry.name)) {
+          queue.push(fullPath);
+        }
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+      if (!SOURCE_EXTENSIONS.some((ext) => entry.name.endsWith(ext))) continue;
+
+      files.push(fullPath);
+      if (files.length >= MAX_WALKED_FILES) break;
+    }
+  }
+
+  return files;
+};
+
+const searchByScanningFiles = async (workspaceRoot: string, componentName: string): Promise<string[]> => {
+  const files = await walkSourceFiles(workspaceRoot);
+  if (files.length === 0) return [];
+
+  const regexes = buildSearchPatterns(componentName).map((pattern) => {
+    try {
+      return new RegExp(pattern, 'm');
+    } catch {
+      return null;
+    }
+  }).filter((entry): entry is RegExp => entry instanceof RegExp);
+
+  if (regexes.length === 0) return [];
+
+  const matches: string[] = [];
+  for (const absolutePath of files) {
+    try {
+      const stat = await fs.stat(absolutePath);
+      if (!stat.isFile() || stat.size > MAX_FILE_BYTES) continue;
+      const content = await fs.readFile(absolutePath, 'utf-8');
+      if (regexes.some((regex) => regex.test(content))) {
+        matches.push(path.relative(workspaceRoot, absolutePath));
+      }
+    } catch {
+      // Ignore unreadable files
+    }
+  }
+
+  return matches;
 };
 
 const scoreCandidate = (candidatePath: string, componentName: string): number => {
@@ -116,6 +246,14 @@ const resolveSourcePathByComponentName = async (
   workspaceRoot: string,
   componentName: string
 ): Promise<string | null> => {
+  const directCandidates = buildDirectCandidates(componentName);
+  for (const candidate of directCandidates) {
+    const absolute = path.resolve(workspaceRoot, candidate);
+    if (await fileExists(absolute)) {
+      return absolute;
+    }
+  }
+
   const patterns = buildSearchPatterns(componentName);
   let candidates: string[] = [];
 
@@ -125,6 +263,10 @@ const resolveSourcePathByComponentName = async (
       candidates = matches;
       break;
     }
+  }
+
+  if (candidates.length === 0) {
+    candidates = await searchByScanningFiles(workspaceRoot, componentName);
   }
 
   const best = pickBestCandidate(workspaceRoot, componentName, candidates);
@@ -140,7 +282,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request payload' }, { status: 400 });
   }
 
-  const componentName = typeof body.componentName === 'string' ? body.componentName.trim() : '';
+  const componentName = typeof body.componentName === 'string'
+    ? normalizeComponentLookupName(body.componentName)
+    : '';
   const workspaceRoot = typeof body.workspaceRoot === 'string' ? body.workspaceRoot.trim() : '';
 
   if (!componentName) {
