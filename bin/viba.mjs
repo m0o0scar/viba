@@ -32,20 +32,35 @@ function runCommand(command, args) {
   return result.status === 0;
 }
 
-function getInstallStrategies() {
+function getInstallStrategies(tool) {
+  const packageMap = {
+    ttyd: {
+      default: "ttyd",
+      winget: "tsl0922.ttyd",
+    },
+    tmux: {
+      default: "tmux",
+      winget: "tmux", // Assuming tmux is available via winget (often via MSYS2 or similar, but unlikely native)
+    }
+  };
+
+  const pkgName = (manager) => {
+    return (packageMap[tool] && packageMap[tool][manager]) || (packageMap[tool] && packageMap[tool].default) || tool;
+  };
+
   if (process.platform === "darwin") {
     return [
       {
         label: "Homebrew",
         requiredCommands: ["brew"],
         command: "brew",
-        args: ["install", "ttyd"],
+        args: ["install", pkgName("brew")],
       },
       {
         label: "MacPorts",
         requiredCommands: ["sudo", "port"],
         command: "sudo",
-        args: ["port", "install", "ttyd"],
+        args: ["port", "install", pkgName("port")],
       },
     ];
   }
@@ -56,61 +71,61 @@ function getInstallStrategies() {
         label: "apt-get",
         requiredCommands: ["apt-get"],
         command: "apt-get",
-        args: ["install", "-y", "ttyd"],
+        args: ["install", "-y", pkgName("apt")],
       },
       {
         label: "sudo apt-get",
         requiredCommands: ["sudo", "apt-get"],
         command: "sudo",
-        args: ["apt-get", "install", "-y", "ttyd"],
+        args: ["apt-get", "install", "-y", pkgName("apt")],
       },
       {
         label: "dnf",
         requiredCommands: ["dnf"],
         command: "dnf",
-        args: ["install", "-y", "ttyd"],
+        args: ["install", "-y", pkgName("dnf")],
       },
       {
         label: "sudo dnf",
         requiredCommands: ["sudo", "dnf"],
         command: "sudo",
-        args: ["dnf", "install", "-y", "ttyd"],
+        args: ["dnf", "install", "-y", pkgName("dnf")],
       },
       {
         label: "yum",
         requiredCommands: ["yum"],
         command: "yum",
-        args: ["install", "-y", "ttyd"],
+        args: ["install", "-y", pkgName("yum")],
       },
       {
         label: "sudo yum",
         requiredCommands: ["sudo", "yum"],
         command: "sudo",
-        args: ["yum", "install", "-y", "ttyd"],
+        args: ["yum", "install", "-y", pkgName("yum")],
       },
       {
         label: "pacman",
         requiredCommands: ["pacman"],
         command: "pacman",
-        args: ["-S", "--noconfirm", "ttyd"],
+        args: ["-S", "--noconfirm", pkgName("pacman")],
       },
       {
         label: "sudo pacman",
         requiredCommands: ["sudo", "pacman"],
         command: "sudo",
-        args: ["pacman", "-S", "--noconfirm", "ttyd"],
+        args: ["pacman", "-S", "--noconfirm", pkgName("pacman")],
       },
       {
         label: "zypper",
         requiredCommands: ["zypper"],
         command: "zypper",
-        args: ["--non-interactive", "install", "ttyd"],
+        args: ["--non-interactive", "install", pkgName("zypper")],
       },
       {
         label: "sudo zypper",
         requiredCommands: ["sudo", "zypper"],
         command: "sudo",
-        args: ["zypper", "--non-interactive", "install", "ttyd"],
+        args: ["zypper", "--non-interactive", "install", pkgName("zypper")],
       },
     ];
   }
@@ -121,13 +136,13 @@ function getInstallStrategies() {
         label: "winget",
         requiredCommands: ["winget"],
         command: "winget",
-        args: ["install", "tsl0922.ttyd"],
+        args: ["install", pkgName("winget")],
       },
       {
         label: "scoop",
         requiredCommands: ["scoop"],
         command: "scoop",
-        args: ["install", "ttyd"],
+        args: ["install", pkgName("scoop")],
       },
     ];
   }
@@ -135,42 +150,57 @@ function getInstallStrategies() {
   return [];
 }
 
-function ensureTtydInstalled() {
-  if (isCommandAvailable("ttyd")) {
-    return;
+function ensureDependenciesInstalled() {
+  const dependencies = ["ttyd"];
+  // Only check for tmux on non-Windows platforms
+  if (process.platform !== "win32") {
+    dependencies.push("tmux");
   }
 
-  console.log("ttyd is not installed. Attempting automatic installation...");
-
-  const installStrategies = getInstallStrategies();
-  const availableManagers = installStrategies
-    .map((strategy) => strategy.label)
-    .join(", ");
-
-  let attempted = false;
-
-  for (const strategy of installStrategies) {
-    const canUseStrategy = strategy.requiredCommands.every((command) => isCommandAvailable(command));
-    if (!canUseStrategy) {
+  for (const tool of dependencies) {
+    if (isCommandAvailable(tool)) {
       continue;
     }
 
-    attempted = true;
-    console.log(`Trying to install ttyd via ${strategy.label}...`);
+    console.log(`${tool} is not installed. Attempting automatic installation...`);
 
-    if (runCommand(strategy.command, strategy.args) && isCommandAvailable("ttyd")) {
-      console.log("ttyd installed successfully.");
-      return;
+    const installStrategies = getInstallStrategies(tool);
+    const availableManagers = installStrategies
+      .map((strategy) => strategy.label)
+      .join(", ");
+
+    let attempted = false;
+    let installed = false;
+
+    for (const strategy of installStrategies) {
+      const canUseStrategy = strategy.requiredCommands.every((command) => isCommandAvailable(command));
+      if (!canUseStrategy) {
+        continue;
+      }
+
+      attempted = true;
+      console.log(`Trying to install ${tool} via ${strategy.label}...`);
+
+      if (runCommand(strategy.command, strategy.args) && isCommandAvailable(tool)) {
+        console.log(`${tool} installed successfully.`);
+        installed = true;
+        break;
+      }
     }
-  }
 
-  if (!attempted) {
-    throw new Error(
-      `ttyd is required, but no supported package manager was found on this machine. Checked: ${availableManagers || "none"}. Install ttyd manually and restart.`,
-    );
-  }
+    if (installed) continue;
 
-  throw new Error("ttyd is required, but automatic installation failed. Install ttyd manually and restart.");
+    if (!attempted) {
+      // For tmux, we might be more lenient if it fails? But it's needed for persistence.
+      // But if it fails, maybe we can proceed without it (and lose persistence)?
+      // For now, let's enforce it.
+      throw new Error(
+        `${tool} is required, but no supported package manager was found on this machine. Checked: ${availableManagers || "none"}. Install ${tool} manually and restart.`,
+      );
+    }
+
+    throw new Error(`${tool} is required, but automatic installation failed. Install ${tool} manually and restart.`);
+  }
 }
 
 function printHelp() {
@@ -279,7 +309,7 @@ function ensureBuildExists() {
 async function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
-    ensureTtydInstalled();
+    ensureDependenciesInstalled();
 
     const envPort = Number.parseInt(process.env.PORT || "", 10);
     const preferredPort =
