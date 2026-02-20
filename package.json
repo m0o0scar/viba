@@ -18,7 +18,7 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "node ./bin/viba.mjs --dev",
+    "dev": "npx gfport 3200 -- node ./bin/viba.mjs --dev --port {PORT}",
     "build": "next build",
     "prepack": "rm -rf .next && npm run build",
     "start": "node ./bin/viba.mjs",
