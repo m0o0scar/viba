@@ -137,6 +137,7 @@ export function SessionView({
     const [isMerging, setIsMerging] = useState(false);
     const [isRebasing, setIsRebasing] = useState(false);
     const [isFileBrowserOpen, setIsFileBrowserOpen] = useState(false);
+    const [lastFileBrowserPath, setLastFileBrowserPath] = useState(worktree || repo);
     const [isInsertingFilePaths, setIsInsertingFilePaths] = useState(false);
     const [currentBaseBranch, setCurrentBaseBranch] = useState(baseBranch?.trim() || '');
     const [baseBranchOptions, setBaseBranchOptions] = useState<string[]>([]);
@@ -159,6 +160,10 @@ export function SessionView({
     const [isResizing, setIsResizing] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
     const resizeRef = useRef({ startX: 0, startY: 0, startWidth: 0, startHeight: 0 });
+
+    useEffect(() => {
+        setLastFileBrowserPath(worktree || repo);
+    }, [repo, worktree]);
 
     useEffect(() => {
         const saved = localStorage.getItem(TERMINAL_SIZE_STORAGE_KEY);
@@ -1749,8 +1754,9 @@ export function SessionView({
 
             {isFileBrowserOpen && (
                 <SessionFileBrowser
-                    initialPath={worktree || repo}
+                    initialPath={lastFileBrowserPath}
                     worktreePath={worktree}
+                    onPathChange={setLastFileBrowserPath}
                     onConfirm={(paths) => {
                         setIsFileBrowserOpen(false);
                         void handleInsertFilePaths(paths);

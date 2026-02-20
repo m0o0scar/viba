@@ -7,6 +7,8 @@ import { getConfig, updateConfig } from '@/app/actions/config';
 import { ArrowLeft, Clipboard, FileText, Folder, Grid2x2, House, List, Pin, PinOff } from 'lucide-react';
 import { getDirName } from '@/lib/path';
 
+const VIEW_MODE_STORAGE_KEY = 'viba:session-file-browser:view-mode';
+
 type FileSystemItem = {
   name: string;
   path: string;
@@ -19,6 +21,7 @@ interface SessionFileBrowserProps {
   worktreePath?: string;
   onConfirm: (paths: string[]) => void | Promise<void>;
   onCancel: () => void;
+  onPathChange?: (path: string) => void;
 }
 
 export default function SessionFileBrowser({
@@ -26,6 +29,7 @@ export default function SessionFileBrowser({
   worktreePath,
   onConfirm,
   onCancel,
+  onPathChange,
 }: SessionFileBrowserProps) {
   const imageExtensions = useMemo(
     () => new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif']),
@@ -39,6 +43,7 @@ export default function SessionFileBrowser({
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [hasLoadedViewMode, setHasLoadedViewMode] = useState(false);
   const [brokenThumbnails, setBrokenThumbnails] = useState<Record<string, boolean>>({});
   const [pinnedFolderShortcuts, setPinnedFolderShortcuts] = useState<string[]>([]);
 
@@ -93,6 +98,28 @@ export default function SessionFileBrowser({
   }, []);
 
   useEffect(() => {
+    try {
+      const savedViewMode = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+      if (savedViewMode === 'list' || savedViewMode === 'grid') {
+        setViewMode(savedViewMode);
+      }
+    } catch {
+      // Ignore localStorage failures.
+    } finally {
+      setHasLoadedViewMode(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedViewMode) return;
+    try {
+      localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+    } catch {
+      // Ignore localStorage failures.
+    }
+  }, [hasLoadedViewMode, viewMode]);
+
+  useEffect(() => {
     if (!currentPath) return;
 
     const fetchItems = async () => {
@@ -111,6 +138,11 @@ export default function SessionFileBrowser({
 
     void fetchItems();
   }, [currentPath]);
+
+  useEffect(() => {
+    if (!currentPath) return;
+    onPathChange?.(currentPath);
+  }, [currentPath, onPathChange]);
 
   useEffect(() => {
     setSelectedPaths([]);
