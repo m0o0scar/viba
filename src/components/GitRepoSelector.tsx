@@ -9,6 +9,7 @@ import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actio
 import { useRouter } from 'next/navigation';
 import { Play } from 'lucide-react'; // Added Play icon for resume
 import { getBaseName } from '@/lib/path';
+import { notifySessionsUpdated, SESSIONS_UPDATED_EVENT, SESSIONS_UPDATED_STORAGE_KEY } from '@/lib/session-updates';
 import Image from 'next/image';
 
 import agentProvidersDataRaw from '@/data/agent-providers.json';
@@ -73,11 +74,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     : 'Show Session Setup';
 
   const notifySessionsChanged = useCallback(() => {
-    try {
-      localStorage.setItem('viba:sessions-updated-at', new Date().toISOString());
-    } catch {
-      // Ignore localStorage failures.
-    }
+    notifySessionsUpdated();
   }, []);
 
   const refreshSessionData = useCallback(async (repo: string | null = selectedRepo) => {
@@ -121,7 +118,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     };
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === 'viba:sessions-updated-at') {
+      if (event.key === SESSIONS_UPDATED_STORAGE_KEY) {
         refresh();
       }
     };
@@ -130,12 +127,18 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
       refresh();
     };
 
+    const handleSessionsUpdated = () => {
+      refresh();
+    };
+
     window.addEventListener('storage', handleStorage);
     window.addEventListener('focus', handleFocus);
+    window.addEventListener(SESSIONS_UPDATED_EVENT, handleSessionsUpdated);
 
     return () => {
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener(SESSIONS_UPDATED_EVENT, handleSessionsUpdated);
     };
   }, [mode, refreshSessionData, selectedRepo]);
 
