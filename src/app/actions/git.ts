@@ -17,6 +17,35 @@ export type GitBranch = {
   current: boolean;
 };
 
+export type SupportedAgentCli = 'gemini' | 'codex' | 'agent';
+
+type AgentCliConfig = {
+  executable: string;
+  installCommand: string;
+};
+
+const AGENT_CLI_CONFIG: Record<SupportedAgentCli, AgentCliConfig> = {
+  gemini: {
+    executable: 'gemini',
+    installCommand: 'npm install -g google/gemini-cli',
+  },
+  codex: {
+    executable: 'codex',
+    installCommand: 'npm i -g openai/codex',
+  },
+  agent: {
+    executable: 'agent',
+    installCommand: 'curl https://cursor.com/install -fsS | bash',
+  },
+};
+
+function normalizeAgentCli(agentCli: string): SupportedAgentCli | null {
+  if (agentCli === 'gemini' || agentCli === 'codex' || agentCli === 'agent') {
+    return agentCli;
+  }
+  return null;
+}
+
 export async function getHomeDirectory() {
   return os.homedir();
 }
@@ -112,6 +141,86 @@ export async function checkIsGitRepo(dirPath: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+export async function checkAgentCliInstalled(
+  agentCli: string
+): Promise<{ success: boolean; installed: boolean; error?: string }> {
+  const normalizedCli = normalizeAgentCli(agentCli);
+  if (!normalizedCli) {
+    return { success: false, installed: false, error: `Unsupported coding agent CLI: ${agentCli}` };
+  }
+
+  try {
+    const { spawn } = await import('child_process');
+    const cliConfig = AGENT_CLI_CONFIG[normalizedCli];
+    const isWindows = os.platform() === 'win32';
+    const shell = isWindows ? 'powershell' : 'bash';
+    const shellArgs = isWindows
+      ? ['-Command', `Get-Command ${cliConfig.executable} -ErrorAction SilentlyContinue`]
+      : ['-lc', `command -v ${cliConfig.executable}`];
+
+    const exitCode = await new Promise<number>((resolve) => {
+      const child = spawn(shell, shellArgs, { stdio: 'ignore' });
+      child.on('close', (code) => resolve(code ?? 1));
+      child.on('error', () => resolve(1));
+    });
+
+    return { success: true, installed: exitCode === 0 };
+  } catch (error) {
+    console.error('Failed to detect coding agent CLI:', error);
+    return { success: false, installed: false, error: 'Failed to detect coding agent CLI installation status.' };
+  }
+}
+
+export async function installAgentCli(agentCli: string): Promise<{ success: boolean; error?: string }> {
+  const normalizedCli = normalizeAgentCli(agentCli);
+  if (!normalizedCli) {
+    return { success: false, error: `Unsupported coding agent CLI: ${agentCli}` };
+  }
+
+  try {
+    const { spawn } = await import('child_process');
+    const cliConfig = AGENT_CLI_CONFIG[normalizedCli];
+    const isWindows = os.platform() === 'win32';
+    const shell = isWindows ? 'powershell' : 'bash';
+    const shellArgs = isWindows
+      ? ['-Command', cliConfig.installCommand]
+      : ['-lc', cliConfig.installCommand];
+
+    const outputChunks: string[] = [];
+    const exitCode = await new Promise<number>((resolve) => {
+      const child = spawn(shell, shellArgs, {
+        cwd: os.homedir(),
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      child.stdout.on('data', (chunk: Buffer) => {
+        outputChunks.push(chunk.toString());
+      });
+
+      child.stderr.on('data', (chunk: Buffer) => {
+        outputChunks.push(chunk.toString());
+      });
+
+      child.on('close', (code) => resolve(code ?? 1));
+      child.on('error', () => resolve(1));
+    });
+
+    if (exitCode === 0) {
+      return { success: true };
+    }
+
+    const detail = outputChunks.join('').trim();
+    return {
+      success: false,
+      error: detail || `Failed to install ${normalizedCli} CLI.`,
+    };
+  } catch (error) {
+    console.error('Failed to install coding agent CLI:', error);
+    return { success: false, error: 'Failed to install coding agent CLI.' };
   }
 }
 
