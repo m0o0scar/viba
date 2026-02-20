@@ -4,6 +4,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 // import { useRouter } from 'next/navigation';
 import {
     deleteSessionInBackground,
+    detectSessionDevServerUrl,
     getSessionDivergence,
     getSessionUncommittedFileCount,
     listSessionBaseBranches,
@@ -12,7 +13,7 @@ import {
     updateSessionBaseBranch
 } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, Globe } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName } from '@/lib/path';
 
@@ -36,6 +37,18 @@ type TerminalWindow = Window & {
 type CleanupPhase = 'idle' | 'error';
 
 const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
+const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
+const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
+const DEFAULT_AGENT_PANE_RATIO = 0.5;
+
+const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
+
+const normalizePreviewUrl = (rawValue: string): string | null => {
+    const trimmed = rawValue.trim();
+    if (!trimmed) return null;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `http://${trimmed}`;
+};
 
 export interface SessionViewProps {
     repo: string;
@@ -76,6 +89,9 @@ export function SessionView({
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const terminalRef = useRef<HTMLIFrameElement>(null);
+    const splitContainerRef = useRef<HTMLDivElement>(null);
+    const splitResizeRef = useRef({ startX: 0, startRatio: DEFAULT_AGENT_PANE_RATIO });
+    const detectDevServerRunIdRef = useRef(0);
 
     const [feedback, setFeedback] = useState<string>('Initializing...');
     const [cleanupPhase, setCleanupPhase] = useState<CleanupPhase>('idle');
@@ -93,6 +109,12 @@ export function SessionView({
     const [isUpdatingBaseBranch, setIsUpdatingBaseBranch] = useState(false);
     const [divergence, setDivergence] = useState({ ahead: 0, behind: 0 });
     const [uncommittedFileCount, setUncommittedFileCount] = useState(0);
+    const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+    const [previewInputUrl, setPreviewInputUrl] = useState('');
+    const [previewUrl, setPreviewUrl] = useState('');
+    const [agentPaneRatio, setAgentPaneRatio] = useState(DEFAULT_AGENT_PANE_RATIO);
+    const [isSplitResizing, setIsSplitResizing] = useState(false);
+    const [isDetectingDevServer, setIsDetectingDevServer] = useState(false);
 
     const [isTerminalMinimized, setIsTerminalMinimized] = useState(true);
 
@@ -103,12 +125,20 @@ export function SessionView({
     const resizeRef = useRef({ startX: 0, startY: 0, startWidth: 0, startHeight: 0 });
 
     useEffect(() => {
-        const saved = localStorage.getItem('viba-terminal-size');
+        const saved = localStorage.getItem(TERMINAL_SIZE_STORAGE_KEY);
         if (saved) {
             try {
                 setTerminalSize(JSON.parse(saved));
             } catch (e) {
                 console.error('Failed to parse saved terminal size', e);
+            }
+        }
+
+        const savedSplitRatio = localStorage.getItem(SPLIT_RATIO_STORAGE_KEY);
+        if (savedSplitRatio) {
+            const parsed = Number.parseFloat(savedSplitRatio);
+            if (!Number.isNaN(parsed)) {
+                setAgentPaneRatio(clampAgentPaneRatio(parsed));
             }
         }
         setIsLoaded(true);
@@ -153,9 +183,51 @@ export function SessionView({
 
     useEffect(() => {
         if (isLoaded && !isResizing) {
-            localStorage.setItem('viba-terminal-size', JSON.stringify(terminalSize));
+            localStorage.setItem(TERMINAL_SIZE_STORAGE_KEY, JSON.stringify(terminalSize));
         }
     }, [isLoaded, isResizing, terminalSize]);
+
+    useEffect(() => {
+        if (isLoaded && !isSplitResizing) {
+            localStorage.setItem(SPLIT_RATIO_STORAGE_KEY, String(agentPaneRatio));
+        }
+    }, [agentPaneRatio, isLoaded, isSplitResizing]);
+
+    const startSplitResize = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsSplitResizing(true);
+        splitResizeRef.current = {
+            startX: e.clientX,
+            startRatio: agentPaneRatio,
+        };
+    };
+
+    useEffect(() => {
+        if (!isSplitResizing) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const container = splitContainerRef.current;
+            if (!container) return;
+
+            const rect = container.getBoundingClientRect();
+            if (rect.width <= 0) return;
+
+            const delta = e.clientX - splitResizeRef.current.startX;
+            const nextLeftWidth = splitResizeRef.current.startRatio * rect.width + delta;
+            setAgentPaneRatio(clampAgentPaneRatio(nextLeftWidth / rect.width));
+        };
+
+        const handleMouseUp = () => {
+            setIsSplitResizing(false);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isSplitResizing]);
 
     // Auto-scroll and focus terminal when restored from minimized state
     useEffect(() => {
@@ -617,6 +689,66 @@ export function SessionView({
         await runCleanup(false);
     };
 
+    const applyPreviewUrl = useCallback((rawUrl: string, openPreview: boolean): boolean => {
+        const normalized = normalizePreviewUrl(rawUrl);
+        if (!normalized) return false;
+
+        setPreviewInputUrl(normalized);
+        setPreviewUrl(normalized);
+        if (openPreview) {
+            setIsPreviewVisible(true);
+        }
+        return true;
+    }, []);
+
+    const detectAndLoadDevServerPreview = useCallback(async () => {
+        if (!sessionName) return;
+
+        const runId = detectDevServerRunIdRef.current + 1;
+        detectDevServerRunIdRef.current = runId;
+        setIsDetectingDevServer(true);
+
+        const maxAttempts = 12;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            if (attempt > 0) {
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+            }
+
+            try {
+                const result = await detectSessionDevServerUrl(sessionName);
+                if (detectDevServerRunIdRef.current !== runId) {
+                    return;
+                }
+
+                if (result.success && result.url) {
+                    applyPreviewUrl(result.url, true);
+                    setFeedback(`Loaded preview: ${result.url}`);
+                    setIsDetectingDevServer(false);
+                    return;
+                }
+            } catch (error) {
+                console.error('Failed to detect dev server port:', error);
+            }
+        }
+
+        if (detectDevServerRunIdRef.current === runId) {
+            setFeedback('Dev server started, but no listening port was detected yet');
+            setIsDetectingDevServer(false);
+        }
+    }, [applyPreviewUrl, sessionName]);
+
+    const handlePreviewSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const normalized = normalizePreviewUrl(previewInputUrl);
+        if (!normalized) {
+            setFeedback('Please enter a preview URL');
+            return;
+        }
+
+        applyPreviewUrl(normalized, true);
+        setFeedback(`Loading preview: ${normalized}`);
+    };
+
     const handleStartDevServer = () => {
         const script = devServerScript?.trim();
         if (!script || !terminalRef.current) return;
@@ -632,6 +764,7 @@ export function SessionView({
             if (attempts > 30) {
                 setFeedback('Failed to start dev server: terminal is not ready');
                 setIsStartingDevServer(false);
+                setIsDetectingDevServer(false);
                 return;
             }
 
@@ -657,8 +790,9 @@ export function SessionView({
                     win.focus();
                     if (textarea) (textarea as HTMLElement).focus();
 
-                    setFeedback('Dev server start command sent');
+                    setFeedback('Dev server start command sent. Detecting port...');
                     setIsStartingDevServer(false);
+                    void detectAndLoadDevServerPreview();
                 } else {
                     setTimeout(() => checkAndInject(attempts + 1), 300);
                 }
@@ -666,6 +800,7 @@ export function SessionView({
                 console.error('Dev server injection error', e);
                 setFeedback('Failed to start dev server');
                 setIsStartingDevServer(false);
+                setIsDetectingDevServer(false);
             }
         };
 
@@ -971,8 +1106,10 @@ export function SessionView({
     ])).filter((branchOption) => branchOption !== branch || branchOption === currentBaseBranch);
 
     return (
-        <div className={`flex flex-col h-screen w-full overflow-hidden bg-base-100 ${isResizing ? 'select-none' : ''}`}>
-            {isResizing && <div className="fixed inset-0 z-[9999] cursor-nwse-resize" />}
+        <div className={`flex flex-col h-screen w-full overflow-hidden bg-base-100 ${(isResizing || isSplitResizing) ? 'select-none' : ''}`}>
+            {(isResizing || isSplitResizing) && (
+                <div className={`fixed inset-0 z-[9999] ${isResizing ? 'cursor-nwse-resize' : 'cursor-col-resize'}`} />
+            )}
             <div className="z-20 bg-base-300/95 p-2 text-xs flex justify-between px-4 font-mono select-none items-center shadow-md backdrop-blur-sm border-b border-base-content/10">
                 <div className="flex items-center gap-4">
                     <button
@@ -1048,6 +1185,15 @@ export function SessionView({
                             <span className={headerButtonLabelClass}>Start Dev Server</span>
                         </button>
                     )}
+
+                    <button
+                        className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
+                        onClick={() => setIsPreviewVisible((previous) => !previous)}
+                        title={isPreviewVisible ? 'Hide preview panel' : 'Show preview panel'}
+                    >
+                        {isDetectingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Globe className="w-3 h-3" />}
+                        <span className={headerButtonLabelClass}>{isPreviewVisible ? 'Hide Preview' : 'Show Preview'}</span>
+                    </button>
 
                     <button
                         className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
@@ -1161,18 +1307,71 @@ export function SessionView({
                 </div>
             </div>
 
-            {/* coding agent iframe */}
-            <iframe
-                ref={iframeRef}
-                src="/terminal"
-                className={`flex-1 w-full border-none dark:invert dark:brightness-90 ${isResizing ? 'pointer-events-none' : ''}`}
-                allow="clipboard-read; clipboard-write"
-                onLoad={handleIframeLoad}
-            />
+            <div ref={splitContainerRef} className="flex min-h-0 flex-1 w-full">
+                <div
+                    className="h-full min-w-0"
+                    style={{ width: isPreviewVisible ? `${agentPaneRatio * 100}%` : '100%' }}
+                >
+                    <iframe
+                        ref={iframeRef}
+                        src="/terminal"
+                        className={`h-full w-full border-none dark:invert dark:brightness-90 ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
+                        allow="clipboard-read; clipboard-write"
+                        onLoad={handleIframeLoad}
+                    />
+                </div>
+
+                {isPreviewVisible && (
+                    <>
+                        <div
+                            className="relative h-full w-2 shrink-0 cursor-col-resize bg-base-300/40 hover:bg-base-content/20"
+                            onMouseDown={startSplitResize}
+                            role="separator"
+                            aria-orientation="vertical"
+                            aria-label="Resize preview panel"
+                            title="Drag to resize preview panel"
+                        >
+                            <div className="absolute left-1/2 top-1/2 h-12 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-base-content/30" />
+                        </div>
+                        <div className="flex h-full min-w-0 flex-1 flex-col border-l border-base-content/10 bg-base-200/50">
+                            <form
+                                className="flex items-center gap-2 border-b border-base-content/10 bg-base-200 px-3 py-2"
+                                onSubmit={handlePreviewSubmit}
+                            >
+                                <input
+                                    type="text"
+                                    className="input input-xs input-bordered w-full font-mono"
+                                    value={previewInputUrl}
+                                    onChange={(event) => setPreviewInputUrl(event.target.value)}
+                                    placeholder="http://127.0.0.1:3000"
+                                    spellCheck={false}
+                                />
+                                <button className="btn btn-xs" type="submit">
+                                    Go
+                                </button>
+                            </form>
+                            <div className="min-h-0 flex-1">
+                                {previewUrl ? (
+                                    <iframe
+                                        src={previewUrl}
+                                        className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
+                                        title="Dev server preview"
+                                        sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-downloads"
+                                    />
+                                ) : (
+                                    <div className="flex h-full items-center justify-center px-6 text-center text-xs opacity-70">
+                                        Run the dev server, or enter a URL above to load a preview.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                )}
+            </div>
 
             {/* floating terminal panel */}
             <div
-                className={`absolute bottom-4 right-4 z-30 overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm ${isResizing ? '' : 'transition-all'}`}
+                className={`absolute bottom-4 right-4 z-30 overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm ${(isResizing || isSplitResizing) ? '' : 'transition-all'}`}
                 style={{
                     width: terminalSize.width,
                     height: isTerminalMinimized ? 40 : terminalSize.height,
@@ -1200,7 +1399,7 @@ export function SessionView({
                     <iframe
                         ref={terminalRef}
                         src="/terminal"
-                        className={`h-full w-full border-none dark:invert dark:brightness-90 ${isResizing ? 'pointer-events-none' : ''}`}
+                        className={`h-full w-full border-none dark:invert dark:brightness-90 ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
                         allow="clipboard-read; clipboard-write"
                         onLoad={handleTerminalLoad}
                     />
