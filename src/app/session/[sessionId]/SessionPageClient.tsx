@@ -29,6 +29,13 @@ export default function SessionPage() {
     const [isResume, setIsResume] = useState<boolean>(true);
 
     useEffect(() => {
+        document.documentElement.classList.add('session-page');
+        return () => {
+            document.documentElement.classList.remove('session-page');
+        };
+    }, []);
+
+    useEffect(() => {
         if (!sessionId) return;
 
         const loadSession = async () => {
