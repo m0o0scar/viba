@@ -4,6 +4,7 @@ import { createProxyMiddleware, responseInterceptor } from 'http-proxy-middlewar
 
 const PROXY_HOST = '127.0.0.1';
 const PICKER_SCRIPT_PATH = '/__viba_preview_picker.js';
+const PICKER_SCRIPT_VERSION = '2';
 
 const PICKER_CLIENT_SCRIPT = String.raw`(() => {
   if (window.__vibaPreviewPickerInstalled) {
@@ -93,14 +94,76 @@ const PICKER_CLIENT_SCRIPT = String.raw`(() => {
     return parts.join(' > ');
   };
 
-  const getUserComponentStack = (element) => {
-    const fiberKey = Object.keys(element).find((key) => key.startsWith('__reactFiber$'));
+  const getReactFiberNode = (element) => {
+    let current = element;
+    while (current) {
+      const keys = Object.getOwnPropertyNames(current);
+      for (const key of keys) {
+        if (key.startsWith('__reactFiber$') || key.startsWith('__reactInternalInstance$')) {
+          const node = current[key];
+          if (node) {
+            return node;
+          }
+        }
+      }
+      current = current.parentElement;
+    }
 
-    if (!fiberKey) {
+    return null;
+  };
+
+  const readComponentName = (candidate) => {
+    if (!candidate) {
+      return null;
+    }
+
+    if (typeof candidate === 'function') {
+      return candidate.displayName || candidate.name || null;
+    }
+
+    if (typeof candidate !== 'object') {
+      return null;
+    }
+
+    if (typeof candidate.displayName === 'string' && candidate.displayName) {
+      return candidate.displayName;
+    }
+
+    if (typeof candidate.render === 'function') {
+      return candidate.render.displayName || candidate.render.name || null;
+    }
+
+    if (typeof candidate.type === 'function') {
+      return candidate.type.displayName || candidate.type.name || null;
+    }
+
+    return null;
+  };
+
+  const normalizeComponentName = (name) => {
+    if (!name) {
+      return name;
+    }
+
+    const memoMatch = name.match(/^Memo\((.+)\)$/);
+    if (memoMatch && memoMatch[1]) {
+      return memoMatch[1];
+    }
+
+    const forwardRefMatch = name.match(/^ForwardRef\((.+)\)$/);
+    if (forwardRefMatch && forwardRefMatch[1]) {
+      return forwardRefMatch[1];
+    }
+
+    return name;
+  };
+
+  const getUserComponentStack = (element) => {
+    let fiberNode = getReactFiberNode(element);
+    if (!fiberNode) {
       return [];
     }
 
-    let fiberNode = element[fiberKey];
     const userStack = [];
 
     const internalNames = new Set([
@@ -112,16 +175,13 @@ const PICKER_CLIENT_SCRIPT = String.raw`(() => {
     ]);
 
     while (fiberNode) {
-      let componentName = null;
-
-      if (typeof fiberNode.elementType === 'function' && fiberNode.elementType.name) {
-        componentName = fiberNode.elementType.name;
-      } else if (typeof fiberNode.type === 'function' && fiberNode.type.name) {
-        componentName = fiberNode.type.name;
-      } else if (typeof fiberNode.elementType === 'string') {
+      if (typeof fiberNode.elementType === 'string' || typeof fiberNode.type === 'string') {
         fiberNode = fiberNode.return;
         continue;
       }
+
+      let componentName = readComponentName(fiberNode.elementType) || readComponentName(fiberNode.type);
+      componentName = normalizeComponentName(componentName);
 
       if (!componentName) {
         fiberNode = fiberNode.return;
@@ -315,7 +375,7 @@ const injectPickerScript = (html: string): string => {
     return html;
   }
 
-  const scriptTag = `<script src="${PICKER_SCRIPT_PATH}"></script>`;
+  const scriptTag = `<script src="${PICKER_SCRIPT_PATH}?v=${PICKER_SCRIPT_VERSION}"></script>`;
   if (/<\/body>/i.test(html)) {
     return html.replace(/<\/body>/i, `${scriptTag}</body>`);
   }

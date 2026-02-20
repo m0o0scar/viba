@@ -990,7 +990,12 @@ export function SessionView({
             }
 
             if (payload.type === 'viba:preview-element-selected') {
-                console.log('Preview selected element:', payload.element);
+                const selectedElement = (payload.element && typeof payload.element === 'object')
+                    ? payload.element as { reactComponentStack?: unknown[] }
+                    : null;
+
+                console.log('Preview selected element:', selectedElement);
+                console.log('Preview selected reactComponentStack:', selectedElement?.reactComponentStack ?? []);
                 setIsPreviewPickerActive(false);
                 setFeedback('Element selected. See browser console for details.');
             }
