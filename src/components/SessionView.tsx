@@ -42,6 +42,13 @@ type TerminalWindow = Window & {
 type CleanupPhase = 'idle' | 'error';
 type TerminalLinkProvider = {
     _handler?: (event: MouseEvent | undefined, url: string) => void;
+    provideLinks?: (line: number, callback: (links: TerminalLink[] | undefined) => void) => void;
+};
+
+type TerminalLink = {
+    text: string;
+    activate?: (event: MouseEvent | undefined, text: string) => void;
+    [key: string]: unknown;
 };
 
 type TerminalLinkHandler = {
@@ -747,20 +754,48 @@ export function SessionView({
         if (providers instanceof Map) {
             for (const provider of providers.values()) {
                 if (!provider || typeof provider !== 'object') continue;
-                if (typeof provider._handler !== 'function') continue;
+                if (typeof provider._handler === 'function') {
+                    const originalHandler = provider._handler;
+                    provider._handler = (event: MouseEvent | undefined, url: string) => {
+                        const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
+                        const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
+                        if (!handled) {
+                            originalHandler(event, url);
+                        }
+                    };
 
-                const originalHandler = provider._handler;
-                provider._handler = (event: MouseEvent | undefined, url: string) => {
-                    const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
-                    const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
-                    if (!handled) {
-                        originalHandler(event, url);
-                    }
-                };
+                    restorers.push(() => {
+                        provider._handler = originalHandler;
+                    });
+                }
 
-                restorers.push(() => {
-                    provider._handler = originalHandler;
-                });
+                if (typeof provider.provideLinks === 'function') {
+                    const originalProvideLinks = provider.provideLinks.bind(provider);
+                    provider.provideLinks = (line: number, callback: (links: TerminalLink[] | undefined) => void) => {
+                        originalProvideLinks(line, (links: TerminalLink[] | undefined) => {
+                            if (Array.isArray(links)) {
+                                for (const link of links) {
+                                    if (!link || typeof link !== 'object') continue;
+                                    if (typeof link.activate !== 'function') continue;
+
+                                    const originalActivate = link.activate.bind(link);
+                                    link.activate = (event: MouseEvent | undefined, text: string) => {
+                                        const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
+                                        const handled = handleTerminalLinkOpen(text, shouldOpenInNewTab);
+                                        if (!handled) {
+                                            originalActivate(event, text);
+                                        }
+                                    };
+                                }
+                            }
+                            callback(links);
+                        });
+                    };
+
+                    restorers.push(() => {
+                        provider.provideLinks = originalProvideLinks;
+                    });
+                }
             }
         }
 
