@@ -81,6 +81,106 @@ const normalizePreviewUrl = (rawValue: string): string | null => {
     return `http://${trimmed}`;
 };
 
+type PreviewComponentStackEntry = {
+    name?: unknown;
+    source?: {
+        fileName?: unknown;
+    } | null;
+};
+
+const isWindowsAbsolutePath = (value: string): boolean => /^[a-zA-Z]:[\\/]/.test(value);
+
+const normalizePickerSourceFileName = (value: string): string => {
+    let normalized = value.trim();
+    if (!normalized) return '';
+
+    normalized = normalized.replace(/[#?].*$/, '');
+
+    if (/^file:\/\//i.test(normalized)) {
+        try {
+            const asUrl = new URL(normalized);
+            normalized = decodeURIComponent(asUrl.pathname);
+        } catch {
+            // Keep original value when URL parsing fails
+        }
+    } else if (/^https?:\/\//i.test(normalized)) {
+        try {
+            const asUrl = new URL(normalized);
+            normalized = decodeURIComponent(asUrl.pathname);
+        } catch {
+            // Keep original value when URL parsing fails
+        }
+    }
+
+    normalized = normalized
+        .replace(/^webpack(?:-internal)?:\/\/\/?/, '')
+        .replace(/^rsc:\/\//, '')
+        .replace(/^\(.*?\)\//, '')
+        .replace(/^\/\.\//, '/')
+        .replace(/^\.\//, '')
+        .replace(/\\/g, '/');
+
+    return normalized.trim();
+};
+
+const joinPath = (base: string, relative: string): string => {
+    const normalizedBase = base.replace(/\\/g, '/').replace(/\/+$/, '');
+    const normalizedRelative = relative.replace(/\\/g, '/').replace(/^\/+/, '');
+    return `${normalizedBase}/${normalizedRelative}`;
+};
+
+const resolveComponentSourcePath = (rawSourceFileName: string, workspaceRoot: string): string | null => {
+    const normalizedWorkspaceRoot = workspaceRoot.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!normalizedWorkspaceRoot) return null;
+
+    const normalizedSource = normalizePickerSourceFileName(rawSourceFileName);
+    if (!normalizedSource) return null;
+
+    if (normalizedSource.startsWith('/') || isWindowsAbsolutePath(normalizedSource)) {
+        return normalizedSource;
+    }
+
+    const relativeCandidates = new Set<string>();
+    relativeCandidates.add(normalizedSource.replace(/^\.\/+/, ''));
+
+    const srcIndex = normalizedSource.indexOf('/src/');
+    if (srcIndex >= 0) {
+        relativeCandidates.add(normalizedSource.slice(srcIndex + 1));
+    }
+
+    if (normalizedSource.startsWith('src/')) {
+        relativeCandidates.add(normalizedSource);
+    }
+
+    for (const relative of relativeCandidates) {
+        if (!relative) continue;
+        return joinPath(normalizedWorkspaceRoot, relative);
+    }
+
+    return null;
+};
+
+const buildComponentReferenceText = (reactStack: unknown[], workspaceRoot: string): string | null => {
+    for (const entry of reactStack) {
+        if (!entry || typeof entry !== 'object') continue;
+
+        const componentEntry = entry as PreviewComponentStackEntry;
+        const componentName = typeof componentEntry.name === 'string' ? componentEntry.name.trim() : '';
+        if (!componentName) continue;
+
+        const sourceFileName = typeof componentEntry.source?.fileName === 'string'
+            ? componentEntry.source.fileName.trim()
+            : '';
+        const sourcePath = sourceFileName ? resolveComponentSourcePath(sourceFileName, workspaceRoot) : null;
+
+        if (sourcePath) {
+            return `${componentName} (${sourcePath})`;
+        }
+    }
+
+    return null;
+};
+
 export interface SessionViewProps {
     repo: string;
     worktree: string;
@@ -1016,12 +1116,16 @@ export function SessionView({
                 const reactStack = Array.isArray(selectedElement?.reactComponentStack)
                     ? selectedElement.reactComponentStack
                     : [];
+                const componentReference = buildComponentReferenceText(reactStack, worktree || repo);
                 const firstReactComponent = reactStack[0] && typeof reactStack[0] === 'object'
                     ? (reactStack[0] as { name?: unknown }).name
                     : undefined;
-                const identifier = typeof firstReactComponent === 'string' && firstReactComponent.trim().length > 0
+                const fallbackName = typeof firstReactComponent === 'string' && firstReactComponent.trim().length > 0
                     ? firstReactComponent.trim()
-                    : (typeof selectedElement?.selector === 'string' ? selectedElement.selector : '');
+                    : '';
+                const identifier = componentReference
+                    || fallbackName
+                    || (typeof selectedElement?.selector === 'string' ? selectedElement.selector : '');
 
                 console.log('Preview selected element:', selectedElement);
                 console.log('Preview selected reactComponentStack:', reactStack);
@@ -1046,7 +1150,7 @@ export function SessionView({
         return () => {
             window.removeEventListener('message', handlePreviewMessage);
         };
-    }, [pasteIntoAgentIframe]);
+    }, [pasteIntoAgentIframe, repo, worktree]);
 
     useEffect(() => {
         setIsPreviewPickerActive(false);
