@@ -81,6 +81,119 @@ const normalizePreviewUrl = (rawValue: string): string | null => {
     return `http://${trimmed}`;
 };
 
+type PreviewComponentStackEntry = {
+    name?: unknown;
+    source?: {
+        fileName?: unknown;
+    } | null;
+};
+
+type ResolveComponentSourceResponse = {
+    sourcePath?: string;
+    error?: string;
+};
+
+const isWindowsAbsolutePath = (value: string): boolean => /^[a-zA-Z]:[\\/]/.test(value);
+
+const normalizePickerSourceFileName = (value: string): string => {
+    let normalized = value.trim();
+    if (!normalized) return '';
+
+    normalized = normalized.replace(/[#?].*$/, '');
+
+    if (/^file:\/\//i.test(normalized)) {
+        try {
+            const asUrl = new URL(normalized);
+            normalized = decodeURIComponent(asUrl.pathname);
+        } catch {
+            // Keep original value when URL parsing fails
+        }
+    } else if (/^https?:\/\//i.test(normalized)) {
+        try {
+            const asUrl = new URL(normalized);
+            normalized = decodeURIComponent(asUrl.pathname);
+        } catch {
+            // Keep original value when URL parsing fails
+        }
+    }
+
+    normalized = normalized
+        .replace(/^webpack(?:-internal)?:\/\/\/?/, '')
+        .replace(/^rsc:\/\//, '')
+        .replace(/^\(.*?\)\//, '')
+        .replace(/^\/\.\//, '/')
+        .replace(/^\.\//, '')
+        .replace(/\\/g, '/');
+
+    return normalized.trim();
+};
+
+const joinPath = (base: string, relative: string): string => {
+    const normalizedBase = base.replace(/\\/g, '/').replace(/\/+$/, '');
+    const normalizedRelative = relative.replace(/\\/g, '/').replace(/^\/+/, '');
+    return `${normalizedBase}/${normalizedRelative}`;
+};
+
+const resolveComponentSourcePath = (rawSourceFileName: string, workspaceRoot: string): string | null => {
+    const normalizedWorkspaceRoot = workspaceRoot.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!normalizedWorkspaceRoot) return null;
+
+    const normalizedSource = normalizePickerSourceFileName(rawSourceFileName);
+    if (!normalizedSource) return null;
+
+    if (normalizedSource.startsWith('/') || isWindowsAbsolutePath(normalizedSource)) {
+        return normalizedSource;
+    }
+
+    const relativeCandidates = new Set<string>();
+    relativeCandidates.add(normalizedSource.replace(/^\.\/+/, ''));
+
+    const srcIndex = normalizedSource.indexOf('/src/');
+    if (srcIndex >= 0) {
+        relativeCandidates.add(normalizedSource.slice(srcIndex + 1));
+    }
+
+    if (normalizedSource.startsWith('src/')) {
+        relativeCandidates.add(normalizedSource);
+    }
+
+    for (const relative of relativeCandidates) {
+        if (!relative) continue;
+        return joinPath(normalizedWorkspaceRoot, relative);
+    }
+
+    return null;
+};
+
+const buildComponentReferenceText = (reactStack: unknown[], workspaceRoot: string): string | null => {
+    for (const entry of reactStack) {
+        if (!entry || typeof entry !== 'object') continue;
+
+        const componentEntry = entry as PreviewComponentStackEntry;
+        const componentName = typeof componentEntry.name === 'string' ? componentEntry.name.trim() : '';
+        if (!componentName) continue;
+
+        const sourceFileName = typeof componentEntry.source?.fileName === 'string'
+            ? componentEntry.source.fileName.trim()
+            : '';
+        const sourcePath = sourceFileName ? resolveComponentSourcePath(sourceFileName, workspaceRoot) : null;
+
+        if (sourcePath) {
+            return `${componentName} (${sourcePath})`;
+        }
+    }
+
+    return null;
+};
+
+const normalizeComponentLookupName = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    const match = trimmed.match(/[A-Za-z_$][\w$]*/);
+    return match ? match[0] : '';
+};
+
 export interface SessionViewProps {
     repo: string;
     worktree: string;
@@ -529,6 +642,52 @@ export function SessionView({
         );
         setIsInsertingFilePaths(false);
     }, [pasteIntoAgentIframe]);
+
+    const resolveComponentSourcePathByName = useCallback(async (componentName: string): Promise<string | null> => {
+        const normalizedName = normalizeComponentLookupName(componentName);
+        if (!normalizedName) return null;
+
+        const roots = Array.from(
+            new Set(
+                [repo, worktree]
+                    .map((root) => (root || '').trim())
+                    .filter(Boolean)
+            )
+        );
+        if (roots.length === 0) return null;
+
+        for (const workspaceRoot of roots) {
+            try {
+                const response = await fetch('/api/component-source/resolve', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        componentName: normalizedName,
+                        workspaceRoot,
+                    }),
+                });
+
+                const payload = await response.json().catch(() => null) as ResolveComponentSourceResponse | null;
+                if (!response.ok) {
+                    console.warn('Component source resolve miss', {
+                        componentName: normalizedName,
+                        workspaceRoot,
+                        error: payload?.error || response.statusText,
+                    });
+                    continue;
+                }
+
+                const sourcePath = typeof payload?.sourcePath === 'string' ? payload.sourcePath.trim() : '';
+                if (sourcePath) return sourcePath;
+            } catch (error) {
+                console.error('Failed to resolve component source path:', error);
+            }
+        }
+
+        return null;
+    }, [repo, worktree]);
 
     const loadBaseBranchOptions = useCallback(async () => {
         if (!sessionName) return;
@@ -1016,29 +1175,67 @@ export function SessionView({
                 const reactStack = Array.isArray(selectedElement?.reactComponentStack)
                     ? selectedElement.reactComponentStack
                     : [];
+                const componentReference = buildComponentReferenceText(reactStack, worktree || repo);
                 const firstReactComponent = reactStack[0] && typeof reactStack[0] === 'object'
                     ? (reactStack[0] as { name?: unknown }).name
                     : undefined;
-                const identifier = typeof firstReactComponent === 'string' && firstReactComponent.trim().length > 0
+                const fallbackName = typeof firstReactComponent === 'string' && firstReactComponent.trim().length > 0
                     ? firstReactComponent.trim()
-                    : (typeof selectedElement?.selector === 'string' ? selectedElement.selector : '');
+                    : '';
+                const stackComponentNames = Array.from(
+                    new Set(
+                        reactStack
+                            .map((entry) => {
+                                if (!entry || typeof entry !== 'object') return '';
+                                const name = (entry as { name?: unknown }).name;
+                                return typeof name === 'string' ? name.trim() : '';
+                            })
+                            .filter(Boolean)
+                    )
+                );
+                const identifier = componentReference
+                    || fallbackName
+                    || (typeof selectedElement?.selector === 'string' ? selectedElement.selector : '');
 
                 console.log('Preview selected element:', selectedElement);
                 console.log('Preview selected reactComponentStack:', reactStack);
                 console.log('Preview selected identifier:', identifier);
                 setIsPreviewPickerActive(false);
 
-                if (identifier) {
-                    void pasteIntoAgentIframe(`${identifier} `).then((inserted) => {
-                        setFeedback(
-                            inserted
-                                ? `Element identifier sent to agent: ${identifier}`
-                                : 'Element selected, but failed to send identifier to agent input'
-                        );
-                    });
-                } else {
+                if (!identifier) {
                     setFeedback('Element selected. No identifier was resolved.');
+                    return;
                 }
+
+                void (async () => {
+                    let finalIdentifier = componentReference || '';
+
+                    // Fallback: when React stack has no source metadata, resolve the file path by component name(s).
+                    if (!finalIdentifier && stackComponentNames.length > 0) {
+                        for (const componentName of stackComponentNames) {
+                            const resolvedPath = await resolveComponentSourcePathByName(componentName);
+                            if (resolvedPath) {
+                                finalIdentifier = `${componentName} (${resolvedPath})`;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!finalIdentifier) {
+                        if (stackComponentNames.length > 0) {
+                            setFeedback('Element selected, but source file path could not be resolved for the component');
+                            return;
+                        }
+                        finalIdentifier = identifier;
+                    }
+
+                    const inserted = await pasteIntoAgentIframe(`${finalIdentifier} `);
+                    setFeedback(
+                        inserted
+                            ? `Element identifier sent to agent: ${finalIdentifier}`
+                            : 'Element selected, but failed to send identifier to agent input'
+                    );
+                })();
             }
         };
 
@@ -1046,7 +1243,7 @@ export function SessionView({
         return () => {
             window.removeEventListener('message', handlePreviewMessage);
         };
-    }, [pasteIntoAgentIframe]);
+    }, [pasteIntoAgentIframe, repo, resolveComponentSourcePathByName, worktree]);
 
     useEffect(() => {
         setIsPreviewPickerActive(false);
