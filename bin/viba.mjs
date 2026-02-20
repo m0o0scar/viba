@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -13,6 +13,165 @@ const APP_ROOT = path.resolve(__dirname, "..");
 const require = createRequire(import.meta.url);
 const NEXT_BIN = require.resolve("next/dist/bin/next");
 const DEFAULT_PORT = 3200;
+
+function isCommandAvailable(command) {
+  const probe = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(probe, [command], {
+    stdio: "ignore",
+    env: process.env,
+  });
+  return result.status === 0;
+}
+
+function runCommand(command, args) {
+  const result = spawnSync(command, args, {
+    cwd: APP_ROOT,
+    env: process.env,
+    stdio: "inherit",
+  });
+  return result.status === 0;
+}
+
+function getInstallStrategies() {
+  if (process.platform === "darwin") {
+    return [
+      {
+        label: "Homebrew",
+        requiredCommands: ["brew"],
+        command: "brew",
+        args: ["install", "ttyd"],
+      },
+      {
+        label: "MacPorts",
+        requiredCommands: ["sudo", "port"],
+        command: "sudo",
+        args: ["port", "install", "ttyd"],
+      },
+    ];
+  }
+
+  if (process.platform === "linux") {
+    return [
+      {
+        label: "apt-get",
+        requiredCommands: ["apt-get"],
+        command: "apt-get",
+        args: ["install", "-y", "ttyd"],
+      },
+      {
+        label: "sudo apt-get",
+        requiredCommands: ["sudo", "apt-get"],
+        command: "sudo",
+        args: ["apt-get", "install", "-y", "ttyd"],
+      },
+      {
+        label: "dnf",
+        requiredCommands: ["dnf"],
+        command: "dnf",
+        args: ["install", "-y", "ttyd"],
+      },
+      {
+        label: "sudo dnf",
+        requiredCommands: ["sudo", "dnf"],
+        command: "sudo",
+        args: ["dnf", "install", "-y", "ttyd"],
+      },
+      {
+        label: "yum",
+        requiredCommands: ["yum"],
+        command: "yum",
+        args: ["install", "-y", "ttyd"],
+      },
+      {
+        label: "sudo yum",
+        requiredCommands: ["sudo", "yum"],
+        command: "sudo",
+        args: ["yum", "install", "-y", "ttyd"],
+      },
+      {
+        label: "pacman",
+        requiredCommands: ["pacman"],
+        command: "pacman",
+        args: ["-S", "--noconfirm", "ttyd"],
+      },
+      {
+        label: "sudo pacman",
+        requiredCommands: ["sudo", "pacman"],
+        command: "sudo",
+        args: ["pacman", "-S", "--noconfirm", "ttyd"],
+      },
+      {
+        label: "zypper",
+        requiredCommands: ["zypper"],
+        command: "zypper",
+        args: ["--non-interactive", "install", "ttyd"],
+      },
+      {
+        label: "sudo zypper",
+        requiredCommands: ["sudo", "zypper"],
+        command: "sudo",
+        args: ["zypper", "--non-interactive", "install", "ttyd"],
+      },
+    ];
+  }
+
+  if (process.platform === "win32") {
+    return [
+      {
+        label: "winget",
+        requiredCommands: ["winget"],
+        command: "winget",
+        args: ["install", "tsl0922.ttyd"],
+      },
+      {
+        label: "scoop",
+        requiredCommands: ["scoop"],
+        command: "scoop",
+        args: ["install", "ttyd"],
+      },
+    ];
+  }
+
+  return [];
+}
+
+function ensureTtydInstalled() {
+  if (isCommandAvailable("ttyd")) {
+    return;
+  }
+
+  console.log("ttyd is not installed. Attempting automatic installation...");
+
+  const installStrategies = getInstallStrategies();
+  const availableManagers = installStrategies
+    .map((strategy) => strategy.label)
+    .join(", ");
+
+  let attempted = false;
+
+  for (const strategy of installStrategies) {
+    const canUseStrategy = strategy.requiredCommands.every((command) => isCommandAvailable(command));
+    if (!canUseStrategy) {
+      continue;
+    }
+
+    attempted = true;
+    console.log(`Trying to install ttyd via ${strategy.label}...`);
+
+    if (runCommand(strategy.command, strategy.args) && isCommandAvailable("ttyd")) {
+      console.log("ttyd installed successfully.");
+      return;
+    }
+  }
+
+  if (!attempted) {
+    throw new Error(
+      `ttyd is required, but no supported package manager was found on this machine. Checked: ${availableManagers || "none"}. Install ttyd manually and restart.`,
+    );
+  }
+
+  throw new Error("ttyd is required, but automatic installation failed. Install ttyd manually and restart.");
+}
 
 function printHelp() {
   console.log(`Usage: viba-cli [options]
@@ -120,6 +279,8 @@ function ensureBuildExists() {
 async function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
+    ensureTtydInstalled();
+
     const envPort = Number.parseInt(process.env.PORT || "", 10);
     const preferredPort =
       options.port ??

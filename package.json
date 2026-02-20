@@ -18,10 +18,10 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "npx gfport 3200 -- next dev --webpack -p {PORT}",
+    "dev": "npx gfport 3200 -- node ./bin/viba.mjs --dev --port {PORT}",
     "build": "next build",
     "prepack": "rm -rf .next && npm run build",
-    "start": "next start -p 3200",
+    "start": "node ./bin/viba.mjs",
     "lint": "eslint",
     "cli": "node ./bin/viba.mjs",
     "pack:preview": "npm pack --dry-run"
