@@ -63,6 +63,9 @@ const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
+const TERMINAL_HEADER_HEIGHT = 40;
+const TERMINAL_PANEL_RIGHT_GAP = 16;
+const TERMINAL_MINIMIZED_VISIBLE_WIDTH = 40;
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
 
@@ -1306,6 +1309,9 @@ export function SessionView({
         ...(currentBaseBranch ? [currentBaseBranch] : []),
         ...baseBranchOptions
     ])).filter((branchOption) => branchOption !== branch || branchOption === currentBaseBranch);
+    const terminalPanelRight = isTerminalMinimized
+        ? `calc(${TERMINAL_MINIMIZED_VISIBLE_WIDTH}px - min(${terminalSize.width}px, calc(100vw - 2rem)))`
+        : TERMINAL_PANEL_RIGHT_GAP;
 
     return (
         <div className={`flex flex-col h-screen w-full overflow-hidden bg-base-100 ${(isResizing || isSplitResizing) ? 'select-none' : ''}`}>
@@ -1575,31 +1581,36 @@ export function SessionView({
 
             {/* floating terminal panel */}
             <div
-                className={`absolute right-4 z-30 overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm ${(isResizing || isSplitResizing) ? '' : 'transition-all'}`}
+                className={`absolute z-30 overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm ${(isResizing || isSplitResizing) ? '' : 'transition-all'}`}
                 style={{
                     bottom: 80,
+                    right: terminalPanelRight,
                     width: terminalSize.width,
-                    height: isTerminalMinimized ? 40 : terminalSize.height,
+                    height: isTerminalMinimized ? TERMINAL_HEADER_HEIGHT : terminalSize.height,
                     maxWidth: 'calc(100vw - 2rem)',
                     maxHeight: 'calc(100vh - 2rem)'
                 }}
             >
-                <div
-                    className={`absolute left-0 top-0 h-10 w-10 z-50 flex items-center justify-center text-base-content/30 hover:text-base-content/60 ${isTerminalMinimized ? 'pointer-events-none opacity-50' : 'cursor-nwse-resize'}`}
-                    onMouseDown={!isTerminalMinimized ? startResize : undefined}
-                    title={isTerminalMinimized ? undefined : "Drag to resize"}
-                >
-                    <Grip size={14} />
-                </div>
                 <button
-                    className="flex h-10 w-full items-center justify-between px-3 pl-10 text-xs font-mono hover:bg-base-content/10"
-                    onClick={() => setIsTerminalMinimized((prev) => !prev)}
-                    title={isTerminalMinimized ? 'Expand terminal' : 'Minimize terminal'}
+                    className={`absolute left-0 top-0 z-50 flex h-10 w-10 items-center justify-center text-base-content/30 hover:text-base-content/60 ${isTerminalMinimized ? 'cursor-pointer' : 'cursor-nwse-resize'}`}
+                    onMouseDown={!isTerminalMinimized ? startResize : undefined}
+                    onClick={isTerminalMinimized ? () => setIsTerminalMinimized(false) : undefined}
+                    title={isTerminalMinimized ? 'Expand terminal' : "Drag to resize"}
                     type="button"
                 >
-                    <span>Terminal</span>
-                    <span className="opacity-70">{isTerminalMinimized ? 'Show' : 'Hide'}</span>
+                    <Grip size={14} />
                 </button>
+                {!isTerminalMinimized && (
+                    <button
+                        className="flex h-10 w-full items-center justify-between px-3 pl-10 text-xs font-mono hover:bg-base-content/10"
+                        onClick={() => setIsTerminalMinimized((prev) => !prev)}
+                        title="Minimize terminal"
+                        type="button"
+                    >
+                        <span>Terminal</span>
+                        <span className="opacity-70">Hide</span>
+                    </button>
+                )}
                 <div className={isTerminalMinimized ? 'h-0 overflow-hidden' : 'h-[calc(100%-2.5rem)]'}>
                     <iframe
                         ref={terminalRef}
