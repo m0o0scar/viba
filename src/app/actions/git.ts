@@ -235,7 +235,7 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
   }
 
   try {
-    const { spawn } = await import('child_process');
+    const { spawn, spawnSync } = await import('child_process');
 
     const env: any = { ...process.env };
     // Clean up environment variables to prevent conflicts
@@ -245,8 +245,24 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
     delete env.PORT;
     delete env.NODE_ENV;
 
-    const shell = os.platform() === 'win32' ? 'powershell' : 'bash';
+    const isWindows = os.platform() === 'win32';
+    const shell = isWindows ? 'powershell' : 'bash';
     const workingDir = os.homedir();
+
+    let command = shell;
+    let commandArgs: string[] = [];
+
+    if (!isWindows) {
+      try {
+        const tmuxCheck = spawnSync('tmux', ['-V'], { stdio: 'ignore' });
+        if (tmuxCheck.status === 0) {
+          command = 'tmux';
+          commandArgs = ['new', '-A', '-s', 'viba-terminal'];
+        }
+      } catch {
+        // tmux not found, fallback to shell
+      }
+    }
 
     const child = spawn('ttyd', [
       '-p', '7681',
@@ -256,7 +272,8 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
       '-t', 'fontWeight=300',
       '-t', 'fontWeightBold=500',
       '-w', workingDir,
-      '-W', shell
+      '-W', command,
+      ...commandArgs
     ], {
       stdio: 'ignore',
       detached: false,
