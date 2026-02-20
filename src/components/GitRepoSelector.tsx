@@ -1,13 +1,25 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2, Play } from 'lucide-react';
 import FileBrowser from './FileBrowser';
-import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, getStartupScript, getDefaultDevServerScript, listRepoFiles, saveAttachments } from '@/app/actions/git';
+import {
+  checkIsGitRepo,
+  getBranches,
+  checkoutBranch,
+  GitBranch,
+  startTtydProcess,
+  getStartupScript,
+  getDefaultDevServerScript,
+  listRepoFiles,
+  saveAttachments,
+  checkAgentCliInstalled,
+  installAgentCli,
+  SupportedAgentCli,
+} from '@/app/actions/git';
 import { copySessionAttachments, createSession, deleteSession, getSessionPrefillContext, listSessions, saveSessionLaunchContext, SessionMetadata } from '@/app/actions/session';
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
 import { useRouter } from 'next/navigation';
-import { Play } from 'lucide-react'; // Added Play icon for resume
 import { getBaseName } from '@/lib/path';
 import { notifySessionsUpdated, SESSIONS_UPDATED_EVENT, SESSIONS_UPDATED_STORAGE_KEY } from '@/lib/session-updates';
 import Image from 'next/image';
@@ -30,6 +42,22 @@ type AgentProvider = {
 const agentProvidersData = agentProvidersDataRaw as unknown as AgentProvider[];
 const AUTO_COMMIT_INSTRUCTION =
   'After each round of conversation, if work is completed and files changed, commit all changes with an appropriate git commit message. The commit message must include a clear title and a detailed body describing what changed and why, not just a title. No need to confirm when creating commits.';
+const AGENT_LOGIN_COMMANDS: Record<SupportedAgentCli, string> = {
+  gemini: 'gemini',
+  codex: 'codex',
+  agent: 'agent',
+};
+const AGENT_CLI_LABELS: Record<SupportedAgentCli, string> = {
+  gemini: 'Gemini CLI',
+  codex: 'Codex CLI',
+  agent: 'Cursor Agent CLI',
+};
+
+type TerminalWindow = Window & {
+  term?: {
+    paste: (text: string) => void;
+  };
+};
 
 type GitRepoSelectorProps = {
   mode?: 'home' | 'new';
@@ -68,6 +96,14 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
   const [deletingSessionName, setDeletingSessionName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isInstallingAgentCli, setIsInstallingAgentCli] = useState(false);
+  const [installingAgentCli, setInstallingAgentCli] = useState<SupportedAgentCli | null>(null);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [loginAgentCli, setLoginAgentCli] = useState<SupportedAgentCli | null>(null);
+  const [loginCommand, setLoginCommand] = useState('');
+  const [loginCommandInjected, setLoginCommandInjected] = useState(false);
+  const [loginModalError, setLoginModalError] = useState<string | null>(null);
+  const loginTerminalRef = useRef<HTMLIFrameElement>(null);
 
   const collapsedSessionSetupLabel = selectedProvider && selectedModel
     ? `Show Session Setup (${selectedProvider.name} / ${selectedModel})`
@@ -91,6 +127,11 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
       console.error('Failed to refresh sessions', e);
     }
   }, [selectedRepo]);
+
+  const toSupportedAgentCli = useCallback((value: string | null | undefined): SupportedAgentCli | null => {
+    if (value === 'gemini' || value === 'codex' || value === 'agent') return value;
+    return null;
+  }, []);
 
   // Load config and all sessions on mount
   useEffect(() => {
@@ -633,11 +674,93 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     }
   };
 
-  const handleStartSession = async () => {
+  const handleLoginTerminalLoad = useCallback(() => {
+    if (!isLoginModalOpen || !loginCommand || !loginTerminalRef.current) {
+      return;
+    }
+
+    const iframe = loginTerminalRef.current;
+    const checkAndInject = (attempts = 0) => {
+      if (attempts > 40) {
+        setLoginModalError('Timed out while waiting for terminal to initialize.');
+        return;
+      }
+
+      try {
+        const win = iframe.contentWindow as TerminalWindow | null;
+        if (win?.term) {
+          win.term.paste(`${loginCommand}\r`);
+          setLoginCommandInjected(true);
+          setLoginModalError(null);
+          win.focus();
+          return;
+        }
+
+        setTimeout(() => checkAndInject(attempts + 1), 300);
+      } catch (e) {
+        console.error('Failed to inject login command into terminal iframe:', e);
+        setLoginModalError('Could not access ttyd terminal. Ensure ttyd is running and try again.');
+      }
+    };
+
+    setTimeout(() => checkAndInject(), 500);
+  }, [isLoginModalOpen, loginCommand]);
+
+  const ensureAgentCliReady = useCallback(async (): Promise<boolean> => {
+    const agentCli = toSupportedAgentCli(selectedProvider?.cli);
+    if (!agentCli) return true;
+
+    const checkResult = await checkAgentCliInstalled(agentCli);
+    if (!checkResult.success) {
+      setError(checkResult.error || `Failed to verify ${AGENT_CLI_LABELS[agentCli]} installation status.`);
+      return false;
+    }
+
+    if (checkResult.installed) {
+      return true;
+    }
+
+    setIsInstallingAgentCli(true);
+    setInstallingAgentCli(agentCli);
+    setError(null);
+
+    const installResult = await installAgentCli(agentCli);
+    setIsInstallingAgentCli(false);
+    setInstallingAgentCli(null);
+
+    if (!installResult.success) {
+      setError(installResult.error || `Failed to install ${AGENT_CLI_LABELS[agentCli]}.`);
+      return false;
+    }
+
+    const ttydResult = await startTtydProcess();
+    if (!ttydResult.success) {
+      setError(ttydResult.error || 'Failed to start ttyd');
+      return false;
+    }
+
+    setLoginAgentCli(agentCli);
+    setLoginCommand(AGENT_LOGIN_COMMANDS[agentCli]);
+    setLoginCommandInjected(false);
+    setLoginModalError(null);
+    setIsLoginModalOpen(true);
+    return false;
+  }, [selectedProvider?.cli, toSupportedAgentCli]);
+
+  const startSession = async (options: { skipAgentSetup?: boolean } = {}) => {
     if (!selectedRepo) return;
     setLoading(true);
+    setError(null);
 
     try {
+      if (!options.skipAgentSetup) {
+        const isAgentCliReady = await ensureAgentCliReady();
+        if (!isAgentCliReady) {
+          setLoading(false);
+          return;
+        }
+      }
+
       const trimmedDevServerScript = devServerScript.trim();
       let resolvedDevServerScript = trimmedDevServerScript;
 
@@ -757,6 +880,19 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
       setError("Failed to start session");
       setLoading(false);
     }
+  };
+
+  const handleStartSession = () => {
+    void startSession();
+  };
+
+  const handleLoginDone = async () => {
+    setIsLoginModalOpen(false);
+    setLoginAgentCli(null);
+    setLoginCommand('');
+    setLoginCommandInjected(false);
+    setLoginModalError(null);
+    await startSession({ skipAgentSetup: true });
   };
 
   const handleResumeSession = async (session: SessionMetadata) => {
@@ -1293,6 +1429,71 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
         </div>
       )}
 
+      {mode === 'new' && isInstallingAgentCli && installingAgentCli && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-base-content/45 px-4">
+          <div className="w-full max-w-md rounded-xl border border-base-300 bg-base-100 p-6 shadow-2xl">
+            <div className="flex items-center gap-4">
+              <span className="loading loading-spinner loading-lg text-primary"></span>
+              <div className="space-y-1">
+                <h3 className="text-lg font-semibold">Installing {AGENT_CLI_LABELS[installingAgentCli]}</h3>
+                <p className="text-sm opacity-70">
+                  Please wait while we install the coding agent CLI.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mode === 'new' && isLoginModalOpen && loginAgentCli && (
+        <div className="fixed inset-0 z-[1001] flex items-center justify-center bg-base-content/60 p-4">
+          <div className="w-full max-w-5xl rounded-xl border border-base-300 bg-base-100 shadow-2xl">
+            <div className="space-y-4 p-5 md:p-6">
+              <h3 className="text-xl font-semibold">Login Required</h3>
+              <p className="text-sm opacity-80">
+                {AGENT_CLI_LABELS[loginAgentCli]} has been installed. Complete login in the terminal below, then click Done to continue.
+              </p>
+              <p className="text-xs opacity-60">
+                Command: <span className="font-mono">{loginCommand}</span>
+              </p>
+
+              <div className="h-[420px] overflow-hidden rounded-lg border border-base-300 bg-base-200">
+                <iframe
+                  ref={loginTerminalRef}
+                  src="/terminal"
+                  className="h-full w-full border-none"
+                  allow="clipboard-read; clipboard-write"
+                  onLoad={handleLoginTerminalLoad}
+                />
+              </div>
+
+              {loginModalError && (
+                <div className="alert alert-error text-sm py-2">
+                  {loginModalError}
+                </div>
+              )}
+
+              {!loginModalError && (
+                <div className="text-xs opacity-70">
+                  {loginCommandInjected
+                    ? 'Login command was sent to the terminal automatically.'
+                    : 'Waiting for terminal to initialize...'}
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  className="btn btn-primary"
+                  onClick={() => void handleLoginDone()}
+                  disabled={loading}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
 
       {mode === 'home' && isBrowsing && (
