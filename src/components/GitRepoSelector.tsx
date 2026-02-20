@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2 } from 'lucide-react';
 import FileBrowser from './FileBrowser';
-import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, getStartupScript, listRepoFiles, saveAttachments } from '@/app/actions/git';
+import { checkIsGitRepo, getBranches, checkoutBranch, GitBranch, startTtydProcess, getStartupScript, getDefaultDevServerScript, listRepoFiles, saveAttachments } from '@/app/actions/git';
 import { copySessionAttachments, createSession, deleteSession, getSessionPrefillContext, listSessions, saveSessionLaunchContext, SessionMetadata } from '@/app/actions/session';
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
 import { useRouter } from 'next/navigation';
@@ -310,7 +310,8 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     if (savedDevServerScript !== undefined && savedDevServerScript !== null) {
       setDevServerScript(savedDevServerScript);
     } else {
-      setDevServerScript('');
+      const defaultDevServerScript = await getDefaultDevServerScript(repoPath);
+      setDevServerScript(defaultDevServerScript);
     }
   };
 
@@ -425,11 +426,15 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     setDevServerScript(e.target.value);
   };
 
-  const saveDevServerScript = async () => {
+  const saveDevServerScriptValue = async (script: string) => {
     if (selectedRepo) {
-      const newConfig = await updateRepoSettings(selectedRepo, { devServerScript });
+      const newConfig = await updateRepoSettings(selectedRepo, { devServerScript: script });
       setConfig(newConfig);
     }
+  };
+
+  const saveDevServerScript = async () => {
+    await saveDevServerScriptValue(devServerScript);
   };
 
   const normalizeAttachmentFile = useCallback((file: File, index: number): File => {
@@ -610,11 +615,21 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     if (!selectedRepo) return;
     setLoading(true);
 
-    // Also save startup script if changed
-    await saveStartupScript();
-    await saveDevServerScript();
-
     try {
+      const trimmedDevServerScript = devServerScript.trim();
+      let resolvedDevServerScript = trimmedDevServerScript;
+
+      if (!resolvedDevServerScript) {
+        resolvedDevServerScript = await getDefaultDevServerScript(selectedRepo);
+        if (resolvedDevServerScript) {
+          setDevServerScript(resolvedDevServerScript);
+        }
+      }
+
+      // Also save startup script if changed
+      await saveStartupScript();
+      await saveDevServerScriptValue(resolvedDevServerScript);
+
       // 1. Start TTYD if needed
       const ttydResult = await startTtydProcess();
       if (!ttydResult.success) {
@@ -631,7 +646,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
         agent: selectedProvider?.cli || 'agent',
         model: selectedModel || '',
         title: title,
-        devServerScript: devServerScript || undefined
+        devServerScript: resolvedDevServerScript || undefined
       });
 
       if (wtResult.success && wtResult.sessionName && wtResult.worktreePath && wtResult.branchName) {
@@ -670,9 +685,13 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
 
         // Process initial message mentions
         const trimmedInitialMessage = initialMessage.trim();
-        let processedMessage = trimmedInitialMessage
-          ? `${trimmedInitialMessage}\n\n${AUTO_COMMIT_INSTRUCTION}`
-          : '';
+        const hasAutoCommitInstruction = trimmedInitialMessage.includes(AUTO_COMMIT_INSTRUCTION);
+        let processedMessage = trimmedInitialMessage;
+        if (!hasAutoCommitInstruction) {
+          processedMessage = processedMessage
+            ? `${processedMessage}\n\n${AUTO_COMMIT_INSTRUCTION}`
+            : AUTO_COMMIT_INSTRUCTION;
+        }
 
         // Helper to match replacement
         processedMessage = processedMessage.replace(/@(\S+)/g, (match, name) => {

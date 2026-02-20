@@ -275,6 +275,32 @@ export async function getStartupScript(repoPath: string): Promise<string> {
   }
 }
 
+export async function getDefaultDevServerScript(repoPath: string): Promise<string> {
+  try {
+    const packageJsonPath = path.join(repoPath, 'package.json');
+    const packageJsonContent = await fs.readFile(packageJsonPath, 'utf-8');
+    const packageJson = JSON.parse(packageJsonContent) as { scripts?: Record<string, unknown> };
+    const scripts = packageJson.scripts;
+
+    if (!scripts || typeof scripts !== 'object') return '';
+    if (typeof scripts.dev === 'string' && scripts.dev.trim()) return 'npm run dev';
+    if (typeof scripts.watch === 'string' && scripts.watch.trim()) return 'npm run watch';
+    if (typeof scripts.start === 'string' && scripts.start.trim()) return 'npm run start';
+
+    return '';
+  } catch (error: unknown) {
+    const errorCode =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? (error as { code?: string }).code
+        : undefined;
+
+    if (errorCode !== 'ENOENT') {
+      console.error('Error determining default dev server script:', error);
+    }
+    return '';
+  }
+}
+
 export async function listRepoFiles(repoPath: string, query: string = ''): Promise<string[]> {
   try {
     const git = simpleGit(repoPath);
