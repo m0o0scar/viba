@@ -340,7 +340,11 @@ export function SessionView({
 
     const runCleanup = async (requireConfirmation = true): Promise<boolean> => {
         const unloadSessionIframes = () => {
-            for (const frame of [iframeRef.current, terminalRef.current]) {
+            setIsPreviewPickerActive(false);
+            setIsPreviewVisible(false);
+            setPreviewUrl('');
+
+            for (const frame of [iframeRef.current, terminalRef.current, previewIframeRef.current]) {
                 if (!frame) continue;
                 try {
                     frame.onload = null;
