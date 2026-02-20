@@ -243,10 +243,10 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
       const provider = agentProvidersData.find(p => p.cli === context.agentProvider);
       if (provider) {
         setSelectedProvider(provider);
-        if (context.model && provider.models.some(m => m.id === context.model)) {
+        if (context.model && (context.model === 'auto' || provider.models.some(m => m.id === context.model))) {
           setSelectedModel(context.model);
         } else {
-          setSelectedModel(provider.models[0].id);
+          setSelectedModel('auto');
         }
       }
 
@@ -283,20 +283,20 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
       const provider = agentProvidersData.find(p => p.cli === savedProviderCli);
       if (provider) {
         setSelectedProvider(provider);
-        if (savedModel && provider.models.some(m => m.id === savedModel)) {
+        if (savedModel && (savedModel === 'auto' || provider.models.some(m => m.id === savedModel))) {
           setSelectedModel(savedModel);
         } else {
-          setSelectedModel(provider.models[0].id);
+          setSelectedModel('auto');
         }
       } else {
         // Default if saved one is invalid
         setSelectedProvider(agentProvidersData[0]);
-        setSelectedModel(agentProvidersData[0].models[0].id);
+        setSelectedModel('auto');
       }
     } else {
       // Default
       setSelectedProvider(agentProvidersData[0]);
-      setSelectedModel(agentProvidersData[0].models[0].id);
+      setSelectedModel('auto');
     }
 
     if (savedStartupScript !== undefined && savedStartupScript !== null) {
@@ -380,8 +380,8 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     const provider = agentProvidersData.find(p => p.cli === cli);
     if (provider && selectedRepo) {
       setSelectedProvider(provider);
-      // Default to first model
-      const defaultModel = provider.models[0].id;
+      // Default to auto
+      const defaultModel = 'auto';
       setSelectedModel(defaultModel);
 
       const newConfig = await updateRepoSettings(selectedRepo, {
@@ -685,12 +685,12 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
 
         // Process initial message mentions
         const trimmedInitialMessage = initialMessage.trim();
-        const hasAutoCommitInstruction = trimmedInitialMessage.includes(AUTO_COMMIT_INSTRUCTION);
         let processedMessage = trimmedInitialMessage;
-        if (!hasAutoCommitInstruction) {
-          processedMessage = processedMessage
-            ? `${processedMessage}\n\n${AUTO_COMMIT_INSTRUCTION}`
-            : AUTO_COMMIT_INSTRUCTION;
+        if (processedMessage) {
+          const hasAutoCommitInstruction = processedMessage.includes(AUTO_COMMIT_INSTRUCTION);
+          if (!hasAutoCommitInstruction) {
+            processedMessage = `${processedMessage}\n\n${AUTO_COMMIT_INSTRUCTION}`;
+          }
         }
 
         // Helper to match replacement
@@ -1042,6 +1042,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
                                 onChange={handleModelChange}
                                 disabled={loading || !selectedProvider}
                               >
+                                <option value="auto">Auto</option>
                                 {selectedProvider?.models.map(model => (
                                   <option key={model.id} value={model.id}>
                                     {model.label}

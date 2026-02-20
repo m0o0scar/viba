@@ -75,10 +75,36 @@ async function getSessionContextFilePath(sessionName: string): Promise<string> {
   return path.join(contextsDir, `${sessionName}.json`);
 }
 
+async function getSessionPromptsDir(): Promise<string> {
+  const homedir = os.homedir();
+  const promptsDir = path.join(homedir, '.viba', 'session-prompts');
+  try {
+    await fs.mkdir(promptsDir, { recursive: true });
+  } catch {
+    // Ignore if exists
+  }
+  return promptsDir;
+}
+
 export async function saveSessionMetadata(metadata: SessionMetadata): Promise<void> {
   const sessionsDir = await getSessionsDir();
   const filePath = path.join(sessionsDir, `${metadata.sessionName}.json`);
   await fs.writeFile(filePath, JSON.stringify(metadata, null, 2), 'utf-8');
+}
+
+export async function writeSessionPromptFile(
+  sessionName: string,
+  prompt: string
+): Promise<{ success: boolean; filePath?: string; error?: string }> {
+  try {
+    const promptsDir = await getSessionPromptsDir();
+    const filePath = path.join(promptsDir, `${sessionName}.txt`);
+    await fs.writeFile(filePath, prompt, 'utf-8');
+    return { success: true, filePath };
+  } catch (e: unknown) {
+    console.error('Failed to write session prompt file:', e);
+    return { success: false, error: getErrorMessage(e) };
+  }
 }
 
 export async function saveSessionLaunchContext(
@@ -339,6 +365,11 @@ export async function deleteSession(sessionName: string): Promise<{ success: boo
     await fs.rm(filePath, { force: true });
     const contextFilePath = await getSessionContextFilePath(sessionName);
     await fs.rm(contextFilePath, { force: true });
+    
+    // 3. Delete prompt file
+    const promptsDir = await getSessionPromptsDir();
+    const promptFilePath = path.join(promptsDir, `${sessionName}.txt`);
+    await fs.rm(promptFilePath, { force: true });
 
     return { success: true };
   } catch (e: unknown) {

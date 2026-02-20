@@ -9,10 +9,11 @@ import {
     listSessionBaseBranches,
     mergeSessionToBase,
     rebaseSessionOntoBase,
-    updateSessionBaseBranch
+    updateSessionBaseBranch,
+    writeSessionPromptFile
 } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, Globe } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, Globe, MousePointer2 } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName } from '@/lib/path';
 
@@ -84,6 +85,7 @@ export interface SessionViewProps {
     startupScript?: string;
     devServerScript?: string;
     initialMessage?: string;
+    rawInitialMessage?: string;
     title?: string;
     attachmentNames?: string[];
     onExit: (force?: boolean) => void;
@@ -102,6 +104,7 @@ export function SessionView({
     startupScript,
     devServerScript,
     initialMessage,
+    rawInitialMessage,
     title,
     attachmentNames,
     onExit,
@@ -112,6 +115,7 @@ export function SessionView({
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const terminalRef = useRef<HTMLIFrameElement>(null);
+    const previewIframeRef = useRef<HTMLIFrameElement>(null);
     const previewAddressInputRef = useRef<HTMLInputElement>(null);
     const splitContainerRef = useRef<HTMLDivElement>(null);
     const splitResizeRef = useRef({ startX: 0, startRatio: DEFAULT_AGENT_PANE_RATIO });
@@ -1063,7 +1067,7 @@ export function SessionView({
 
                     // Inject agent command if present
                     if (agent) {
-                        setTimeout(() => {
+                        const startAgentProcess = async () => {
                             let agentCmd = '';
 
                             if (isResume) {
@@ -1079,8 +1083,11 @@ export function SessionView({
                                     agentCmd = `${quoteShellArg(agent)} resume`;
                                 }
                             } else {
-                                // Normal Start Logic
-                                let fullMessage = title ? `${title}\n\n${initialMessage || ''}` : (initialMessage || '');
+                                const safeTitle = title?.trim() || '';
+                                const parts = [];
+                                if (safeTitle) parts.push(safeTitle);
+                                if (initialMessage) parts.push(initialMessage);
+                                let fullMessage = parts.join('\n\n');
                                 if (attachmentNames && attachmentNames.length > 0) {
                                     const attachmentBasePath = `${worktree || repo}-attachments`;
                                     const attachmentSection = [
@@ -1089,22 +1096,41 @@ export function SessionView({
                                     ].join('\n');
                                     fullMessage = fullMessage ? `${fullMessage}\n\n${attachmentSection}` : attachmentSection;
                                 }
-                                const safeMessage = fullMessage ? ` ${quoteShellArg(fullMessage)}` : '';
+                                
+                                let safeMessage = '';
+                                if (fullMessage) {
+                                    if ((rawInitialMessage && rawInitialMessage.trim().length > 0) || (attachmentNames && attachmentNames.length > 0)) {
+                                        try {
+                                            const result = await writeSessionPromptFile(sessionName, fullMessage);
+                                            if (result.success && result.filePath) {
+                                                safeMessage = ` "$(cat ${quoteShellArg(result.filePath)})"`;
+                                            } else {
+                                                console.error('Failed to write prompt file, falling back to inline prompt', result.error);
+                                                safeMessage = ` ${quoteShellArg(fullMessage)}`;
+                                            }
+                                        } catch (err) {
+                                            console.error('Exception writing prompt file', err);
+                                            safeMessage = ` ${quoteShellArg(fullMessage)}`;
+                                        }
+                                    } else {
+                                        safeMessage = ` ${quoteShellArg(fullMessage)}`;
+                                    }
+                                }
+
+                                const modelArg = (model && model.toLowerCase() !== 'auto') ? ` --model ${quoteShellArg(model)}` : '';
 
                                 if (agent.toLowerCase().includes('codex')) {
                                     // Codex: codex --model gpt-5.3-codex --sandbox danger-full-access --ask-for-approval on-request --search
-                                    agentCmd = `codex --model ${quoteShellArg(model || 'gpt-5.3-codex')} --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`;
+                                    agentCmd = `codex${modelArg} --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`;
                                 } else if (agent.toLowerCase().includes('gemini')) {
                                     // Gemini: gemini --model gemini-3-pro-preview --yolo
-                                    agentCmd = `gemini --model ${quoteShellArg(model || 'gemini-3-pro-preview')} --yolo${safeMessage}`;
+                                    agentCmd = `gemini${modelArg} --yolo${safeMessage}`;
                                 } else if (agent.toLowerCase() === 'agent' || agent.toLowerCase().includes('cursor')) {
                                     // Cursor: agent --model opus-4.6-thinking
-                                    agentCmd = `agent --model ${quoteShellArg(model || 'opus-4.6-thinking')}${safeMessage}`;
+                                    agentCmd = `agent${modelArg}${safeMessage}`;
                                 } else {
                                     // Generic fallback: <agent> --model <model>
-                                    const fallbackModel = model?.trim();
-                                    const fallbackModelArg = fallbackModel ? ` --model ${quoteShellArg(fallbackModel)}` : '';
-                                    agentCmd = `${quoteShellArg(agent)}${fallbackModelArg}${safeMessage}`;
+                                    agentCmd = `${quoteShellArg(agent)}${modelArg}${safeMessage}`;
                                 }
                             }
 
@@ -1117,7 +1143,9 @@ export function SessionView({
                                     onSessionStart();
                                 }
                             }
-                        }, 500); // Wait a bit for cd to finish
+                        };
+
+                        setTimeout(() => startAgentProcess(), 500); // Wait a bit for cd to finish
                     } else {
                         setFeedback(`Session started ${worktree ? '(Worktree)' : ''}`);
                         if (!isResume && onSessionStart) {
@@ -1528,6 +1556,7 @@ export function SessionView({
                             <div className="min-h-0 flex-1">
                                 {previewUrl ? (
                                     <iframe
+                                        ref={previewIframeRef}
                                         src={previewUrl}
                                         className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
                                         title="Dev server preview"
