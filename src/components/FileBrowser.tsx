@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { listDirectories, getHomeDirectory } from '@/app/actions/git';
+import { checkDirectoryAccessible, listDirectories, getHomeDirectory } from '@/app/actions/git';
 import { Folder, ArrowLeft, Check } from 'lucide-react';
 import { getDirName } from '@/lib/path';
 
@@ -63,6 +63,17 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
       try {
         const dirs = await listDirectories(currentPath);
         if (!isMounted) return;
+
+        if (dirs.length === 0 && homePath && currentPath !== homePath) {
+          const accessible = await checkDirectoryAccessible(currentPath);
+          if (!isMounted) return;
+
+          if (!accessible) {
+            setError(`Could not access "${currentPath}". Showing home directory.`);
+            setCurrentPath(homePath);
+            return;
+          }
+        }
 
         const mapped: FileSystemItem[] = dirs.map(d => ({
           name: d.name,

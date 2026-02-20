@@ -60,13 +60,24 @@ export async function listPathEntries(dirPath: string): Promise<FileSystemItem[]
     return items;
   } catch (error) {
     console.error('Error listing directory entries:', error);
-    throw new Error(`Failed to list directory entries for ${dirPath}`);
+    return [];
   }
 }
 
 export async function listDirectories(dirPath: string): Promise<FileSystemItem[]> {
   const items = await listPathEntries(dirPath);
   return items.filter((item) => item.isDirectory);
+}
+
+export async function checkDirectoryAccessible(dirPath: string): Promise<boolean> {
+  try {
+    const stats = await fs.stat(dirPath);
+    if (!stats.isDirectory()) return false;
+    await fs.readdir(dirPath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function getBranches(repoPath: string): Promise<GitBranch[]> {
