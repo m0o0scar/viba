@@ -440,6 +440,8 @@ type PreviewProxyState = {
 
 declare global {
   var __vibaPreviewProxyState: PreviewProxyState | undefined;
+  var __vibaPreviewProxyStates: Map<string, PreviewProxyState> | undefined;
+  var __vibaPreviewProxyPromises: Map<string, Promise<PreviewProxyState>> | undefined;
 }
 
 const injectPickerScript = (html: string): string => {
@@ -462,6 +464,29 @@ const normalizeTargetUrl = (target: string): URL => {
   }
 
   return parsed;
+};
+
+const getPreviewProxyStateMap = (): Map<string, PreviewProxyState> => {
+  if (!globalThis.__vibaPreviewProxyStates) {
+    globalThis.__vibaPreviewProxyStates = new Map<string, PreviewProxyState>();
+  }
+
+  // Backward compatibility for hot-reload transitions from a single-state runtime.
+  if (globalThis.__vibaPreviewProxyState) {
+    const legacyState = globalThis.__vibaPreviewProxyState;
+    globalThis.__vibaPreviewProxyStates.set(legacyState.targetOrigin, legacyState);
+    globalThis.__vibaPreviewProxyState = undefined;
+  }
+
+  return globalThis.__vibaPreviewProxyStates;
+};
+
+const getPreviewProxyPromiseMap = (): Map<string, Promise<PreviewProxyState>> => {
+  if (!globalThis.__vibaPreviewProxyPromises) {
+    globalThis.__vibaPreviewProxyPromises = new Map<string, Promise<PreviewProxyState>>();
+  }
+
+  return globalThis.__vibaPreviewProxyPromises;
 };
 
 const createPreviewProxyServer = async (targetOrigin: string): Promise<PreviewProxyState> => {
@@ -570,36 +595,48 @@ const createPreviewProxyServer = async (targetOrigin: string): Promise<PreviewPr
   };
 };
 
-const closePreviewProxyServer = async (state: PreviewProxyState): Promise<void> => {
-  await new Promise<void>((resolve, reject) => {
-    state.server.close((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve();
-    });
-  });
-};
-
 export const ensurePreviewProxyServer = async (target: string): Promise<{ proxyBaseUrl: string }> => {
   const normalizedTarget = normalizeTargetUrl(target);
   const targetOrigin = normalizedTarget.origin;
+  const states = getPreviewProxyStateMap();
+  const pendingCreates = getPreviewProxyPromiseMap();
 
-  const activeState = globalThis.__vibaPreviewProxyState;
-  if (activeState && activeState.targetOrigin === targetOrigin) {
+  const activeState = states.get(targetOrigin);
+  if (activeState && activeState.server.listening) {
     return { proxyBaseUrl: `http://${PROXY_HOST}:${activeState.port}` };
   }
 
-  if (activeState) {
-    await closePreviewProxyServer(activeState);
-    globalThis.__vibaPreviewProxyState = undefined;
+  if (activeState && !activeState.server.listening) {
+    states.delete(targetOrigin);
   }
 
-  const nextState = await createPreviewProxyServer(targetOrigin);
-  globalThis.__vibaPreviewProxyState = nextState;
+  const pending = pendingCreates.get(targetOrigin);
+  if (pending) {
+    const state = await pending;
+    return { proxyBaseUrl: `http://${PROXY_HOST}:${state.port}` };
+  }
 
+  let createPromise: Promise<PreviewProxyState>;
+  createPromise = createPreviewProxyServer(targetOrigin)
+    .then((state) => {
+      states.set(targetOrigin, state);
+      state.server.once('close', () => {
+        const existing = states.get(targetOrigin);
+        if (existing === state) {
+          states.delete(targetOrigin);
+        }
+      });
+      return state;
+    })
+    .finally(() => {
+      const existingPending = pendingCreates.get(targetOrigin);
+      if (existingPending === createPromise) {
+        pendingCreates.delete(targetOrigin);
+      }
+    });
+
+  pendingCreates.set(targetOrigin, createPromise);
+  const nextState = await createPromise;
   return { proxyBaseUrl: `http://${PROXY_HOST}:${nextState.port}` };
 };
 
