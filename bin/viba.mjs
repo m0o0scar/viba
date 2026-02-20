@@ -41,6 +41,12 @@ function getInstallStrategies() {
         command: "brew",
         args: ["install", "ttyd"],
       },
+      {
+        label: "MacPorts",
+        requiredCommands: ["sudo", "port"],
+        command: "sudo",
+        args: ["port", "install", "ttyd"],
+      },
     ];
   }
 
@@ -115,13 +121,7 @@ function getInstallStrategies() {
         label: "winget",
         requiredCommands: ["winget"],
         command: "winget",
-        args: ["install", "--exact", "--name", "ttyd", "--accept-package-agreements", "--accept-source-agreements"],
-      },
-      {
-        label: "choco",
-        requiredCommands: ["choco"],
-        command: "choco",
-        args: ["install", "ttyd", "-y"],
+        args: ["install", "tsl0922.ttyd"],
       },
       {
         label: "scoop",
