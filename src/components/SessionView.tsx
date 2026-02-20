@@ -1575,8 +1575,9 @@ export function SessionView({
 
             {/* floating terminal panel */}
             <div
-                className={`absolute bottom-4 right-4 z-30 overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm ${(isResizing || isSplitResizing) ? '' : 'transition-all'}`}
+                className={`absolute right-4 z-30 overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm ${(isResizing || isSplitResizing) ? '' : 'transition-all'}`}
                 style={{
+                    bottom: 80,
                     width: terminalSize.width,
                     height: isTerminalMinimized ? 40 : terminalSize.height,
                     maxWidth: 'calc(100vw - 2rem)',
