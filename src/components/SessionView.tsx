@@ -27,14 +27,6 @@ const SUPPORTED_IDES = [
 type TerminalWindow = Window & {
     term?: {
         paste: (text: string) => void;
-        scrollToBottom?: () => void;
-        onWriteParsed?: (callback: () => void) => void;
-        buffer?: {
-            active?: {
-                baseY: number;
-                viewportY: number;
-            };
-        };
         options: {
             linkHandler?: TerminalLinkHandler | null;
             theme?: Record<string, string>;
@@ -277,8 +269,6 @@ export function SessionView({
     const [isSplitResizing, setIsSplitResizing] = useState(false);
 
     const [isTerminalMinimized, setIsTerminalMinimized] = useState(true);
-    const isTerminalMinimizedRef = useRef(true);
-    const terminalPanelInitStatusRef = useRef<'idle' | 'running' | 'done'>('idle');
 
     // Terminal resize state
     const [terminalSize, setTerminalSize] = useState({ width: 460, height: 320 });
@@ -358,10 +348,6 @@ export function SessionView({
             localStorage.setItem(SPLIT_RATIO_STORAGE_KEY, String(agentPaneRatio));
         }
     }, [agentPaneRatio, isLoaded, isSplitResizing]);
-
-    useEffect(() => {
-        isTerminalMinimizedRef.current = isTerminalMinimized;
-    }, [isTerminalMinimized]);
 
     const startSplitResize = (e: React.MouseEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -1320,117 +1306,6 @@ export function SessionView({
         void loadPreviewViaProxy(previewInputUrl, true);
     };
 
-    const initializeTerminalPanel = useCallback(() => {
-        if (!terminalRef.current) return;
-        if (terminalPanelInitStatusRef.current !== 'idle') return;
-        if (isTerminalMinimizedRef.current) return;
-
-        const iframe = terminalRef.current;
-        terminalPanelInitStatusRef.current = 'running';
-
-        const checkAndInject = (attempts = 0) => {
-            if (terminalPanelInitStatusRef.current !== 'running') return;
-
-            if (attempts > 30) {
-                terminalPanelInitStatusRef.current = 'idle';
-                return;
-            }
-
-            if (isTerminalMinimizedRef.current) {
-                terminalPanelInitStatusRef.current = 'idle';
-                return;
-            }
-
-            try {
-                const win = iframe.contentWindow as TerminalWindow | null;
-                if (win && win.term) {
-                    const term = win.term;
-                    attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef, {
-                        onLinkActivated: () => setIsTerminalMinimized(true),
-                    });
-
-                    try {
-                        term.options.theme = {
-                            ...(term.options.theme || {}),
-                            selectionBackground: 'rgba(59, 130, 246, 0.4)',
-                        };
-                    } catch { /* ignore if API unavailable */ }
-
-                    try {
-                        const scrollHandler = () => {
-                            const activeBuffer = term.buffer?.active;
-                            if (activeBuffer && (activeBuffer.baseY - activeBuffer.viewportY < 10)) {
-                                term.scrollToBottom?.();
-                                return;
-                            }
-                            term.scrollToBottom?.();
-                        };
-
-                        if (term.onWriteParsed) {
-                            term.onWriteParsed(scrollHandler);
-                        } else {
-                            const screen = iframe.contentDocument?.querySelector('.xterm-screen') || iframe.contentDocument?.body;
-                            if (screen) {
-                                const observer = new MutationObserver(scrollHandler);
-                                observer.observe(screen, { childList: true, subtree: true, characterData: true });
-                            }
-                        }
-                    } catch (e) {
-                        console.error('Failed to setup auto-scroll:', e);
-                    }
-
-                    const targetPath = worktree || repo;
-                    const cmd = `cd ${quoteShellArg(targetPath)}`;
-                    term.paste(cmd);
-
-                    const pressEnter = () => {
-                        const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
-                        if (textarea) {
-                            textarea.dispatchEvent(new KeyboardEvent('keypress', {
-                                bubbles: true,
-                                cancelable: true,
-                                charCode: 13,
-                                keyCode: 13,
-                                key: 'Enter',
-                                view: win
-                            }));
-                        } else {
-                            term.paste('\r');
-                        }
-                    };
-                    pressEnter();
-
-                    if (startupScript && !isResume) {
-                        setTimeout(() => {
-                            if (isTerminalMinimizedRef.current) return;
-                            term.paste(startupScript);
-                            pressEnter();
-                        }, 500);
-                    }
-
-                    win.focus();
-                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
-                    if (textarea) (textarea as HTMLElement).focus();
-
-                    terminalPanelInitStatusRef.current = 'done';
-                } else {
-                    setTimeout(() => checkAndInject(attempts + 1), 500);
-                }
-            } catch (e) {
-                console.error("Secondary terminal injection error", e);
-                terminalPanelInitStatusRef.current = 'idle';
-            }
-        };
-
-        setTimeout(() => checkAndInject(), 1000);
-    }, [attachTerminalLinkHandler, isResume, repo, startupScript, worktree]);
-
-    useEffect(() => {
-        if (isTerminalMinimized) return;
-        if (terminalPanelInitStatusRef.current === 'done') return;
-        initializeTerminalPanel();
-    }, [initializeTerminalPanel, isTerminalMinimized]);
-
     const handleStartDevServer = () => {
         const script = devServerScript?.trim();
         if (!script || !terminalRef.current) return;
@@ -1449,19 +1324,9 @@ export function SessionView({
                 return;
             }
 
-            if (isTerminalMinimizedRef.current) {
-                setTimeout(() => checkAndInject(attempts + 1), 100);
-                return;
-            }
-
             try {
                 const win = iframe.contentWindow as TerminalWindow | null;
                 if (win && win.term) {
-                    if (isTerminalMinimizedRef.current) {
-                        setTimeout(() => checkAndInject(attempts + 1), 100);
-                        return;
-                    }
-
                     win.term.paste(script);
 
                     const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
@@ -1681,7 +1546,6 @@ export function SessionView({
     const handleTerminalLoad = () => {
         if (!terminalRef.current) return;
         const iframe = terminalRef.current;
-        terminalPanelInitStatusRef.current = 'idle';
 
         // Safety check
         try {
@@ -1700,7 +1564,97 @@ export function SessionView({
                 event.stopImmediatePropagation();
             }, true);
         }
-        initializeTerminalPanel();
+
+        const checkAndInject = (attempts = 0) => {
+            if (attempts > 30) {
+                return;
+            }
+
+            try {
+                const win = iframe.contentWindow as TerminalWindow | null;
+                if (win && win.term) {
+                    const term = win.term;
+                    attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef, {
+                        onLinkActivated: () => setIsTerminalMinimized(true),
+                    });
+
+                    // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
+                    try {
+                        term.options.theme = {
+                            ...(term.options.theme || {}),
+                            selectionBackground: 'rgba(59, 130, 246, 0.4)',
+                        };
+                    } catch { /* ignore if API unavailable */ }
+
+                    // Enable auto-scroll to bottom on output
+                    try {
+                        const xterm = term as any;
+                        const scrollHandler = () => {
+                            // Only scroll if we are close to the bottom to allow reviewing history
+                            if (xterm.buffer?.active && (xterm.buffer.active.baseY - xterm.buffer.active.viewportY < 10)) {
+                                xterm.scrollToBottom();
+                            } else {
+                                // Fallback if buffer access fails or simple mode
+                                xterm.scrollToBottom();
+                            }
+                        };
+
+                        if (xterm.onWriteParsed) {
+                            xterm.onWriteParsed(scrollHandler);
+                        } else {
+                            // Fallback for older xterm or different setups
+                            const screen = iframe.contentDocument?.querySelector('.xterm-screen') || iframe.contentDocument?.body;
+                            if (screen) {
+                                const observer = new MutationObserver(scrollHandler);
+                                observer.observe(screen, { childList: true, subtree: true, characterData: true });
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Failed to setup auto-scroll:', e);
+                    }
+
+                    const targetPath = worktree || repo;
+                    const cmd = `cd ${quoteShellArg(targetPath)}`;
+                    term.paste(cmd);
+
+                    const pressEnter = () => {
+                        const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                        if (textarea) {
+                            textarea.dispatchEvent(new KeyboardEvent('keypress', {
+                                bubbles: true,
+                                cancelable: true,
+                                charCode: 13,
+                                keyCode: 13,
+                                key: 'Enter',
+                                view: win
+                            }));
+                        } else {
+                            term.paste('\r');
+                        }
+                    };
+                    pressEnter();
+
+                    // Check for startup script
+                    if (startupScript && !isResume) {
+                        setTimeout(() => {
+                            term.paste(startupScript);
+                            pressEnter();
+                        }, 500);
+                    }
+
+                    // Focus
+                    win.focus();
+                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                    if (textarea) (textarea as HTMLElement).focus();
+                } else {
+                    setTimeout(() => checkAndInject(attempts + 1), 500);
+                }
+            } catch (e) {
+                console.error("Secondary terminal injection error", e);
+            }
+        };
+
+        setTimeout(() => checkAndInject(), 1000);
     };
 
     if (!repo) return <div className="p-4 text-error">No repository specified</div>;
