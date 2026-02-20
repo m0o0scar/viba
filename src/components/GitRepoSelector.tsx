@@ -762,6 +762,12 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     }
   };
 
+  const handleNewAttemptFromSession = (session: SessionMetadata) => {
+    if (!selectedRepo) return;
+    const nextUrl = `/new?repo=${encodeURIComponent(selectedRepo)}&prefillFromSession=${encodeURIComponent(session.sessionName)}`;
+    router.push(nextUrl);
+  };
+
   const handleDeleteSession = async (session: SessionMetadata) => {
     if (!selectedRepo) return;
 
@@ -963,6 +969,14 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
                               disabled={loading || deletingSessionName === session.sessionName}
                             >
                               <Play className="w-3 h-3" /> Resume
+                            </button>
+                            <button
+                              className="btn btn-sm btn-secondary btn-outline gap-2"
+                              onClick={() => handleNewAttemptFromSession(session)}
+                              disabled={loading || deletingSessionName === session.sessionName}
+                              title="Start a new attempt prefilled from this session"
+                            >
+                              <Plus className="w-3 h-3" /> New Attempt
                             </button>
                             <button
                               className="btn btn-sm btn-error btn-outline gap-2"
