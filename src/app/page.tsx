@@ -11,7 +11,7 @@ export default function Home() {
         target="_blank"
         rel="noopener noreferrer"
         aria-label="Open Viba GitHub repository"
-        className="fixed top-0 right-0 z-50 h-20 w-20 border-l border-b border-gray-400 bg-gray-300/95 shadow-sm backdrop-blur-sm transition-colors hover:bg-gray-500/95"
+        className="fixed top-0 right-0 z-50 h-20 w-20 cursor-pointer border-l border-b border-gray-400 bg-gray-300/95 shadow-sm backdrop-blur-sm transition-colors hover:bg-gray-500/95"
         style={{ clipPath: "polygon(100% 0, 0 0, 100% 100%)" }}
       >
         <span className="absolute left-[67%] top-[33%] -translate-x-1/2 -translate-y-1/2">
