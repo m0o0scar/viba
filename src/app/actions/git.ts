@@ -69,6 +69,17 @@ export async function listDirectories(dirPath: string): Promise<FileSystemItem[]
   return items.filter((item) => item.isDirectory);
 }
 
+export async function checkDirectoryAccessible(dirPath: string): Promise<boolean> {
+  try {
+    const stats = await fs.stat(dirPath);
+    if (!stats.isDirectory()) return false;
+    await fs.readdir(dirPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function getBranches(repoPath: string): Promise<GitBranch[]> {
   try {
     const git = simpleGit(repoPath);

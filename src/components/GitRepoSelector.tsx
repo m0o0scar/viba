@@ -159,8 +159,7 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
       const isValid = await checkIsGitRepo(path);
       if (!isValid) {
         setError('Selected directory is not a valid git repository.');
-        setLoading(false);
-        return;
+        return false;
       }
 
       const currentConfig = config || await getConfig();
@@ -180,16 +179,36 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
 
       if (mode === 'home') {
         router.push(`/new?repo=${encodeURIComponent(path)}`);
-        return;
+        return true;
       }
 
       await loadSelectedRepoData(path);
+      return true;
     } catch (err) {
       console.error(err);
       setError('Failed to open repository.');
+      return false;
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCurrentRepoChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (mode !== 'new') return;
+
+    const nextRepo = e.target.value;
+    if (!nextRepo || nextRepo === selectedRepo) return;
+
+    const changed = await handleSelectRepo(nextRepo);
+    if (!changed) return;
+
+    const params = new URLSearchParams();
+    params.set('repo', nextRepo);
+    if (prefillFromSession) {
+      params.set('prefillFromSession', prefillFromSession);
+    }
+
+    router.replace(`/new?${params.toString()}`);
   };
 
   useEffect(() => {
@@ -801,6 +820,11 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
     }
   };
 
+  const recentRepos = config?.recentRepos ?? [];
+  const selectableRepos = selectedRepo
+    ? (recentRepos.includes(selectedRepo) ? recentRepos : [selectedRepo, ...recentRepos])
+    : recentRepos;
+
   return (
     <>
       {mode === 'home' && (
@@ -902,10 +926,28 @@ export default function GitRepoSelector({ mode = 'home', repoPath = null, prefil
 
                 <div className="mt-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-base-100 p-4 rounded-lg border border-base-300 flex flex-col justify-center">
-                      <div className="text-xs opacity-50 uppercase tracking-widest mb-1">Current Repository</div>
-                      <div className="flex items-center gap-2 font-mono text-sm break-all">
-                        <FolderGit2 className="w-4 h-4 text-primary shrink-0" />
+                    <div className="bg-base-100 p-4 rounded-lg border border-base-300 space-y-2">
+                      <label className="text-xs opacity-50 uppercase tracking-widest">Current Repository</label>
+                      <div className="join w-full">
+                        <div className="join-item bg-base-300 flex items-center px-3 border border-base-content/20 border-r-0">
+                          <FolderGit2 className="w-4 h-4 text-primary" />
+                        </div>
+                        <select
+                          className="select select-bordered join-item w-full font-mono focus:outline-none"
+                          value={selectedRepo}
+                          onChange={(e) => {
+                            void handleCurrentRepoChange(e);
+                          }}
+                          disabled={loading || selectableRepos.length === 0}
+                        >
+                          {selectableRepos.map(repo => (
+                            <option key={repo} value={repo}>
+                              {getBaseName(repo)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="text-[10px] opacity-50 font-mono truncate px-1" title={selectedRepo}>
                         {selectedRepo}
                       </div>
                     </div>
