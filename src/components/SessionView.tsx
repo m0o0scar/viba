@@ -27,13 +27,29 @@ type TerminalWindow = Window & {
     term?: {
         paste: (text: string) => void;
         options: {
+            linkHandler?: TerminalLinkHandler | null;
             theme?: Record<string, string>;
             [key: string]: unknown;
+        };
+        _core?: {
+            _linkProviderService?: {
+                linkProviders?: Map<number, TerminalLinkProvider>;
+            };
         };
     };
 };
 
 type CleanupPhase = 'idle' | 'error';
+type TerminalLinkProvider = {
+    _handler?: (event: MouseEvent | undefined, url: string) => void;
+};
+
+type TerminalLinkHandler = {
+    allowNonHttpProtocols?: boolean;
+    activate?: (event: MouseEvent | undefined, url: string, range?: unknown) => void;
+    hover?: (event: MouseEvent | undefined, url: string, range?: unknown) => void;
+    leave?: (event: MouseEvent | undefined, url: string, range?: unknown) => void;
+};
 
 const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
@@ -721,30 +737,61 @@ export function SessionView({
         cleanupRef: React.MutableRefObject<(() => void) | null>
     ) => {
         cleanupRef.current?.();
-        const frameDocument = iframe.contentDocument;
-        if (!frameDocument) return;
+        const frameWindow = iframe.contentWindow as TerminalWindow | null;
+        const terminal = frameWindow?.term;
+        if (!frameWindow || !terminal) return;
 
-        const handleClick = (event: MouseEvent) => {
-            const target = event.target as HTMLElement | null;
-            if (!target) return;
+        const restorers: Array<() => void> = [];
 
-            const anchor = target.closest('a[href]');
-            if (!(anchor instanceof HTMLAnchorElement)) return;
+        const providers = terminal._core?._linkProviderService?.linkProviders;
+        if (providers instanceof Map) {
+            for (const provider of providers.values()) {
+                if (!provider || typeof provider !== 'object') continue;
+                if (typeof provider._handler !== 'function') continue;
 
-            const href = anchor.getAttribute('href')?.trim();
-            if (!href) return;
+                const originalHandler = provider._handler;
+                provider._handler = (event: MouseEvent | undefined, url: string) => {
+                    const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
+                    const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
+                    if (!handled) {
+                        originalHandler(event, url);
+                    }
+                };
 
-            const shouldOpenInNewTab = event.metaKey || event.ctrlKey;
-            const handled = handleTerminalLinkOpen(anchor.href || href, shouldOpenInNewTab);
-            if (!handled) return;
+                restorers.push(() => {
+                    provider._handler = originalHandler;
+                });
+            }
+        }
 
-            event.preventDefault();
-            event.stopPropagation();
+        const existingLinkHandler = terminal.options.linkHandler;
+        const nextLinkHandler: TerminalLinkHandler = {
+            allowNonHttpProtocols: existingLinkHandler?.allowNonHttpProtocols ?? false,
+            activate: (event, url, range) => {
+                const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
+                const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
+                if (!handled) {
+                    existingLinkHandler?.activate?.(event, url, range);
+                }
+            },
+            hover: (event, url, range) => {
+                existingLinkHandler?.hover?.(event, url, range);
+            },
+            leave: (event, url, range) => {
+                existingLinkHandler?.leave?.(event, url, range);
+            },
         };
 
-        frameDocument.addEventListener('click', handleClick, true);
+        terminal.options.linkHandler = nextLinkHandler;
+        restorers.push(() => {
+            terminal.options.linkHandler = existingLinkHandler ?? null;
+        });
+
         cleanupRef.current = () => {
-            frameDocument.removeEventListener('click', handleClick, true);
+            for (const restore of restorers) {
+                restore();
+            }
+            cleanupRef.current = null;
         };
     }, [handleTerminalLinkOpen]);
 
@@ -850,7 +897,6 @@ export function SessionView({
                 event.stopImmediatePropagation();
             }, true);
         }
-        attachTerminalLinkHandler(iframe, agentFrameLinkCleanupRef);
 
         console.log('Iframe loaded, starting injection check...');
         setFeedback('Connecting to terminal...');
@@ -865,6 +911,7 @@ export function SessionView({
                 const win = iframe.contentWindow as TerminalWindow | null;
                 if (win && win.term) {
                     const term = win.term;
+                    attachTerminalLinkHandler(iframe, agentFrameLinkCleanupRef);
                     console.log('Terminal instance found');
 
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
@@ -1011,7 +1058,6 @@ export function SessionView({
                 event.stopImmediatePropagation();
             }, true);
         }
-        attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef);
 
         const checkAndInject = (attempts = 0) => {
             if (attempts > 30) {
@@ -1023,6 +1069,7 @@ export function SessionView({
                 const win = iframe.contentWindow as TerminalWindow | null;
                 if (win && win.term) {
                     const term = win.term;
+                    attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef);
                     console.log('Secondary terminal instance found');
 
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
