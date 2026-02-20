@@ -62,6 +62,7 @@ const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
+const TERMINAL_LINK_DEBUG = true;
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
 
@@ -748,17 +749,115 @@ export function SessionView({
         const terminal = frameWindow?.term;
         if (!frameWindow || !terminal) return;
 
+        const debugLog = (message: string, details?: unknown) => {
+            if (!TERMINAL_LINK_DEBUG) return;
+            if (typeof details === 'undefined') {
+                console.log(`[viba:terminal-link] ${message}`);
+                return;
+            }
+            console.log(`[viba:terminal-link] ${message}`, details);
+        };
+
         const restorers: Array<() => void> = [];
+        debugLog('attach start');
+
+        const frameDocument = iframe.contentDocument;
+        let lastModifierState = {
+            metaKey: false,
+            ctrlKey: false,
+            at: 0,
+        };
+
+        if (frameDocument) {
+            const recordModifierState = (event: MouseEvent) => {
+                lastModifierState = {
+                    metaKey: event.metaKey,
+                    ctrlKey: event.ctrlKey,
+                    at: Date.now(),
+                };
+            };
+
+            frameDocument.addEventListener('mousedown', recordModifierState, true);
+            frameDocument.addEventListener('click', recordModifierState, true);
+            restorers.push(() => {
+                frameDocument.removeEventListener('mousedown', recordModifierState, true);
+                frameDocument.removeEventListener('click', recordModifierState, true);
+            });
+        }
+
+        const originalOpen = frameWindow.open.bind(frameWindow);
+        const patchedOpen: Window['open'] = (...args) => {
+            const openWithModifier = Date.now() - lastModifierState.at < 1000;
+            const shouldOpenInNewTab = openWithModifier && (lastModifierState.metaKey || lastModifierState.ctrlKey);
+            debugLog('window.open called', { args, shouldOpenInNewTab });
+
+            if (typeof args[0] === 'string' && args[0].trim()) {
+                const handled = handleTerminalLinkOpen(args[0], shouldOpenInNewTab);
+                debugLog('window.open direct URL', { url: args[0], handled, shouldOpenInNewTab });
+                if (handled) {
+                    return null;
+                }
+                return originalOpen(...args);
+            }
+
+            if (args.length === 0) {
+                let fallbackWindow: Window | null = null;
+                const syntheticWindow = {
+                    opener: null,
+                    location: {
+                        set href(url: string) {
+                            const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
+                            debugLog('synthetic location href set', { url, handled, shouldOpenInNewTab });
+
+                            if (!handled) {
+                                fallbackWindow = originalOpen();
+                                if (fallbackWindow) {
+                                    try {
+                                        fallbackWindow.opener = null;
+                                    } catch {
+                                        // Ignore opener assignment failures
+                                    }
+                                    fallbackWindow.location.href = url;
+                                }
+                            }
+                        },
+                        get href() {
+                            return '';
+                        },
+                    },
+                } as unknown as Window;
+
+                return syntheticWindow;
+            }
+
+            return originalOpen(...args);
+        };
+
+        frameWindow.open = patchedOpen;
+        restorers.push(() => {
+            frameWindow.open = originalOpen;
+        });
 
         const providers = terminal._core?._linkProviderService?.linkProviders;
+        debugLog('provider map snapshot', {
+            hasProviders: providers instanceof Map,
+            providerCount: providers instanceof Map ? providers.size : 0,
+        });
+
         if (providers instanceof Map) {
             for (const provider of providers.values()) {
                 if (!provider || typeof provider !== 'object') continue;
+                debugLog('provider discovered', {
+                    hasHandler: typeof provider._handler === 'function',
+                    hasProvideLinks: typeof provider.provideLinks === 'function',
+                });
+
                 if (typeof provider._handler === 'function') {
                     const originalHandler = provider._handler;
                     provider._handler = (event: MouseEvent | undefined, url: string) => {
                         const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
                         const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
+                        debugLog('provider _handler fired', { url, shouldOpenInNewTab, handled });
                         if (!handled) {
                             originalHandler(event, url);
                         }
@@ -773,6 +872,11 @@ export function SessionView({
                     const originalProvideLinks = provider.provideLinks.bind(provider);
                     provider.provideLinks = (line: number, callback: (links: TerminalLink[] | undefined) => void) => {
                         originalProvideLinks(line, (links: TerminalLink[] | undefined) => {
+                            debugLog('provider provideLinks callback', {
+                                line,
+                                linkCount: Array.isArray(links) ? links.length : 0,
+                            });
+
                             if (Array.isArray(links)) {
                                 for (const link of links) {
                                     if (!link || typeof link !== 'object') continue;
@@ -782,6 +886,7 @@ export function SessionView({
                                     link.activate = (event: MouseEvent | undefined, text: string) => {
                                         const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
                                         const handled = handleTerminalLinkOpen(text, shouldOpenInNewTab);
+                                        debugLog('link activate fired', { text, shouldOpenInNewTab, handled });
                                         if (!handled) {
                                             originalActivate(event, text);
                                         }
@@ -805,6 +910,7 @@ export function SessionView({
             activate: (event, url, range) => {
                 const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
                 const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
+                debugLog('terminal options.linkHandler activate', { url, shouldOpenInNewTab, handled });
                 if (!handled) {
                     existingLinkHandler?.activate?.(event, url, range);
                 }
@@ -821,6 +927,7 @@ export function SessionView({
         restorers.push(() => {
             terminal.options.linkHandler = existingLinkHandler ?? null;
         });
+        debugLog('attach complete');
 
         cleanupRef.current = () => {
             for (const restore of restorers) {
