@@ -93,6 +93,83 @@ const PICKER_CLIENT_SCRIPT = String.raw`(() => {
     return parts.join(' > ');
   };
 
+  const getUserComponentStack = (element) => {
+    const fiberKey = Object.keys(element).find((key) => key.startsWith('__reactFiber$'));
+
+    if (!fiberKey) {
+      return [];
+    }
+
+    let fiberNode = element[fiberKey];
+    const userStack = [];
+
+    const internalNames = new Set([
+      'Suspense', 'ErrorBoundary', 'Router', 'AppRouter', 'LayoutRouter',
+      'RenderFromTemplateContext', 'ScrollAndFocusHandler', 'InnerLayoutRouter',
+      'RedirectErrorBoundary', 'NotFoundBoundary', 'LoadingBoundary',
+      'ReactDevOverlay', 'HotReload', 'AppContainer', 'Route', 'Link', 'Image',
+      'OuterLayoutRouter', 'Head', 'StringRefs',
+    ]);
+
+    while (fiberNode) {
+      let componentName = null;
+
+      if (typeof fiberNode.elementType === 'function' && fiberNode.elementType.name) {
+        componentName = fiberNode.elementType.name;
+      } else if (typeof fiberNode.type === 'function' && fiberNode.type.name) {
+        componentName = fiberNode.type.name;
+      } else if (typeof fiberNode.elementType === 'string') {
+        fiberNode = fiberNode.return;
+        continue;
+      }
+
+      if (!componentName) {
+        fiberNode = fiberNode.return;
+        continue;
+      }
+
+      if (
+        internalNames.has(componentName) ||
+        componentName.includes('Context') ||
+        componentName.includes('Provider') ||
+        componentName.startsWith('ForwardRef') ||
+        componentName.startsWith('Memo')
+      ) {
+        fiberNode = fiberNode.return;
+        continue;
+      }
+
+      let sourceData = null;
+      let isThirdParty = false;
+
+      if (fiberNode._debugSource) {
+        sourceData = {
+          fileName: fiberNode._debugSource.fileName,
+          lineNumber: fiberNode._debugSource.lineNumber,
+          columnNumber: fiberNode._debugSource.columnNumber,
+        };
+
+        if (sourceData.fileName.includes('node_modules')) {
+          isThirdParty = true;
+        }
+      }
+
+      if (isThirdParty) {
+        fiberNode = fiberNode.return;
+        continue;
+      }
+
+      userStack.push({
+        name: componentName,
+        source: sourceData,
+      });
+
+      fiberNode = fiberNode.return;
+    }
+
+    return userStack;
+  };
+
   const postPickerState = () => {
     window.parent.postMessage({
       type: 'viba:preview-picker-state',
@@ -119,6 +196,7 @@ const PICKER_CLIENT_SCRIPT = String.raw`(() => {
   const selectElement = (element) => {
     const rect = element.getBoundingClientRect();
     const text = (element.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    const reactComponentStack = getUserComponentStack(element);
 
     window.parent.postMessage({
       type: 'viba:preview-element-selected',
@@ -134,6 +212,7 @@ const PICKER_CLIENT_SCRIPT = String.raw`(() => {
           width: rect.width,
           height: rect.height,
         },
+        reactComponentStack,
       },
     }, '*');
   };
