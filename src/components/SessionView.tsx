@@ -59,6 +59,10 @@ type TerminalLinkHandler = {
     leave?: (event: MouseEvent | undefined, url: string, range?: unknown) => void;
 };
 
+type TerminalLinkHandlerOptions = {
+    onLinkActivated?: () => void;
+};
+
 const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
@@ -799,12 +803,14 @@ export function SessionView({
 
     const attachTerminalLinkHandler = useCallback((
         iframe: HTMLIFrameElement,
-        cleanupRef: React.MutableRefObject<(() => void) | null>
+        cleanupRef: React.MutableRefObject<(() => void) | null>,
+        options?: TerminalLinkHandlerOptions
     ) => {
         cleanupRef.current?.();
         const frameWindow = iframe.contentWindow as TerminalWindow | null;
         const terminal = frameWindow?.term;
         if (!frameWindow || !terminal) return;
+        const notifyLinkActivated = options?.onLinkActivated;
 
         const restorers: Array<() => void> = [];
 
@@ -838,6 +844,7 @@ export function SessionView({
             const shouldOpenInNewTab = openWithModifier && (lastModifierState.metaKey || lastModifierState.ctrlKey);
 
             if (typeof args[0] === 'string' && args[0].trim()) {
+                notifyLinkActivated?.();
                 const handled = handleTerminalLinkOpen(args[0], shouldOpenInNewTab);
                 if (handled) {
                     return null;
@@ -851,6 +858,7 @@ export function SessionView({
                     opener: null,
                     location: {
                         set href(url: string) {
+                            notifyLinkActivated?.();
                             const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
 
                             if (!handled) {
@@ -891,6 +899,7 @@ export function SessionView({
                 if (typeof provider._handler === 'function') {
                     const originalHandler = provider._handler;
                     provider._handler = (event: MouseEvent | undefined, url: string) => {
+                        notifyLinkActivated?.();
                         const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
                         const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
                         if (!handled) {
@@ -914,6 +923,7 @@ export function SessionView({
 
                                     const originalActivate = link.activate.bind(link);
                                     link.activate = (event: MouseEvent | undefined, text: string) => {
+                                        notifyLinkActivated?.();
                                         const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
                                         const handled = handleTerminalLinkOpen(text, shouldOpenInNewTab);
                                         if (!handled) {
@@ -937,6 +947,7 @@ export function SessionView({
         const nextLinkHandler: TerminalLinkHandler = {
             allowNonHttpProtocols: existingLinkHandler?.allowNonHttpProtocols ?? false,
             activate: (event, url, range) => {
+                notifyLinkActivated?.();
                 const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
                 const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
                 if (!handled) {
@@ -1305,7 +1316,9 @@ export function SessionView({
                 const win = iframe.contentWindow as TerminalWindow | null;
                 if (win && win.term) {
                     const term = win.term;
-                    attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef);
+                    attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef, {
+                        onLinkActivated: () => setIsTerminalMinimized(true),
+                    });
 
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
                     try {
