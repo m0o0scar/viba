@@ -16,6 +16,7 @@ import { getConfig, updateConfig } from '@/app/actions/config';
 import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, Globe, MousePointer2, ArrowLeft, ArrowRight, RotateCw } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName } from '@/lib/path';
+import { notifySessionsUpdated } from '@/lib/session-updates';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -459,54 +460,29 @@ export function SessionView({
     };
 
     const runCleanup = async (requireConfirmation = true): Promise<boolean> => {
-        const unloadSessionIframes = () => {
-            setIsPreviewPickerActive(false);
-            setIsPreviewVisible(false);
-            setPreviewUrl('');
-
-            for (const frame of [iframeRef.current, terminalRef.current, previewIframeRef.current]) {
-                if (!frame) continue;
-                try {
-                    frame.onload = null;
-                    frame.src = 'about:blank';
-                } catch (error) {
-                    console.error('Failed to unload iframe during cleanup:', error);
-                }
-            }
-        };
-
         if (!repo || !worktree || !branch) return false;
         if (requireConfirmation && !confirm('Are you sure you want to delete this session? This will remove the branch and worktree.')) return false;
 
         setCleanupError(null);
+        setCleanupPhase('idle');
         setFeedback('Purging session in background...');
-        unloadSessionIframes();
 
-        try {
-            const result = await deleteSessionInBackground(sessionName);
-            if (result.success) {
-                setCleanupPhase('idle');
-                try {
-                    localStorage.setItem('viba:sessions-updated-at', new Date().toISOString());
-                } catch {
-                    // Ignore localStorage failures (private mode, quota, etc.)
+        const purgePromise = deleteSessionInBackground(sessionName)
+            .then((result) => {
+                if (!result.success) {
+                    console.error('Background cleanup failed:', result.error || 'Unknown error');
+                    return;
                 }
-                onExit(true);
-                return true;
-            }
 
-            const message = result.error || 'Failed to clean up session';
-            setCleanupError(message);
-            setFeedback(`Cleanup failed: ${message}`);
-            setCleanupPhase('error');
-            return false;
-        } catch (e) {
-            const message = e instanceof Error ? e.message : 'Unexpected cleanup error';
-            setCleanupError(message);
-            setFeedback(`Cleanup failed: ${message}`);
-            setCleanupPhase('error');
-            return false;
-        }
+                notifySessionsUpdated();
+            })
+            .catch((error) => {
+                console.error('Background cleanup request failed:', error);
+            });
+
+        onExit();
+        void purgePromise;
+        return true;
     };
 
     const handleCleanup = async () => {
