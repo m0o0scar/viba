@@ -395,6 +395,9 @@ const normalizeTargetUrl = (target: string): URL => {
 const createPreviewProxyServer = async (targetOrigin: string): Promise<PreviewProxyState> => {
   const middleware = createProxyMiddleware<IncomingMessage, ServerResponse>({
     changeOrigin: true,
+    // Preserve original client-facing host/proto metadata for frameworks
+    // (e.g. Next.js Server Actions CSRF checks) running behind this proxy.
+    xfwd: true,
     selfHandleResponse: true,
     secure: false,
     target: targetOrigin,
