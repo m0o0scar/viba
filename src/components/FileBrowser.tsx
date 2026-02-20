@@ -15,41 +15,55 @@ interface FileSystemItem {
 interface FileBrowserProps {
   title?: string;
   initialPath?: string;
-  onSelect: (path: string) => void;
+  onSelect: (path: string) => void | Promise<unknown>;
   onCancel: () => void;
   checkRepo?: (path: string) => Promise<boolean>;
 }
 
 export default function FileBrowser({ title, initialPath, onSelect, onCancel, checkRepo }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>('');
+  const [homePath, setHomePath] = useState<string>('');
   const [items, setItems] = useState<FileSystemItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     const init = async () => {
-      // ... same
-      if (initialPath) {
-        setCurrentPath(initialPath);
-      } else {
-        // ... same
+      try {
         const home = await getHomeDirectory();
-        setCurrentPath(home);
+        if (!isMounted) return;
+
+        setHomePath(home);
+        setCurrentPath(initialPath || home);
+      } catch (err) {
+        console.error('Failed to resolve home directory:', err);
+        if (!isMounted) return;
+        setError('Failed to access your home directory.');
+        setCurrentPath(initialPath || '/');
       }
     };
-    init();
-  }, [initialPath]); // Added dependency
+
+    void init();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [initialPath]);
 
   useEffect(() => {
-    // ... same logic for fetching items ...
     if (!currentPath) return;
+
+    let isMounted = true;
 
     const fetchItems = async () => {
       setLoading(true);
       setError(null);
       try {
         const dirs = await listDirectories(currentPath);
-        // ... same map to items
+        if (!isMounted) return;
+
         const mapped: FileSystemItem[] = dirs.map(d => ({
           name: d.name,
           path: d.path,
@@ -59,16 +73,29 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
         setItems(mapped);
       } catch (err) {
         console.error(err);
+        if (!isMounted) return;
+
+        if (homePath && currentPath !== homePath) {
+          setError(`Could not access "${currentPath}". Showing home directory.`);
+          setCurrentPath(homePath);
+          return;
+        }
+
+        setItems([]);
         setError('Failed to load directory contents');
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
-    fetchItems();
-  }, [currentPath]);
+    void fetchItems();
 
-  // ... handleNavigate, handleGoUp ...
+    return () => {
+      isMounted = false;
+    };
+  }, [currentPath, homePath]);
 
   const handleSelectPath = async (path: string) => {
     if (checkRepo) {
@@ -80,7 +107,7 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
         return;
       }
     }
-    onSelect(path);
+    await onSelect(path);
   };
 
   const handleSelect = async () => {

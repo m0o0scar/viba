@@ -60,7 +60,7 @@ export async function listPathEntries(dirPath: string): Promise<FileSystemItem[]
     return items;
   } catch (error) {
     console.error('Error listing directory entries:', error);
-    return [];
+    throw new Error(`Failed to list directory entries for ${dirPath}`);
   }
 }
 
