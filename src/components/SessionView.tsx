@@ -13,7 +13,7 @@ import {
     writeSessionPromptFile
 } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, Globe, MousePointer2 } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, Globe, MousePointer2, ArrowLeft, ArrowRight, RotateCw } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName } from '@/lib/path';
 
@@ -62,6 +62,8 @@ type TerminalLinkHandler = {
 type TerminalLinkHandlerOptions = {
     onLinkActivated?: () => void;
 };
+
+type PreviewNavigationAction = 'back' | 'forward' | 'reload';
 
 const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
@@ -956,6 +958,36 @@ export function SessionView({
         setFeedback(nextState ? 'Picker enabled: click an element in the preview' : 'Picker disabled');
     }, [isPreviewPickerActive, previewUrl]);
 
+    const postPreviewControlMessage = useCallback((payload: { action?: PreviewNavigationAction; type: string }) => {
+        const previewWindow = previewIframeRef.current?.contentWindow;
+        if (!previewWindow) {
+            setFeedback('Preview is not ready yet');
+            return false;
+        }
+
+        previewWindow.postMessage(payload, '*');
+        return true;
+    }, []);
+
+    const handlePreviewNavigate = useCallback((action: PreviewNavigationAction) => {
+        if (!previewUrl) {
+            setFeedback('Load a preview before using navigation controls');
+            return;
+        }
+
+        if (!postPreviewControlMessage({ type: 'viba:preview-navigation', action })) {
+            return;
+        }
+
+        if (action === 'reload') {
+            setFeedback('Reloading preview...');
+        }
+    }, [postPreviewControlMessage, previewUrl]);
+
+    const handlePreviewIframeLoad = useCallback(() => {
+        postPreviewControlMessage({ type: 'viba:preview-location-request' });
+    }, [postPreviewControlMessage]);
+
     const handleTerminalLinkOpen = useCallback((rawUrl: string, openInNewTab: boolean): boolean => {
         const normalized = normalizePreviewUrl(rawUrl);
         if (!normalized) return false;
@@ -1160,11 +1192,31 @@ export function SessionView({
         const handlePreviewMessage = (event: MessageEvent) => {
             if (!previewIframeRef.current || event.source !== previewIframeRef.current.contentWindow) return;
 
-            const payload = event.data as { active?: boolean; element?: unknown; type?: string } | null;
+            const payload = event.data as {
+                active?: boolean;
+                element?: unknown;
+                type?: string;
+                url?: unknown;
+            } | null;
             if (!payload || typeof payload !== 'object') return;
 
             if (payload.type === 'viba:preview-picker-state') {
                 setIsPreviewPickerActive(Boolean(payload.active));
+                return;
+            }
+
+            if (payload.type === 'viba:preview-picker-ready') {
+                const previewWindow = previewIframeRef.current?.contentWindow;
+                if (previewWindow) {
+                    previewWindow.postMessage({ type: 'viba:preview-location-request' }, '*');
+                }
+                return;
+            }
+
+            if (payload.type === 'viba:preview-location-change') {
+                if (typeof payload.url === 'string' && payload.url.trim().length > 0) {
+                    setPreviewInputUrl(payload.url);
+                }
                 return;
             }
 
@@ -1864,6 +1916,36 @@ export function SessionView({
                                 className="flex items-center gap-2 border-b border-base-content/10 bg-base-200 px-3 py-2"
                                 onSubmit={handlePreviewSubmit}
                             >
+                                <button
+                                    className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0"
+                                    type="button"
+                                    onClick={() => handlePreviewNavigate('back')}
+                                    disabled={!previewUrl}
+                                    title="Go back"
+                                    aria-label="Go back"
+                                >
+                                    <ArrowLeft className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                    className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0"
+                                    type="button"
+                                    onClick={() => handlePreviewNavigate('forward')}
+                                    disabled={!previewUrl}
+                                    title="Go forward"
+                                    aria-label="Go forward"
+                                >
+                                    <ArrowRight className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                    className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0"
+                                    type="button"
+                                    onClick={() => handlePreviewNavigate('reload')}
+                                    disabled={!previewUrl}
+                                    title="Reload preview"
+                                    aria-label="Reload preview"
+                                >
+                                    <RotateCw className="h-3.5 w-3.5" />
+                                </button>
                                 <input
                                     ref={previewAddressInputRef}
                                     type="text"
@@ -1893,6 +1975,7 @@ export function SessionView({
                                         src={previewUrl}
                                         className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
                                         title="Dev server preview"
+                                        onLoad={handlePreviewIframeLoad}
                                         sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-downloads"
                                     />
                                 ) : (
