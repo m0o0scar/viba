@@ -3,7 +3,6 @@
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { allPortsWithPid } from 'pid-port';
 import simpleGit from 'simple-git';
 import { prepareSessionWorktree, removeWorktree } from './git';
 
@@ -49,122 +48,12 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
-const PREFERRED_DEV_SERVER_PORTS = [3000, 3001, 5173, 4173, 8080, 4200, 8000];
-
-async function runCommand(command: string, args: string[]): Promise<string> {
-  const { spawn } = await import('child_process');
-
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (chunk: Buffer | string) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on('data', (chunk: Buffer | string) => {
-      stderr += chunk.toString();
-    });
-
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve(stdout);
-        return;
-      }
-
-      reject(new Error(stderr.trim() || `${command} exited with code ${code ?? 'unknown'}`));
-    });
-  });
-}
-
-function parsePortFromLsofAddress(address: string): number | undefined {
-  const match = address.match(/:(\d+)(?:->|$)/);
-  if (!match) return undefined;
-
-  const parsed = Number.parseInt(match[1], 10);
-  if (Number.isNaN(parsed)) return undefined;
-  return parsed;
-}
-
-async function getProcessWorkingDirectory(pid: number): Promise<string | undefined> {
-  if (process.platform === 'win32') return undefined;
-
-  try {
-    const output = await runCommand('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn']);
-    const cwdLine = output
-      .split('\n')
-      .find((line) => line.startsWith('n'));
-    const cwd = cwdLine?.slice(1).trim();
-    return cwd || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function getListeningTcpPorts(pid: number): Promise<number[]> {
-  if (process.platform === 'win32') return [];
-
-  try {
-    const output = await runCommand('lsof', ['-nP', '-a', '-p', String(pid), '-iTCP', '-sTCP:LISTEN', '-Fn']);
-    const uniquePorts = new Set<number>();
-
-    for (const line of output.split('\n')) {
-      if (!line.startsWith('n')) continue;
-      const parsed = parsePortFromLsofAddress(line.slice(1).trim());
-      if (typeof parsed === 'number') {
-        uniquePorts.add(parsed);
-      }
-    }
-
-    return [...uniquePorts];
-  } catch {
-    return [];
-  }
-}
-
-function isWithinWorktree(cwd: string | undefined, worktreePath: string): boolean {
-  if (!cwd) return false;
-
-  const normalizedCwd = path.resolve(cwd);
-  const normalizedWorktree = path.resolve(worktreePath);
-  return normalizedCwd === normalizedWorktree || normalizedCwd.startsWith(`${normalizedWorktree}${path.sep}`);
-}
-
-function selectDevServerPort(ports: number[]): number | undefined {
-  const deduped = Array.from(
-    new Set(
-      ports.filter((port) => Number.isInteger(port) && port > 0 && port < 65536)
-    )
-  );
-
-  if (deduped.length === 0) {
-    return undefined;
-  }
-
-  const preferenceIndex = new Map<number, number>(
-    PREFERRED_DEV_SERVER_PORTS.map((port, index) => [port, index])
-  );
-
-  deduped.sort((left, right) => {
-    const leftRank = preferenceIndex.get(left) ?? 10_000 + left;
-    const rightRank = preferenceIndex.get(right) ?? 10_000 + right;
-    return leftRank - rightRank;
-  });
-
-  return deduped[0];
-}
-
 async function getSessionsDir(): Promise<string> {
   const homedir = os.homedir();
   const sessionsDir = path.join(homedir, '.viba', 'sessions');
   try {
     await fs.mkdir(sessionsDir, { recursive: true });
-  } catch (error) {
+  } catch {
     // Ignore if exists
   }
   return sessionsDir;
@@ -659,58 +548,6 @@ export async function listSessionBaseBranches(
     return { success: true, baseBranch, branches };
   } catch (e: unknown) {
     console.error('Failed to list session base branches:', e);
-    return { success: false, error: getErrorMessage(e) };
-  }
-}
-
-export async function detectSessionDevServerUrl(
-  sessionName: string
-): Promise<{ success: boolean; port?: number; url?: string; error?: string }> {
-  try {
-    const metadata = await getSessionMetadata(sessionName);
-    if (!metadata) {
-      return { success: false, error: 'Session metadata not found' };
-    }
-
-    const portsWithPid = await allPortsWithPid();
-    const pidCandidates = new Set<number>();
-
-    for (const [port, pid] of portsWithPid) {
-      if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) continue;
-      if (port <= 0 || port >= 65536) continue;
-      pidCandidates.add(pid);
-    }
-
-    if (pidCandidates.size === 0) {
-      return { success: false, error: 'No listening processes found' };
-    }
-
-    const allCandidatePorts: number[] = [];
-
-    for (const pid of pidCandidates) {
-      const cwd = await getProcessWorkingDirectory(pid);
-      if (!isWithinWorktree(cwd, metadata.worktreePath)) {
-        continue;
-      }
-
-      const listeningPorts = await getListeningTcpPorts(pid);
-      if (listeningPorts.length > 0) {
-        allCandidatePorts.push(...listeningPorts);
-      }
-    }
-
-    const selectedPort = selectDevServerPort(allCandidatePorts);
-    if (!selectedPort) {
-      return { success: false, error: 'No dev server port found yet' };
-    }
-
-    return {
-      success: true,
-      port: selectedPort,
-      url: `http://127.0.0.1:${selectedPort}`,
-    };
-  } catch (e: unknown) {
-    console.error('Failed to detect session dev server URL:', e);
     return { success: false, error: getErrorMessage(e) };
   }
 }

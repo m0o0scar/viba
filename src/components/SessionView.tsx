@@ -4,7 +4,6 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 // import { useRouter } from 'next/navigation';
 import {
     deleteSessionInBackground,
-    detectSessionDevServerUrl,
     getSessionDivergence,
     getSessionUncommittedFileCount,
     listSessionBaseBranches,
@@ -47,6 +46,7 @@ const normalizePreviewUrl = (rawValue: string): string | null => {
     const trimmed = rawValue.trim();
     if (!trimmed) return null;
     if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return null;
     return `http://${trimmed}`;
 };
 
@@ -89,9 +89,11 @@ export function SessionView({
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const terminalRef = useRef<HTMLIFrameElement>(null);
+    const previewAddressInputRef = useRef<HTMLInputElement>(null);
     const splitContainerRef = useRef<HTMLDivElement>(null);
     const splitResizeRef = useRef({ startX: 0, startRatio: DEFAULT_AGENT_PANE_RATIO });
-    const detectDevServerRunIdRef = useRef(0);
+    const agentFrameLinkCleanupRef = useRef<(() => void) | null>(null);
+    const terminalFrameLinkCleanupRef = useRef<(() => void) | null>(null);
 
     const [feedback, setFeedback] = useState<string>('Initializing...');
     const [cleanupPhase, setCleanupPhase] = useState<CleanupPhase>('idle');
@@ -114,7 +116,6 @@ export function SessionView({
     const [previewUrl, setPreviewUrl] = useState('');
     const [agentPaneRatio, setAgentPaneRatio] = useState(DEFAULT_AGENT_PANE_RATIO);
     const [isSplitResizing, setIsSplitResizing] = useState(false);
-    const [isDetectingDevServer, setIsDetectingDevServer] = useState(false);
 
     const [isTerminalMinimized, setIsTerminalMinimized] = useState(true);
 
@@ -701,41 +702,64 @@ export function SessionView({
         return true;
     }, []);
 
-    const detectAndLoadDevServerPreview = useCallback(async () => {
-        if (!sessionName) return;
+    const handleTerminalLinkOpen = useCallback((rawUrl: string, openInNewTab: boolean): boolean => {
+        const normalized = normalizePreviewUrl(rawUrl);
+        if (!normalized) return false;
 
-        const runId = detectDevServerRunIdRef.current + 1;
-        detectDevServerRunIdRef.current = runId;
-        setIsDetectingDevServer(true);
-
-        const maxAttempts = 12;
-        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-            if (attempt > 0) {
-                await new Promise((resolve) => setTimeout(resolve, 1500));
-            }
-
-            try {
-                const result = await detectSessionDevServerUrl(sessionName);
-                if (detectDevServerRunIdRef.current !== runId) {
-                    return;
-                }
-
-                if (result.success && result.url) {
-                    applyPreviewUrl(result.url, true);
-                    setFeedback(`Loaded preview: ${result.url}`);
-                    setIsDetectingDevServer(false);
-                    return;
-                }
-            } catch (error) {
-                console.error('Failed to detect dev server port:', error);
-            }
+        if (openInNewTab) {
+            window.open(normalized, '_blank', 'noopener,noreferrer');
+            return true;
         }
 
-        if (detectDevServerRunIdRef.current === runId) {
-            setFeedback('Dev server started, but no listening port was detected yet');
-            setIsDetectingDevServer(false);
-        }
-    }, [applyPreviewUrl, sessionName]);
+        applyPreviewUrl(normalized, true);
+        setFeedback(`Loaded preview: ${normalized}`);
+        return true;
+    }, [applyPreviewUrl]);
+
+    const attachTerminalLinkHandler = useCallback((
+        iframe: HTMLIFrameElement,
+        cleanupRef: React.MutableRefObject<(() => void) | null>
+    ) => {
+        cleanupRef.current?.();
+        const frameDocument = iframe.contentDocument;
+        if (!frameDocument) return;
+
+        const handleClick = (event: MouseEvent) => {
+            const target = event.target as HTMLElement | null;
+            if (!target) return;
+
+            const anchor = target.closest('a[href]');
+            if (!(anchor instanceof HTMLAnchorElement)) return;
+
+            const href = anchor.getAttribute('href')?.trim();
+            if (!href) return;
+
+            const shouldOpenInNewTab = event.metaKey || event.ctrlKey;
+            const handled = handleTerminalLinkOpen(anchor.href || href, shouldOpenInNewTab);
+            if (!handled) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+        };
+
+        frameDocument.addEventListener('click', handleClick, true);
+        cleanupRef.current = () => {
+            frameDocument.removeEventListener('click', handleClick, true);
+        };
+    }, [handleTerminalLinkOpen]);
+
+    useEffect(() => {
+        if (!isPreviewVisible) return;
+        if (previewInputUrl.trim()) return;
+
+        const timer = window.setTimeout(() => {
+            previewAddressInputRef.current?.focus();
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [isPreviewVisible, previewInputUrl]);
 
     const handlePreviewSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -764,7 +788,6 @@ export function SessionView({
             if (attempts > 30) {
                 setFeedback('Failed to start dev server: terminal is not ready');
                 setIsStartingDevServer(false);
-                setIsDetectingDevServer(false);
                 return;
             }
 
@@ -790,9 +813,8 @@ export function SessionView({
                     win.focus();
                     if (textarea) (textarea as HTMLElement).focus();
 
-                    setFeedback('Dev server start command sent. Detecting port...');
+                    setFeedback('Dev server start command sent');
                     setIsStartingDevServer(false);
-                    void detectAndLoadDevServerPreview();
                 } else {
                     setTimeout(() => checkAndInject(attempts + 1), 300);
                 }
@@ -800,7 +822,6 @@ export function SessionView({
                 console.error('Dev server injection error', e);
                 setFeedback('Failed to start dev server');
                 setIsStartingDevServer(false);
-                setIsDetectingDevServer(false);
             }
         };
 
@@ -829,6 +850,7 @@ export function SessionView({
                 event.stopImmediatePropagation();
             }, true);
         }
+        attachTerminalLinkHandler(iframe, agentFrameLinkCleanupRef);
 
         console.log('Iframe loaded, starting injection check...');
         setFeedback('Connecting to terminal...');
@@ -989,6 +1011,7 @@ export function SessionView({
                 event.stopImmediatePropagation();
             }, true);
         }
+        attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef);
 
         const checkAndInject = (attempts = 0) => {
             if (attempts > 30) {
@@ -1191,7 +1214,7 @@ export function SessionView({
                         onClick={() => setIsPreviewVisible((previous) => !previous)}
                         title={isPreviewVisible ? 'Hide preview panel' : 'Show preview panel'}
                     >
-                        {isDetectingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Globe className="w-3 h-3" />}
+                        <Globe className="w-3 h-3" />
                         <span className={headerButtonLabelClass}>{isPreviewVisible ? 'Hide Preview' : 'Show Preview'}</span>
                     </button>
 
@@ -1339,6 +1362,7 @@ export function SessionView({
                                 onSubmit={handlePreviewSubmit}
                             >
                                 <input
+                                    ref={previewAddressInputRef}
                                     type="text"
                                     className="input input-xs input-bordered w-full font-mono"
                                     value={previewInputUrl}
