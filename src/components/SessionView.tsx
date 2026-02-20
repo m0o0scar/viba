@@ -62,7 +62,6 @@ const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
-const TERMINAL_LINK_DEBUG = true;
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
 
@@ -749,17 +748,7 @@ export function SessionView({
         const terminal = frameWindow?.term;
         if (!frameWindow || !terminal) return;
 
-        const debugLog = (message: string, details?: unknown) => {
-            if (!TERMINAL_LINK_DEBUG) return;
-            if (typeof details === 'undefined') {
-                console.log(`[viba:terminal-link] ${message}`);
-                return;
-            }
-            console.log(`[viba:terminal-link] ${message}`, details);
-        };
-
         const restorers: Array<() => void> = [];
-        debugLog('attach start');
 
         const frameDocument = iframe.contentDocument;
         let lastModifierState = {
@@ -789,11 +778,9 @@ export function SessionView({
         const patchedOpen: Window['open'] = (...args) => {
             const openWithModifier = Date.now() - lastModifierState.at < 1000;
             const shouldOpenInNewTab = openWithModifier && (lastModifierState.metaKey || lastModifierState.ctrlKey);
-            debugLog('window.open called', { args, shouldOpenInNewTab });
 
             if (typeof args[0] === 'string' && args[0].trim()) {
                 const handled = handleTerminalLinkOpen(args[0], shouldOpenInNewTab);
-                debugLog('window.open direct URL', { url: args[0], handled, shouldOpenInNewTab });
                 if (handled) {
                     return null;
                 }
@@ -807,7 +794,6 @@ export function SessionView({
                     location: {
                         set href(url: string) {
                             const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
-                            debugLog('synthetic location href set', { url, handled, shouldOpenInNewTab });
 
                             if (!handled) {
                                 fallbackWindow = originalOpen();
@@ -839,25 +825,16 @@ export function SessionView({
         });
 
         const providers = terminal._core?._linkProviderService?.linkProviders;
-        debugLog('provider map snapshot', {
-            hasProviders: providers instanceof Map,
-            providerCount: providers instanceof Map ? providers.size : 0,
-        });
 
         if (providers instanceof Map) {
             for (const provider of providers.values()) {
                 if (!provider || typeof provider !== 'object') continue;
-                debugLog('provider discovered', {
-                    hasHandler: typeof provider._handler === 'function',
-                    hasProvideLinks: typeof provider.provideLinks === 'function',
-                });
 
                 if (typeof provider._handler === 'function') {
                     const originalHandler = provider._handler;
                     provider._handler = (event: MouseEvent | undefined, url: string) => {
                         const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
                         const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
-                        debugLog('provider _handler fired', { url, shouldOpenInNewTab, handled });
                         if (!handled) {
                             originalHandler(event, url);
                         }
@@ -872,11 +849,6 @@ export function SessionView({
                     const originalProvideLinks = provider.provideLinks.bind(provider);
                     provider.provideLinks = (line: number, callback: (links: TerminalLink[] | undefined) => void) => {
                         originalProvideLinks(line, (links: TerminalLink[] | undefined) => {
-                            debugLog('provider provideLinks callback', {
-                                line,
-                                linkCount: Array.isArray(links) ? links.length : 0,
-                            });
-
                             if (Array.isArray(links)) {
                                 for (const link of links) {
                                     if (!link || typeof link !== 'object') continue;
@@ -886,7 +858,6 @@ export function SessionView({
                                     link.activate = (event: MouseEvent | undefined, text: string) => {
                                         const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
                                         const handled = handleTerminalLinkOpen(text, shouldOpenInNewTab);
-                                        debugLog('link activate fired', { text, shouldOpenInNewTab, handled });
                                         if (!handled) {
                                             originalActivate(event, text);
                                         }
@@ -910,7 +881,6 @@ export function SessionView({
             activate: (event, url, range) => {
                 const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
                 const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
-                debugLog('terminal options.linkHandler activate', { url, shouldOpenInNewTab, handled });
                 if (!handled) {
                     existingLinkHandler?.activate?.(event, url, range);
                 }
@@ -927,7 +897,6 @@ export function SessionView({
         restorers.push(() => {
             terminal.options.linkHandler = existingLinkHandler ?? null;
         });
-        debugLog('attach complete');
 
         cleanupRef.current = () => {
             for (const restore of restorers) {
@@ -1040,7 +1009,6 @@ export function SessionView({
             }, true);
         }
 
-        console.log('Iframe loaded, starting injection check...');
         setFeedback('Connecting to terminal...');
 
         const checkAndInject = (attempts = 0) => {
@@ -1054,7 +1022,6 @@ export function SessionView({
                 if (win && win.term) {
                     const term = win.term;
                     attachTerminalLinkHandler(iframe, agentFrameLinkCleanupRef);
-                    console.log('Terminal instance found');
 
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
                     try {
@@ -1142,7 +1109,6 @@ export function SessionView({
                             }
 
                             if (agentCmd) {
-                                console.log('Injecting agent command:', agentCmd);
                                 term.paste(agentCmd);
                                 pressEnter();
                                 setFeedback(isResume ? `Resumed session with ${agent}` : `Session started with ${agent}`);
@@ -1181,7 +1147,6 @@ export function SessionView({
     const handleTerminalLoad = () => {
         if (!terminalRef.current) return;
         const iframe = terminalRef.current;
-        console.log('Secondary terminal loaded');
 
         // Safety check
         try {
@@ -1203,7 +1168,6 @@ export function SessionView({
 
         const checkAndInject = (attempts = 0) => {
             if (attempts > 30) {
-                console.log('Timeout waiting for secondary terminal');
                 return;
             }
 
@@ -1212,7 +1176,6 @@ export function SessionView({
                 if (win && win.term) {
                     const term = win.term;
                     attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef);
-                    console.log('Secondary terminal instance found');
 
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
                     try {
@@ -1273,7 +1236,6 @@ export function SessionView({
                     // Check for startup script
                     if (startupScript && !isResume) {
                         setTimeout(() => {
-                            console.log('Injecting startup script:', startupScript);
                             term.paste(startupScript);
                             pressEnter();
                         }, 500);

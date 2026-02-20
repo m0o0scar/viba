@@ -111,13 +111,11 @@ declare global {
 
 export async function startTtydProcess(): Promise<{ success: boolean; error?: string }> {
   if (global.ttydProcess) {
-    console.log('ttyd is already running');
     return { success: true };
   }
 
   try {
     const { spawn } = await import('child_process');
-    console.log('Starting ttyd process...');
 
     const env: any = { ...process.env };
     // Clean up environment variables to prevent conflicts
@@ -155,8 +153,7 @@ export async function startTtydProcess(): Promise<{ success: boolean; error?: st
       global.ttydProcess = undefined;
     });
 
-    child.on('exit', (code, signal) => {
-      console.log(`ttyd process exited with code ${code} and signal ${signal}`);
+    child.on('exit', () => {
       global.ttydProcess = undefined;
     });
 
@@ -195,7 +192,6 @@ export async function prepareSessionWorktree(
 
     const git = simpleGit(repoPath);
 
-    console.log(`Creating worktree at ${worktreePath} based on ${baseBranch}`);
     await git.raw(['worktree', 'add', '-b', branchName, worktreePath, baseBranch]);
 
     return {
@@ -214,7 +210,6 @@ export async function removeWorktree(repoPath: string, worktreePath: string, bra
   try {
     const git = simpleGit(repoPath);
 
-    console.log(`Removing worktree at ${worktreePath}...`);
     try {
       await git.raw(['worktree', 'remove', '--force', worktreePath]);
     } catch (e: any) {
@@ -233,7 +228,6 @@ export async function removeWorktree(repoPath: string, worktreePath: string, bra
       }
     }
 
-    console.log(`Deleting branch ${branchName}...`);
     try {
       await git.deleteLocalBranch(branchName, true);
     } catch (e: any) {
