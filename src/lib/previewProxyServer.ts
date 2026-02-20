@@ -4,15 +4,16 @@ import { createProxyMiddleware, responseInterceptor } from 'http-proxy-middlewar
 
 const PROXY_HOST = '127.0.0.1';
 const PICKER_SCRIPT_PATH = '/__viba_preview_picker.js';
-const PICKER_SCRIPT_VERSION = '2';
+const PICKER_SCRIPT_VERSION = '3';
 
-const PICKER_CLIENT_SCRIPT = String.raw`(() => {
+const PICKER_CLIENT_SCRIPT_TEMPLATE = String.raw`(() => {
   if (window.__vibaPreviewPickerInstalled) {
     return;
   }
 
   window.__vibaPreviewPickerInstalled = true;
 
+  const TARGET_ORIGIN = __VIBA_TARGET_ORIGIN__;
   const OVERLAY_ID = '__viba_preview_picker_overlay__';
   let pickerActive = false;
 
@@ -237,6 +238,34 @@ const PICKER_CLIENT_SCRIPT = String.raw`(() => {
     }, '*');
   };
 
+  const toTargetUrl = (value) => {
+    if (!TARGET_ORIGIN || typeof TARGET_ORIGIN !== 'string') {
+      return value;
+    }
+
+    try {
+      const parsed = new URL(value, window.location.href);
+      const targetOrigin = new URL(TARGET_ORIGIN);
+
+      if (parsed.origin !== window.location.origin) {
+        return parsed.toString();
+      }
+
+      parsed.protocol = targetOrigin.protocol;
+      parsed.host = targetOrigin.host;
+      return parsed.toString();
+    } catch {
+      return value;
+    }
+  };
+
+  const postLocationChange = () => {
+    window.parent.postMessage({
+      type: 'viba:preview-location-change',
+      url: toTargetUrl(window.location.href),
+    }, '*');
+  };
+
   const highlight = (element) => {
     const overlay = getOverlay();
     const rect = element.getBoundingClientRect();
@@ -344,20 +373,63 @@ const PICKER_CLIENT_SCRIPT = String.raw`(() => {
       return;
     }
 
-    if (payload.type !== 'viba:preview-picker-toggle') {
+    if (payload.type === 'viba:preview-picker-toggle') {
+      setPickerActive(Boolean(payload.active));
       return;
     }
 
-    setPickerActive(Boolean(payload.active));
+    if (payload.type === 'viba:preview-navigation') {
+      if (payload.action === 'back') {
+        window.history.back();
+        return;
+      }
+
+      if (payload.action === 'forward') {
+        window.history.forward();
+        return;
+      }
+
+      if (payload.action === 'reload') {
+        window.location.reload();
+      }
+      return;
+    }
+
+    if (payload.type === 'viba:preview-location-request') {
+      postLocationChange();
+    }
   };
+
+  const wrapHistoryMethod = (methodName) => {
+    const originalMethod = window.history[methodName];
+    if (typeof originalMethod !== 'function') {
+      return;
+    }
+
+    window.history[methodName] = function (...args) {
+      const result = originalMethod.apply(window.history, args);
+      postLocationChange();
+      return result;
+    };
+  };
+
+  wrapHistoryMethod('pushState');
+  wrapHistoryMethod('replaceState');
 
   document.addEventListener('mousemove', handleMouseMove, true);
   document.addEventListener('click', handleClick, true);
   document.addEventListener('keydown', handleKeyDown, true);
   window.addEventListener('message', handleMessage);
+  window.addEventListener('popstate', postLocationChange);
+  window.addEventListener('hashchange', postLocationChange);
 
+  postLocationChange();
   window.parent.postMessage({ type: 'viba:preview-picker-ready' }, '*');
 })();`;
+
+const buildPickerClientScript = (targetOrigin: string): string => (
+  PICKER_CLIENT_SCRIPT_TEMPLATE.replace('__VIBA_TARGET_ORIGIN__', JSON.stringify(targetOrigin))
+);
 
 type PreviewProxyState = {
   middleware: ReturnType<typeof createProxyMiddleware<IncomingMessage, ServerResponse>>;
@@ -446,7 +518,7 @@ const createPreviewProxyServer = async (targetOrigin: string): Promise<PreviewPr
         'cache-control': 'no-store',
         'content-type': 'application/javascript; charset=utf-8',
       });
-      response.end(PICKER_CLIENT_SCRIPT);
+      response.end(buildPickerClientScript(targetOrigin));
       return;
     }
 
