@@ -35,7 +35,7 @@ Viba is a local session manager for AI coding agents. It lets you pick a Git rep
 ## Prerequisites
 
 - Node.js and npm
-- `ttyd` installed and available in `PATH`
+- A system package manager (`viba-cli` auto-installs `ttyd` when missing)
 - At least one supported agent CLI installed (for example `codex`, `gemini`, or `agent`)
 
 ## Getting Started
