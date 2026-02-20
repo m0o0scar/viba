@@ -88,6 +88,11 @@ type PreviewComponentStackEntry = {
     } | null;
 };
 
+type ResolveComponentSourceResponse = {
+    sourcePath?: string;
+    error?: string;
+};
+
 const isWindowsAbsolutePath = (value: string): boolean => /^[a-zA-Z]:[\\/]/.test(value);
 
 const normalizePickerSourceFileName = (value: string): string => {
@@ -630,6 +635,34 @@ export function SessionView({
         setIsInsertingFilePaths(false);
     }, [pasteIntoAgentIframe]);
 
+    const resolveComponentSourcePathByName = useCallback(async (componentName: string): Promise<string | null> => {
+        const workspaceRoot = (worktree || repo || '').trim();
+        const trimmedName = componentName.trim();
+        if (!workspaceRoot || !trimmedName) return null;
+
+        try {
+            const response = await fetch('/api/component-source/resolve', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    componentName: trimmedName,
+                    workspaceRoot,
+                }),
+            });
+
+            const payload = await response.json().catch(() => null) as ResolveComponentSourceResponse | null;
+            if (!response.ok) return null;
+
+            const sourcePath = typeof payload?.sourcePath === 'string' ? payload.sourcePath.trim() : '';
+            return sourcePath || null;
+        } catch (error) {
+            console.error('Failed to resolve component source path:', error);
+            return null;
+        }
+    }, [repo, worktree]);
+
     const loadBaseBranchOptions = useCallback(async () => {
         if (!sessionName) return;
         if (isLoadingBaseBranchesRef.current) return;
@@ -1132,17 +1165,29 @@ export function SessionView({
                 console.log('Preview selected identifier:', identifier);
                 setIsPreviewPickerActive(false);
 
-                if (identifier) {
-                    void pasteIntoAgentIframe(`${identifier} `).then((inserted) => {
-                        setFeedback(
-                            inserted
-                                ? `Element identifier sent to agent: ${identifier}`
-                                : 'Element selected, but failed to send identifier to agent input'
-                        );
-                    });
-                } else {
+                if (!identifier) {
                     setFeedback('Element selected. No identifier was resolved.');
+                    return;
                 }
+
+                void (async () => {
+                    let finalIdentifier = identifier;
+
+                    // Fallback: when React stack has no source metadata, resolve the file path by component name.
+                    if (!componentReference && fallbackName) {
+                        const resolvedPath = await resolveComponentSourcePathByName(fallbackName);
+                        if (resolvedPath) {
+                            finalIdentifier = `${fallbackName} (${resolvedPath})`;
+                        }
+                    }
+
+                    const inserted = await pasteIntoAgentIframe(`${finalIdentifier} `);
+                    setFeedback(
+                        inserted
+                            ? `Element identifier sent to agent: ${finalIdentifier}`
+                            : 'Element selected, but failed to send identifier to agent input'
+                    );
+                })();
             }
         };
 
@@ -1150,7 +1195,7 @@ export function SessionView({
         return () => {
             window.removeEventListener('message', handlePreviewMessage);
         };
-    }, [pasteIntoAgentIframe, repo, worktree]);
+    }, [pasteIntoAgentIframe, repo, resolveComponentSourcePathByName, worktree]);
 
     useEffect(() => {
         setIsPreviewPickerActive(false);
