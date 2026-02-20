@@ -403,6 +403,20 @@ const createPreviewProxyServer = async (targetOrigin: string): Promise<PreviewPr
     target: targetOrigin,
     ws: true,
     on: {
+      proxyReq: (proxyReq, request) => {
+        const host = request.headers.host;
+        if (host) {
+          proxyReq.setHeader('x-forwarded-host', host);
+          const forwardedPort = host.includes(':') ? host.split(':').at(-1) : undefined;
+          if (forwardedPort) {
+            proxyReq.setHeader('x-forwarded-port', forwardedPort);
+          }
+        }
+
+        if (!proxyReq.getHeader('x-forwarded-proto')) {
+          proxyReq.setHeader('x-forwarded-proto', 'http');
+        }
+      },
       proxyRes: responseInterceptor(async (responseBuffer, proxyRes) => {
         const rawContentType = proxyRes.headers['content-type'];
         const contentType = Array.isArray(rawContentType)
