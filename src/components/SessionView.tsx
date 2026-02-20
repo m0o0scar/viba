@@ -991,13 +991,34 @@ export function SessionView({
 
             if (payload.type === 'viba:preview-element-selected') {
                 const selectedElement = (payload.element && typeof payload.element === 'object')
-                    ? payload.element as { reactComponentStack?: unknown[] }
+                    ? payload.element as { reactComponentStack?: unknown[]; selector?: string | null }
                     : null;
+                const reactStack = Array.isArray(selectedElement?.reactComponentStack)
+                    ? selectedElement.reactComponentStack
+                    : [];
+                const firstReactComponent = reactStack[0] && typeof reactStack[0] === 'object'
+                    ? (reactStack[0] as { name?: unknown }).name
+                    : undefined;
+                const identifier = typeof firstReactComponent === 'string' && firstReactComponent.trim().length > 0
+                    ? firstReactComponent.trim()
+                    : (typeof selectedElement?.selector === 'string' ? selectedElement.selector : '');
 
                 console.log('Preview selected element:', selectedElement);
-                console.log('Preview selected reactComponentStack:', selectedElement?.reactComponentStack ?? []);
+                console.log('Preview selected reactComponentStack:', reactStack);
+                console.log('Preview selected identifier:', identifier);
                 setIsPreviewPickerActive(false);
-                setFeedback('Element selected. See browser console for details.');
+
+                if (identifier) {
+                    void pasteIntoAgentIframe(`${identifier} `).then((inserted) => {
+                        setFeedback(
+                            inserted
+                                ? `Element identifier sent to agent: ${identifier}`
+                                : 'Element selected, but failed to send identifier to agent input'
+                        );
+                    });
+                } else {
+                    setFeedback('Element selected. No identifier was resolved.');
+                }
             }
         };
 
@@ -1005,7 +1026,7 @@ export function SessionView({
         return () => {
             window.removeEventListener('message', handlePreviewMessage);
         };
-    }, []);
+    }, [pasteIntoAgentIframe]);
 
     useEffect(() => {
         setIsPreviewPickerActive(false);
