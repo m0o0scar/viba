@@ -53,7 +53,7 @@ async function getSessionsDir(): Promise<string> {
   const sessionsDir = path.join(homedir, '.viba', 'sessions');
   try {
     await fs.mkdir(sessionsDir, { recursive: true });
-  } catch (error) {
+  } catch {
     // Ignore if exists
   }
   return sessionsDir;

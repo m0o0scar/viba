@@ -12,7 +12,7 @@ import {
     updateSessionBaseBranch
 } from '@/app/actions/session';
 import { getConfig, updateConfig } from '@/app/actions/config';
-import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus } from 'lucide-react';
+import { Trash2, ExternalLink, Play, GitCommitHorizontal, GitMerge, GitPullRequestArrow, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, Grip, ChevronDown, Plus, Globe } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName } from '@/lib/path';
 
@@ -27,15 +27,52 @@ type TerminalWindow = Window & {
     term?: {
         paste: (text: string) => void;
         options: {
+            linkHandler?: TerminalLinkHandler | null;
             theme?: Record<string, string>;
             [key: string]: unknown;
+        };
+        _core?: {
+            _linkProviderService?: {
+                linkProviders?: Map<number, TerminalLinkProvider>;
+            };
         };
     };
 };
 
 type CleanupPhase = 'idle' | 'error';
+type TerminalLinkProvider = {
+    _handler?: (event: MouseEvent | undefined, url: string) => void;
+    provideLinks?: (line: number, callback: (links: TerminalLink[] | undefined) => void) => void;
+};
+
+type TerminalLink = {
+    text: string;
+    activate?: (event: MouseEvent | undefined, text: string) => void;
+    [key: string]: unknown;
+};
+
+type TerminalLinkHandler = {
+    allowNonHttpProtocols?: boolean;
+    activate?: (event: MouseEvent | undefined, url: string, range?: unknown) => void;
+    hover?: (event: MouseEvent | undefined, url: string, range?: unknown) => void;
+    leave?: (event: MouseEvent | undefined, url: string, range?: unknown) => void;
+};
 
 const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
+const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
+const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
+const DEFAULT_AGENT_PANE_RATIO = 0.5;
+const TERMINAL_LINK_DEBUG = true;
+
+const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
+
+const normalizePreviewUrl = (rawValue: string): string | null => {
+    const trimmed = rawValue.trim();
+    if (!trimmed) return null;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return null;
+    return `http://${trimmed}`;
+};
 
 export interface SessionViewProps {
     repo: string;
@@ -76,6 +113,11 @@ export function SessionView({
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const terminalRef = useRef<HTMLIFrameElement>(null);
+    const previewAddressInputRef = useRef<HTMLInputElement>(null);
+    const splitContainerRef = useRef<HTMLDivElement>(null);
+    const splitResizeRef = useRef({ startX: 0, startRatio: DEFAULT_AGENT_PANE_RATIO });
+    const agentFrameLinkCleanupRef = useRef<(() => void) | null>(null);
+    const terminalFrameLinkCleanupRef = useRef<(() => void) | null>(null);
 
     const [feedback, setFeedback] = useState<string>('Initializing...');
     const [cleanupPhase, setCleanupPhase] = useState<CleanupPhase>('idle');
@@ -93,6 +135,11 @@ export function SessionView({
     const [isUpdatingBaseBranch, setIsUpdatingBaseBranch] = useState(false);
     const [divergence, setDivergence] = useState({ ahead: 0, behind: 0 });
     const [uncommittedFileCount, setUncommittedFileCount] = useState(0);
+    const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+    const [previewInputUrl, setPreviewInputUrl] = useState('');
+    const [previewUrl, setPreviewUrl] = useState('');
+    const [agentPaneRatio, setAgentPaneRatio] = useState(DEFAULT_AGENT_PANE_RATIO);
+    const [isSplitResizing, setIsSplitResizing] = useState(false);
 
     const [isTerminalMinimized, setIsTerminalMinimized] = useState(true);
 
@@ -103,12 +150,20 @@ export function SessionView({
     const resizeRef = useRef({ startX: 0, startY: 0, startWidth: 0, startHeight: 0 });
 
     useEffect(() => {
-        const saved = localStorage.getItem('viba-terminal-size');
+        const saved = localStorage.getItem(TERMINAL_SIZE_STORAGE_KEY);
         if (saved) {
             try {
                 setTerminalSize(JSON.parse(saved));
             } catch (e) {
                 console.error('Failed to parse saved terminal size', e);
+            }
+        }
+
+        const savedSplitRatio = localStorage.getItem(SPLIT_RATIO_STORAGE_KEY);
+        if (savedSplitRatio) {
+            const parsed = Number.parseFloat(savedSplitRatio);
+            if (!Number.isNaN(parsed)) {
+                setAgentPaneRatio(clampAgentPaneRatio(parsed));
             }
         }
         setIsLoaded(true);
@@ -153,9 +208,51 @@ export function SessionView({
 
     useEffect(() => {
         if (isLoaded && !isResizing) {
-            localStorage.setItem('viba-terminal-size', JSON.stringify(terminalSize));
+            localStorage.setItem(TERMINAL_SIZE_STORAGE_KEY, JSON.stringify(terminalSize));
         }
     }, [isLoaded, isResizing, terminalSize]);
+
+    useEffect(() => {
+        if (isLoaded && !isSplitResizing) {
+            localStorage.setItem(SPLIT_RATIO_STORAGE_KEY, String(agentPaneRatio));
+        }
+    }, [agentPaneRatio, isLoaded, isSplitResizing]);
+
+    const startSplitResize = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsSplitResizing(true);
+        splitResizeRef.current = {
+            startX: e.clientX,
+            startRatio: agentPaneRatio,
+        };
+    };
+
+    useEffect(() => {
+        if (!isSplitResizing) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const container = splitContainerRef.current;
+            if (!container) return;
+
+            const rect = container.getBoundingClientRect();
+            if (rect.width <= 0) return;
+
+            const delta = e.clientX - splitResizeRef.current.startX;
+            const nextLeftWidth = splitResizeRef.current.startRatio * rect.width + delta;
+            setAgentPaneRatio(clampAgentPaneRatio(nextLeftWidth / rect.width));
+        };
+
+        const handleMouseUp = () => {
+            setIsSplitResizing(false);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isSplitResizing]);
 
     // Auto-scroll and focus terminal when restored from minimized state
     useEffect(() => {
@@ -617,6 +714,254 @@ export function SessionView({
         await runCleanup(false);
     };
 
+    const applyPreviewUrl = useCallback((rawUrl: string, openPreview: boolean): boolean => {
+        const normalized = normalizePreviewUrl(rawUrl);
+        if (!normalized) return false;
+
+        setPreviewInputUrl(normalized);
+        setPreviewUrl(normalized);
+        if (openPreview) {
+            setIsPreviewVisible(true);
+        }
+        return true;
+    }, []);
+
+    const handleTerminalLinkOpen = useCallback((rawUrl: string, openInNewTab: boolean): boolean => {
+        const normalized = normalizePreviewUrl(rawUrl);
+        if (!normalized) return false;
+
+        if (openInNewTab) {
+            window.open(normalized, '_blank', 'noopener,noreferrer');
+            return true;
+        }
+
+        applyPreviewUrl(normalized, true);
+        setFeedback(`Loaded preview: ${normalized}`);
+        return true;
+    }, [applyPreviewUrl]);
+
+    const attachTerminalLinkHandler = useCallback((
+        iframe: HTMLIFrameElement,
+        cleanupRef: React.MutableRefObject<(() => void) | null>
+    ) => {
+        cleanupRef.current?.();
+        const frameWindow = iframe.contentWindow as TerminalWindow | null;
+        const terminal = frameWindow?.term;
+        if (!frameWindow || !terminal) return;
+
+        const debugLog = (message: string, details?: unknown) => {
+            if (!TERMINAL_LINK_DEBUG) return;
+            if (typeof details === 'undefined') {
+                console.log(`[viba:terminal-link] ${message}`);
+                return;
+            }
+            console.log(`[viba:terminal-link] ${message}`, details);
+        };
+
+        const restorers: Array<() => void> = [];
+        debugLog('attach start');
+
+        const frameDocument = iframe.contentDocument;
+        let lastModifierState = {
+            metaKey: false,
+            ctrlKey: false,
+            at: 0,
+        };
+
+        if (frameDocument) {
+            const recordModifierState = (event: MouseEvent) => {
+                lastModifierState = {
+                    metaKey: event.metaKey,
+                    ctrlKey: event.ctrlKey,
+                    at: Date.now(),
+                };
+            };
+
+            frameDocument.addEventListener('mousedown', recordModifierState, true);
+            frameDocument.addEventListener('click', recordModifierState, true);
+            restorers.push(() => {
+                frameDocument.removeEventListener('mousedown', recordModifierState, true);
+                frameDocument.removeEventListener('click', recordModifierState, true);
+            });
+        }
+
+        const originalOpen = frameWindow.open.bind(frameWindow);
+        const patchedOpen: Window['open'] = (...args) => {
+            const openWithModifier = Date.now() - lastModifierState.at < 1000;
+            const shouldOpenInNewTab = openWithModifier && (lastModifierState.metaKey || lastModifierState.ctrlKey);
+            debugLog('window.open called', { args, shouldOpenInNewTab });
+
+            if (typeof args[0] === 'string' && args[0].trim()) {
+                const handled = handleTerminalLinkOpen(args[0], shouldOpenInNewTab);
+                debugLog('window.open direct URL', { url: args[0], handled, shouldOpenInNewTab });
+                if (handled) {
+                    return null;
+                }
+                return originalOpen(...args);
+            }
+
+            if (args.length === 0) {
+                let fallbackWindow: Window | null = null;
+                const syntheticWindow = {
+                    opener: null,
+                    location: {
+                        set href(url: string) {
+                            const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
+                            debugLog('synthetic location href set', { url, handled, shouldOpenInNewTab });
+
+                            if (!handled) {
+                                fallbackWindow = originalOpen();
+                                if (fallbackWindow) {
+                                    try {
+                                        fallbackWindow.opener = null;
+                                    } catch {
+                                        // Ignore opener assignment failures
+                                    }
+                                    fallbackWindow.location.href = url;
+                                }
+                            }
+                        },
+                        get href() {
+                            return '';
+                        },
+                    },
+                } as unknown as Window;
+
+                return syntheticWindow;
+            }
+
+            return originalOpen(...args);
+        };
+
+        frameWindow.open = patchedOpen;
+        restorers.push(() => {
+            frameWindow.open = originalOpen;
+        });
+
+        const providers = terminal._core?._linkProviderService?.linkProviders;
+        debugLog('provider map snapshot', {
+            hasProviders: providers instanceof Map,
+            providerCount: providers instanceof Map ? providers.size : 0,
+        });
+
+        if (providers instanceof Map) {
+            for (const provider of providers.values()) {
+                if (!provider || typeof provider !== 'object') continue;
+                debugLog('provider discovered', {
+                    hasHandler: typeof provider._handler === 'function',
+                    hasProvideLinks: typeof provider.provideLinks === 'function',
+                });
+
+                if (typeof provider._handler === 'function') {
+                    const originalHandler = provider._handler;
+                    provider._handler = (event: MouseEvent | undefined, url: string) => {
+                        const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
+                        const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
+                        debugLog('provider _handler fired', { url, shouldOpenInNewTab, handled });
+                        if (!handled) {
+                            originalHandler(event, url);
+                        }
+                    };
+
+                    restorers.push(() => {
+                        provider._handler = originalHandler;
+                    });
+                }
+
+                if (typeof provider.provideLinks === 'function') {
+                    const originalProvideLinks = provider.provideLinks.bind(provider);
+                    provider.provideLinks = (line: number, callback: (links: TerminalLink[] | undefined) => void) => {
+                        originalProvideLinks(line, (links: TerminalLink[] | undefined) => {
+                            debugLog('provider provideLinks callback', {
+                                line,
+                                linkCount: Array.isArray(links) ? links.length : 0,
+                            });
+
+                            if (Array.isArray(links)) {
+                                for (const link of links) {
+                                    if (!link || typeof link !== 'object') continue;
+                                    if (typeof link.activate !== 'function') continue;
+
+                                    const originalActivate = link.activate.bind(link);
+                                    link.activate = (event: MouseEvent | undefined, text: string) => {
+                                        const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
+                                        const handled = handleTerminalLinkOpen(text, shouldOpenInNewTab);
+                                        debugLog('link activate fired', { text, shouldOpenInNewTab, handled });
+                                        if (!handled) {
+                                            originalActivate(event, text);
+                                        }
+                                    };
+                                }
+                            }
+                            callback(links);
+                        });
+                    };
+
+                    restorers.push(() => {
+                        provider.provideLinks = originalProvideLinks;
+                    });
+                }
+            }
+        }
+
+        const existingLinkHandler = terminal.options.linkHandler;
+        const nextLinkHandler: TerminalLinkHandler = {
+            allowNonHttpProtocols: existingLinkHandler?.allowNonHttpProtocols ?? false,
+            activate: (event, url, range) => {
+                const shouldOpenInNewTab = Boolean(event?.metaKey || event?.ctrlKey);
+                const handled = handleTerminalLinkOpen(url, shouldOpenInNewTab);
+                debugLog('terminal options.linkHandler activate', { url, shouldOpenInNewTab, handled });
+                if (!handled) {
+                    existingLinkHandler?.activate?.(event, url, range);
+                }
+            },
+            hover: (event, url, range) => {
+                existingLinkHandler?.hover?.(event, url, range);
+            },
+            leave: (event, url, range) => {
+                existingLinkHandler?.leave?.(event, url, range);
+            },
+        };
+
+        terminal.options.linkHandler = nextLinkHandler;
+        restorers.push(() => {
+            terminal.options.linkHandler = existingLinkHandler ?? null;
+        });
+        debugLog('attach complete');
+
+        cleanupRef.current = () => {
+            for (const restore of restorers) {
+                restore();
+            }
+            cleanupRef.current = null;
+        };
+    }, [handleTerminalLinkOpen]);
+
+    useEffect(() => {
+        if (!isPreviewVisible) return;
+        if (previewInputUrl.trim()) return;
+
+        const timer = window.setTimeout(() => {
+            previewAddressInputRef.current?.focus();
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [isPreviewVisible, previewInputUrl]);
+
+    const handlePreviewSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const normalized = normalizePreviewUrl(previewInputUrl);
+        if (!normalized) {
+            setFeedback('Please enter a preview URL');
+            return;
+        }
+
+        applyPreviewUrl(normalized, true);
+        setFeedback(`Loading preview: ${normalized}`);
+    };
+
     const handleStartDevServer = () => {
         const script = devServerScript?.trim();
         if (!script || !terminalRef.current) return;
@@ -708,6 +1053,7 @@ export function SessionView({
                 const win = iframe.contentWindow as TerminalWindow | null;
                 if (win && win.term) {
                     const term = win.term;
+                    attachTerminalLinkHandler(iframe, agentFrameLinkCleanupRef);
                     console.log('Terminal instance found');
 
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
@@ -865,6 +1211,7 @@ export function SessionView({
                 const win = iframe.contentWindow as TerminalWindow | null;
                 if (win && win.term) {
                     const term = win.term;
+                    attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef);
                     console.log('Secondary terminal instance found');
 
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
@@ -971,8 +1318,10 @@ export function SessionView({
     ])).filter((branchOption) => branchOption !== branch || branchOption === currentBaseBranch);
 
     return (
-        <div className={`flex flex-col h-screen w-full overflow-hidden bg-base-100 ${isResizing ? 'select-none' : ''}`}>
-            {isResizing && <div className="fixed inset-0 z-[9999] cursor-nwse-resize" />}
+        <div className={`flex flex-col h-screen w-full overflow-hidden bg-base-100 ${(isResizing || isSplitResizing) ? 'select-none' : ''}`}>
+            {(isResizing || isSplitResizing) && (
+                <div className={`fixed inset-0 z-[9999] ${isResizing ? 'cursor-nwse-resize' : 'cursor-col-resize'}`} />
+            )}
             <div className="z-20 bg-base-300/95 p-2 text-xs flex justify-between px-4 font-mono select-none items-center shadow-md backdrop-blur-sm border-b border-base-content/10">
                 <div className="flex items-center gap-4">
                     <button
@@ -1048,6 +1397,15 @@ export function SessionView({
                             <span className={headerButtonLabelClass}>Start Dev Server</span>
                         </button>
                     )}
+
+                    <button
+                        className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
+                        onClick={() => setIsPreviewVisible((previous) => !previous)}
+                        title={isPreviewVisible ? 'Hide preview panel' : 'Show preview panel'}
+                    >
+                        <Globe className="w-3 h-3" />
+                        <span className={headerButtonLabelClass}>{isPreviewVisible ? 'Hide Preview' : 'Show Preview'}</span>
+                    </button>
 
                     <button
                         className="btn btn-ghost btn-xs gap-1 h-6 min-h-6"
@@ -1161,18 +1519,72 @@ export function SessionView({
                 </div>
             </div>
 
-            {/* coding agent iframe */}
-            <iframe
-                ref={iframeRef}
-                src="/terminal"
-                className={`flex-1 w-full border-none dark:invert dark:brightness-90 ${isResizing ? 'pointer-events-none' : ''}`}
-                allow="clipboard-read; clipboard-write"
-                onLoad={handleIframeLoad}
-            />
+            <div ref={splitContainerRef} className="flex min-h-0 flex-1 w-full">
+                <div
+                    className="h-full min-w-0"
+                    style={{ width: isPreviewVisible ? `${agentPaneRatio * 100}%` : '100%' }}
+                >
+                    <iframe
+                        ref={iframeRef}
+                        src="/terminal"
+                        className={`h-full w-full border-none dark:invert dark:brightness-90 ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
+                        allow="clipboard-read; clipboard-write"
+                        onLoad={handleIframeLoad}
+                    />
+                </div>
+
+                {isPreviewVisible && (
+                    <>
+                        <div
+                            className="relative h-full w-2 shrink-0 cursor-col-resize bg-base-300/40 hover:bg-base-content/20"
+                            onMouseDown={startSplitResize}
+                            role="separator"
+                            aria-orientation="vertical"
+                            aria-label="Resize preview panel"
+                            title="Drag to resize preview panel"
+                        >
+                            <div className="absolute left-1/2 top-1/2 h-12 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-base-content/30" />
+                        </div>
+                        <div className="flex h-full min-w-0 flex-1 flex-col border-l border-base-content/10 bg-base-200/50">
+                            <form
+                                className="flex items-center gap-2 border-b border-base-content/10 bg-base-200 px-3 py-2"
+                                onSubmit={handlePreviewSubmit}
+                            >
+                                <input
+                                    ref={previewAddressInputRef}
+                                    type="text"
+                                    className="input input-xs input-bordered w-full font-mono"
+                                    value={previewInputUrl}
+                                    onChange={(event) => setPreviewInputUrl(event.target.value)}
+                                    placeholder="http://127.0.0.1:3000"
+                                    spellCheck={false}
+                                />
+                                <button className="btn btn-xs" type="submit">
+                                    Go
+                                </button>
+                            </form>
+                            <div className="min-h-0 flex-1">
+                                {previewUrl ? (
+                                    <iframe
+                                        src={previewUrl}
+                                        className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
+                                        title="Dev server preview"
+                                        sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-downloads"
+                                    />
+                                ) : (
+                                    <div className="flex h-full items-center justify-center px-6 text-center text-xs opacity-70">
+                                        Run the dev server, or enter a URL above to load a preview.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                )}
+            </div>
 
             {/* floating terminal panel */}
             <div
-                className={`absolute bottom-4 right-4 z-30 overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm ${isResizing ? '' : 'transition-all'}`}
+                className={`absolute bottom-4 right-4 z-30 overflow-hidden rounded-lg border border-base-content/20 bg-base-200/95 shadow-2xl backdrop-blur-sm ${(isResizing || isSplitResizing) ? '' : 'transition-all'}`}
                 style={{
                     width: terminalSize.width,
                     height: isTerminalMinimized ? 40 : terminalSize.height,
@@ -1200,7 +1612,7 @@ export function SessionView({
                     <iframe
                         ref={terminalRef}
                         src="/terminal"
-                        className={`h-full w-full border-none dark:invert dark:brightness-90 ${isResizing ? 'pointer-events-none' : ''}`}
+                        className={`h-full w-full border-none dark:invert dark:brightness-90 ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
                         allow="clipboard-read; clipboard-write"
                         onLoad={handleTerminalLoad}
                     />
