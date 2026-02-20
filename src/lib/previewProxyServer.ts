@@ -395,11 +395,28 @@ const normalizeTargetUrl = (target: string): URL => {
 const createPreviewProxyServer = async (targetOrigin: string): Promise<PreviewProxyState> => {
   const middleware = createProxyMiddleware<IncomingMessage, ServerResponse>({
     changeOrigin: true,
+    // Preserve original client-facing host/proto metadata for frameworks
+    // (e.g. Next.js Server Actions CSRF checks) running behind this proxy.
+    xfwd: true,
     selfHandleResponse: true,
     secure: false,
     target: targetOrigin,
     ws: true,
     on: {
+      proxyReq: (proxyReq, request) => {
+        const host = request.headers.host;
+        if (host) {
+          proxyReq.setHeader('x-forwarded-host', host);
+          const forwardedPort = host.includes(':') ? host.split(':').at(-1) : undefined;
+          if (forwardedPort) {
+            proxyReq.setHeader('x-forwarded-port', forwardedPort);
+          }
+        }
+
+        if (!proxyReq.getHeader('x-forwarded-proto')) {
+          proxyReq.setHeader('x-forwarded-proto', 'http');
+        }
+      },
       proxyRes: responseInterceptor(async (responseBuffer, proxyRes) => {
         const rawContentType = proxyRes.headers['content-type'];
         const contentType = Array.isArray(rawContentType)
