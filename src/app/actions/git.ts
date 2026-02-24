@@ -270,6 +270,20 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
 
     let persistenceMode: 'tmux' | 'shell' = 'shell';
     if (hasTmux) {
+      // Ensure tmux sessions keep enough history and support mouse wheel scrolling.
+      spawnSync('tmux', ['start-server'], {
+        stdio: 'ignore',
+        env: process.env,
+      });
+      spawnSync('tmux', ['set-option', '-g', 'mouse', 'on'], {
+        stdio: 'ignore',
+        env: process.env,
+      });
+      spawnSync('tmux', ['set-option', '-g', 'history-limit', '200000'], {
+        stdio: 'ignore',
+        env: process.env,
+      });
+
       // Use URL args so each iframe can attach to a dedicated tmux session.
       ttydArgs.push('-a', 'tmux');
       persistenceMode = 'tmux';
