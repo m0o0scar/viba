@@ -223,6 +223,39 @@ const searchByScanningFilesForNames = async (workspaceRoot: string, componentNam
   return results;
 };
 
+const scoreCandidate = (candidatePath: string, componentName: string): number => {
+  const normalized = candidatePath.replace(/\\/g, '/').toLowerCase();
+  const kebabName = toKebabCase(componentName);
+  const fileName = path.basename(normalized);
+
+  let score = 0;
+  if (normalized.includes('/src/components/')) score += 100;
+  if (normalized.includes('/components/')) score += 80;
+  if (normalized.includes('/src/')) score += 60;
+  if (/\.(tsx|jsx)$/.test(normalized)) score += 20;
+  if (fileName.includes(kebabName)) score += 15;
+  if (fileName.includes(componentName.toLowerCase())) score += 10;
+  if (normalized.includes('/node_modules/')) score -= 1000;
+
+  return score;
+};
+
+const pickBestCandidate = (workspaceRoot: string, componentName: string, relativePaths: string[]): string | null => {
+  const absoluteCandidates = unique(relativePaths)
+    .map((relativePath) => path.resolve(workspaceRoot, relativePath))
+    .filter(Boolean);
+
+  if (absoluteCandidates.length === 0) return null;
+
+  const sorted = absoluteCandidates.sort((a, b) => {
+    const scoreDiff = scoreCandidate(b, componentName) - scoreCandidate(a, componentName);
+    if (scoreDiff !== 0) return scoreDiff;
+    return a.length - b.length;
+  });
+
+  return sorted[0] || null;
+};
+
 const resolveSourcePathByComponentNameFast = async (
   workspaceRoot: string,
   componentName: string
