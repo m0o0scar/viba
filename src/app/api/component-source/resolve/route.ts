@@ -179,71 +179,51 @@ const walkSourceFiles = async (workspaceRoot: string): Promise<string[]> => {
   return files;
 };
 
-const searchByScanningFiles = async (workspaceRoot: string, componentName: string): Promise<string[]> => {
+const searchByScanningFilesForNames = async (workspaceRoot: string, componentNames: string[]): Promise<Map<string, string[]>> => {
   const files = await walkSourceFiles(workspaceRoot);
-  if (files.length === 0) return [];
+  if (files.length === 0) return new Map();
 
-  const regexes = buildSearchPatterns(componentName).map((pattern) => {
-    try {
-      return new RegExp(pattern, 'm');
-    } catch {
-      return null;
+  const nameToRegexes = new Map<string, RegExp[]>();
+  for (const name of componentNames) {
+    const regexes = buildSearchPatterns(name).map((pattern) => {
+      try {
+        return new RegExp(pattern, 'm');
+      } catch {
+        return null;
+      }
+    }).filter((entry): entry is RegExp => entry instanceof RegExp);
+    if (regexes.length > 0) {
+      nameToRegexes.set(name, regexes);
     }
-  }).filter((entry): entry is RegExp => entry instanceof RegExp);
+  }
 
-  if (regexes.length === 0) return [];
+  const results = new Map<string, string[]>();
+  if (nameToRegexes.size === 0) return results;
 
-  const matches: string[] = [];
   for (const absolutePath of files) {
     try {
       const stat = await fs.stat(absolutePath);
       if (!stat.isFile() || stat.size > MAX_FILE_BYTES) continue;
       const content = await fs.readFile(absolutePath, 'utf-8');
-      if (regexes.some((regex) => regex.test(content))) {
-        matches.push(path.relative(workspaceRoot, absolutePath));
+      
+      const relativePath = path.relative(workspaceRoot, absolutePath);
+      
+      for (const [name, regexes] of nameToRegexes.entries()) {
+        if (regexes.some((regex) => regex.test(content))) {
+          const currentMatches = results.get(name) || [];
+          currentMatches.push(relativePath);
+          results.set(name, currentMatches);
+        }
       }
     } catch {
       // Ignore unreadable files
     }
   }
 
-  return matches;
+  return results;
 };
 
-const scoreCandidate = (candidatePath: string, componentName: string): number => {
-  const normalized = candidatePath.replace(/\\/g, '/').toLowerCase();
-  const kebabName = toKebabCase(componentName);
-  const fileName = path.basename(normalized);
-
-  let score = 0;
-  if (normalized.includes('/src/components/')) score += 100;
-  if (normalized.includes('/components/')) score += 80;
-  if (normalized.includes('/src/')) score += 60;
-  if (/\.(tsx|jsx)$/.test(normalized)) score += 20;
-  if (fileName.includes(kebabName)) score += 15;
-  if (fileName.includes(componentName.toLowerCase())) score += 10;
-  if (normalized.includes('/node_modules/')) score -= 1000;
-
-  return score;
-};
-
-const pickBestCandidate = (workspaceRoot: string, componentName: string, relativePaths: string[]): string | null => {
-  const absoluteCandidates = unique(relativePaths)
-    .map((relativePath) => path.resolve(workspaceRoot, relativePath))
-    .filter(Boolean);
-
-  if (absoluteCandidates.length === 0) return null;
-
-  const sorted = absoluteCandidates.sort((a, b) => {
-    const scoreDiff = scoreCandidate(b, componentName) - scoreCandidate(a, componentName);
-    if (scoreDiff !== 0) return scoreDiff;
-    return a.length - b.length;
-  });
-
-  return sorted[0] || null;
-};
-
-const resolveSourcePathByComponentName = async (
+const resolveSourcePathByComponentNameFast = async (
   workspaceRoot: string,
   componentName: string
 ): Promise<string | null> => {
@@ -266,12 +246,11 @@ const resolveSourcePathByComponentName = async (
     }
   }
 
-  if (candidates.length === 0) {
-    candidates = await searchByScanningFiles(workspaceRoot, componentName);
+  if (candidates.length > 0) {
+    return pickBestCandidate(workspaceRoot, componentName, candidates);
   }
 
-  const best = pickBestCandidate(workspaceRoot, componentName, candidates);
-  return best;
+  return null;
 };
 
 export async function POST(request: NextRequest) {
@@ -308,10 +287,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'workspaceRoot must be a directory' }, { status: 400 });
     }
 
+    // Step 1: Try fast resolution (direct candidates + ripgrep) for all names sequentially
+    const unresolvedNames: string[] = [];
     for (const name of namesToResolve) {
-      const sourcePath = await resolveSourcePathByComponentName(workspaceRoot, name);
+      const sourcePath = await resolveSourcePathByComponentNameFast(workspaceRoot, name);
       if (sourcePath) {
         return NextResponse.json({ sourcePath, resolvedName: name });
+      }
+      unresolvedNames.push(name);
+    }
+
+    // Step 2: If we reach here, neither direct matches nor ripgrep found anything for any of the names.
+    // We do ONE filesystem scan for ALL unresolved names.
+    if (unresolvedNames.length > 0) {
+      const scanResults = await searchByScanningFilesForNames(workspaceRoot, unresolvedNames);
+      
+      // We process them in order of namesToResolve to keep the precedence
+      for (const name of unresolvedNames) {
+        const candidates = scanResults.get(name);
+        if (candidates && candidates.length > 0) {
+          const best = pickBestCandidate(workspaceRoot, name, candidates);
+          if (best) {
+            return NextResponse.json({ sourcePath: best, resolvedName: name });
+          }
+        }
       }
     }
 
