@@ -873,17 +873,6 @@ export function SessionView({
         setIsRebaseDropdownOpen(!isRebaseDropdownOpen);
     };
 
-    const handleMergeAndPurge = async () => {
-        if (!worktree) return;
-        if (!currentBaseBranch) return;
-        if (!confirm(`Merge ${branch} into ${currentBaseBranch}, then clean up and exit?`)) return;
-
-        const merged = await runMerge(false);
-        if (!merged) return;
-
-        await runCleanup(false);
-    };
-
     const loadPreviewViaProxy = useCallback(async (rawUrl: string, openPreview: boolean): Promise<boolean> => {
         const normalized = normalizePreviewUrl(rawUrl);
         if (!normalized) {
@@ -1846,16 +1835,6 @@ export function SessionView({
                         >
                             {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
                             <span className={headerButtonLabelClass}>Merge</span>
-                        </button>
-                        <div className="w-[1px] h-4 bg-base-content/10"></div>
-                        <button
-                            className="btn btn-ghost btn-xs btn-warning rounded-none h-6 min-h-6 border-none px-2 hover:bg-warning/20 hover:border-transparent"
-                            onClick={handleMergeAndPurge}
-                            disabled={isMerging || isRebasing || isUpdatingBaseBranch || !currentBaseBranch || !worktree}
-                            title={currentBaseBranch ? `Merge current branch (${branch}) into target branch (${currentBaseBranch}), then clean up and exit` : 'Target branch unavailable for this session'}
-                        >
-                            {isMerging ? <span className="loading loading-spinner loading-xs"></span> : <GitMerge className="w-3 h-3" />}
-                            <span className={headerButtonLabelClass}>Merge & Purge</span>
                         </button>
                         <div className="w-[1px] h-4 bg-base-content/10"></div>
                         <button
