@@ -472,25 +472,28 @@ export function SessionView({
 
         setCleanupError(null);
         setCleanupPhase('idle');
-        setFeedback('Purging session in background...');
+        setFeedback('Purging session...');
 
-        const purgePromise = deleteSessionInBackground(sessionName)
-            .then((result) => {
-                if (!result.success) {
-                    console.error('Background cleanup failed:', result.error || 'Unknown error');
-                    return;
-                }
+        try {
+            const result = await deleteSessionInBackground(sessionName);
+            if (!result.success) {
+                console.error('Cleanup failed:', result.error || 'Unknown error');
+                setCleanupPhase('error');
+                setCleanupError(result.error || 'Failed to delete session');
+                return false;
+            }
 
-                notifySessionsUpdated();
-            })
-            .catch((error) => {
-                console.error('Background cleanup request failed:', error);
-            });
+            notifySessionsUpdated();
+        } catch (error) {
+            console.error('Cleanup request failed:', error);
+            setCleanupPhase('error');
+            setCleanupError(error instanceof Error ? error.message : 'Unknown error');
+            return false;
+        }
 
         // Use forced navigation here because App Router transitions can be
         // interrupted by iframe/server-action teardown in production builds.
         onExit(true);
-        void purgePromise;
         return true;
     };
 

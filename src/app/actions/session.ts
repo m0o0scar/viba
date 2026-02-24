@@ -385,8 +385,13 @@ export async function deleteSessionInBackground(sessionName: string): Promise<{ 
       return { success: false, error: 'Session metadata not found' };
     }
 
-    // Resolve only after cleanup completes so callers can refresh session lists accurately.
-    return await deleteSession(sessionName);
+    // Resolve immediately but continue cleanup in the background.
+    // This allows the client to navigate away without the request being cancelled.
+    void deleteSession(sessionName).catch((error) => {
+      console.error(`Background cleanup of session ${sessionName} failed:`, error);
+    });
+
+    return { success: true };
   } catch (e: unknown) {
     console.error('Failed to schedule background session deletion:', e);
     return { success: false, error: getErrorMessage(e) };
