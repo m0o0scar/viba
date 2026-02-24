@@ -3,6 +3,10 @@
   "version": "0.4.1",
   "private": false,
   "description": "Local session manager for AI coding agents.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/m0o0scar/viba"
+  },
   "bin": {
     "viba-cli": "bin/viba.mjs"
   },
