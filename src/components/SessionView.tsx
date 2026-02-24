@@ -1226,7 +1226,7 @@ export function SessionView({
                     'RedirectErrorBoundary', 'NotFoundBoundary', 'LoadingBoundary',
                     'ReactDevOverlay', 'HotReload', 'AppContainer', 'Route', 'Link', 'Image',
                     'OuterLayoutRouter', 'Head', 'StringRefs', 'Fragment', 'Profiler',
-                    'StrictMode', 'SuspenseList', 'Script', 'Page'
+                    'StrictMode', 'SuspenseList', 'Script', 'Page', '__next_root_layout_boundary__'
                 ]);
 
                 const stackComponentNames = Array.from(
@@ -1237,7 +1237,12 @@ export function SessionView({
                                 const name = (entry as { name?: unknown }).name;
                                 return typeof name === 'string' ? name.trim() : '';
                             })
-                            .filter((name) => name && !builtInComponents.has(name))
+                            .filter((name) => {
+                                if (!name) return false;
+                                if (builtInComponents.has(name)) return false;
+                                if (name.startsWith('styled.') || name.startsWith('Styled(')) return false;
+                                return true;
+                            })
                     )
                 );
 
@@ -1274,6 +1279,8 @@ export function SessionView({
                         }
                         finalIdentifier = identifier;
                     }
+
+                    console.log('Final resolved component identifier:', finalIdentifier);
 
                     const inserted = await pasteIntoAgentIframe(`${finalIdentifier} `);
                     setFeedback(
