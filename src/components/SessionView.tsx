@@ -66,6 +66,8 @@ type TerminalLinkHandlerOptions = {
 };
 
 type PreviewNavigationAction = 'back' | 'forward' | 'reload';
+type TerminalBootstrapSlot = 'agent' | 'terminal';
+type TerminalBootstrapState = 'idle' | 'in_progress' | 'done';
 
 const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
@@ -247,11 +249,26 @@ export function SessionView({
     const agentTerminalSrc = useMemo(() => buildTtydTerminalSrc(sessionName, 'agent'), [sessionName]);
     const floatingTerminalSrc = useMemo(() => buildTtydTerminalSrc(sessionName, 'terminal'), [sessionName]);
 
-    const getTerminalBootstrapKey = useCallback((slot: 'agent' | 'terminal') => {
+    const terminalBootstrapStateRef = useRef<Record<TerminalBootstrapSlot, TerminalBootstrapState>>({
+        agent: 'idle',
+        terminal: 'idle',
+    });
+
+    useEffect(() => {
+        terminalBootstrapStateRef.current = {
+            agent: 'idle',
+            terminal: 'idle',
+        };
+    }, [sessionName]);
+
+    const getTerminalBootstrapKey = useCallback((slot: TerminalBootstrapSlot) => {
         return `${TERMINAL_BOOTSTRAP_STORAGE_PREFIX}${sessionName}:${slot}`;
     }, [sessionName]);
 
-    const hasTerminalBootstrapped = useCallback((slot: 'agent' | 'terminal'): boolean => {
+    const hasTerminalBootstrapped = useCallback((slot: TerminalBootstrapSlot): boolean => {
+        if (terminalBootstrapStateRef.current[slot] === 'done') {
+            return true;
+        }
         try {
             return window.sessionStorage.getItem(getTerminalBootstrapKey(slot)) === '1';
         } catch {
@@ -259,7 +276,23 @@ export function SessionView({
         }
     }, [getTerminalBootstrapKey]);
 
-    const markTerminalBootstrapped = useCallback((slot: 'agent' | 'terminal'): void => {
+    const beginTerminalBootstrap = useCallback((slot: TerminalBootstrapSlot): boolean => {
+        const current = terminalBootstrapStateRef.current[slot];
+        if (current === 'done' || current === 'in_progress') {
+            return false;
+        }
+        terminalBootstrapStateRef.current[slot] = 'in_progress';
+        return true;
+    }, []);
+
+    const resetTerminalBootstrap = useCallback((slot: TerminalBootstrapSlot): void => {
+        if (terminalBootstrapStateRef.current[slot] !== 'done') {
+            terminalBootstrapStateRef.current[slot] = 'idle';
+        }
+    }, []);
+
+    const markTerminalBootstrapped = useCallback((slot: TerminalBootstrapSlot): void => {
+        terminalBootstrapStateRef.current[slot] = 'done';
         try {
             window.sessionStorage.setItem(getTerminalBootstrapKey(slot), '1');
         } catch {
@@ -1442,6 +1475,14 @@ export function SessionView({
                         return;
                     }
 
+                    if (!beginTerminalBootstrap('agent')) {
+                        setFeedback('Reconnected to terminal');
+                        win.focus();
+                        const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                        if (textarea) (textarea as HTMLElement).focus();
+                        return;
+                    }
+
                     // Attempt injection
 
                     // User instructions:
@@ -1571,6 +1612,7 @@ export function SessionView({
                     setTimeout(() => checkAndInject(attempts + 1), 500);
                 }
             } catch (e) {
+                resetTerminalBootstrap('agent');
                 console.error("Access error during injection:", e);
                 setFeedback('Error accessing terminal: ' + String(e));
             }
@@ -1662,6 +1704,13 @@ export function SessionView({
                         return;
                     }
 
+                    if (!beginTerminalBootstrap('terminal')) {
+                        win.focus();
+                        const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
+                        if (textarea) (textarea as HTMLElement).focus();
+                        return;
+                    }
+
                     const targetPath = worktree || repo;
                     const cmd = `cd ${quoteShellArg(targetPath)}`;
                     term.paste(cmd);
@@ -1700,6 +1749,7 @@ export function SessionView({
                     setTimeout(() => checkAndInject(attempts + 1), 500);
                 }
             } catch (e) {
+                resetTerminalBootstrap('terminal');
                 console.error("Secondary terminal injection error", e);
             }
         };
