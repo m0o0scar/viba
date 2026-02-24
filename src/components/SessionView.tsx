@@ -491,7 +491,9 @@ export function SessionView({
                 console.error('Background cleanup request failed:', error);
             });
 
-        onExit();
+        // Use forced navigation here because App Router transitions can be
+        // interrupted by iframe/server-action teardown in production builds.
+        onExit(true);
         void purgePromise;
         return true;
     };
