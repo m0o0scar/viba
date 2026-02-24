@@ -19,6 +19,7 @@ import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName } from '@/lib/path';
 import { notifySessionsUpdated } from '@/lib/session-updates';
 import { buildTtydTerminalSrc } from '@/lib/terminal-session';
+import { quoteShellArg } from '@/lib/shell';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -81,7 +82,6 @@ type TerminalBootstrapState = 'idle' | 'in_progress' | 'done';
 type TerminalBootstrapRegistry = Record<string, TerminalBootstrapState>;
 type TerminalInteractionMode = 'scroll' | 'select';
 
-const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
@@ -967,7 +967,7 @@ export function SessionView({
 
                 const sourcePath = typeof payload?.sourcePath === 'string' ? payload.sourcePath.trim() : '';
                 const resolvedName = typeof payload?.resolvedName === 'string' ? payload.resolvedName.trim() : '';
-                
+
                 if (sourcePath && resolvedName) return { sourcePath, resolvedName };
             } catch (error) {
                 console.error('Failed to resolve component source path:', error);
@@ -1787,7 +1787,7 @@ export function SessionView({
                                     ].join('\n');
                                     fullMessage = fullMessage ? `${fullMessage}\n\n${attachmentSection}` : attachmentSection;
                                 }
-                                
+
                                 let safeMessage = '';
                                 if (fullMessage) {
                                     if ((rawInitialMessage && rawInitialMessage.trim().length > 0) || (attachmentNames && attachmentNames.length > 0)) {
