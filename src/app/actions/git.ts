@@ -552,19 +552,21 @@ export async function saveAttachments(worktreePath: string, formData: FormData):
     const attachmentsDir = `${worktreePath}-attachments`;
     await fs.mkdir(attachmentsDir, { recursive: true });
 
-    const savedNames: string[] = [];
     const files = Array.from(formData.entries());
 
-    for (const [, entry] of files) {
+    const savePromises = files.map(async ([, entry]) => {
       if (entry instanceof File) {
         const buffer = Buffer.from(await entry.arrayBuffer());
         const safeName = entry.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const fullPath = path.join(attachmentsDir, safeName);
         await fs.writeFile(fullPath, buffer);
-        savedNames.push(safeName);
+        return safeName;
       }
-    }
-    return savedNames;
+      return null;
+    });
+
+    const results = await Promise.all(savePromises);
+    return results.filter((name): name is string => name !== null);
   } catch (error) {
     console.error('Failed to save attachments:', error);
     return [];
