@@ -1249,16 +1249,19 @@ export function SessionView({
                 }
 
                 void (async () => {
-                    let finalIdentifier = componentReference || '';
+                    let finalIdentifier = '';
 
-                    // Fallback: when React stack has no source metadata, resolve the file path by component name(s).
-                    if (!finalIdentifier && stackComponentNames.length > 0) {
-                        for (const componentName of stackComponentNames) {
-                            const resolvedPath = await resolveComponentSourcePathByName(componentName);
-                            if (resolvedPath) {
-                                finalIdentifier = `${componentName} (${resolvedPath})`;
-                                break;
-                            }
+                    if (stackComponentNames.length > 0) {
+                        const results = await Promise.all(
+                            stackComponentNames.map(async (componentName) => {
+                                const resolvedPath = await resolveComponentSourcePathByName(componentName);
+                                return { componentName, resolvedPath };
+                            })
+                        );
+
+                        const firstValid = results.find((r) => r.resolvedPath);
+                        if (firstValid) {
+                            finalIdentifier = `${firstValid.componentName} (${firstValid.resolvedPath})`;
                         }
                     }
 
