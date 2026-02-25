@@ -1,0 +1,46 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
+import {
+  buildTtydTerminalSrc,
+  detectGitRemoteProvider,
+  parseGitRemoteHost,
+} from './terminal-session.ts';
+
+describe('parseGitRemoteHost', () => {
+  it('parses HTTPS remotes', () => {
+    assert.strictEqual(parseGitRemoteHost('https://github.com/acme/repo.git'), 'github.com');
+  });
+
+  it('parses SCP-style SSH remotes', () => {
+    assert.strictEqual(parseGitRemoteHost('git@gitlab.com:team/repo.git'), 'gitlab.com');
+  });
+});
+
+describe('detectGitRemoteProvider', () => {
+  it('detects GitHub and GitLab remotes', () => {
+    assert.strictEqual(detectGitRemoteProvider('git@github.com:acme/repo.git'), 'github');
+    assert.strictEqual(detectGitRemoteProvider('https://gitlab.com/acme/repo.git'), 'gitlab');
+  });
+
+  it('returns null for unknown hosts', () => {
+    assert.strictEqual(detectGitRemoteProvider('https://example.com/acme/repo.git'), null);
+  });
+});
+
+describe('buildTtydTerminalSrc', () => {
+  it('includes tmux environment variables when provided', () => {
+    const url = buildTtydTerminalSrc('session-1', 'agent', {
+      name: 'GITHUB_TOKEN',
+      value: 'secret-token',
+    });
+    const params = new URLSearchParams(url.split('?')[1] || '');
+    assert.deepStrictEqual(params.getAll('arg'), [
+      'new-session',
+      '-e',
+      'GITHUB_TOKEN=secret-token',
+      '-A',
+      '-s',
+      'viba-session-1-agent',
+    ]);
+  });
+});

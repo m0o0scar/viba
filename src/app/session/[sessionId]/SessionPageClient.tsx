@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { SessionView } from '@/components/SessionView';
 import { consumeSessionLaunchContext, getSessionMetadata, SessionMetadata, markSessionInitialized } from '@/app/actions/session';
-import { startTtydProcess } from '@/app/actions/git';
+import { getSessionTerminalSources, startTtydProcess } from '@/app/actions/git';
 
 export default function SessionPage() {
     const params = useParams<{ sessionId: string }>();
@@ -15,6 +15,10 @@ export default function SessionPage() {
     const [metadata, setMetadata] = useState<SessionMetadata | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [terminalSources, setTerminalSources] = useState<{
+        agentTerminalSrc: string;
+        floatingTerminalSrc: string;
+    } | null>(null);
 
     // Startup params — only populated on first open (initialized === false)
     const [initialMessage, setInitialMessage] = useState<string | undefined>(undefined);
@@ -41,6 +45,8 @@ export default function SessionPage() {
 
         const loadSession = async () => {
             try {
+                setTerminalSources(null);
+
                 // Ensure ttyd is running
                 const ttydResult = await startTtydProcess();
                 if (!ttydResult.success) {
@@ -58,6 +64,8 @@ export default function SessionPage() {
                 }
 
                 setMetadata(data);
+                const resolvedTerminalSources = await getSessionTerminalSources(data.sessionName, data.repoPath);
+                setTerminalSources(resolvedTerminalSources);
 
                 // Determine fresh start vs resume purely from the initialized flag:
                 // - initialized === false  → first open, send startup params
@@ -140,6 +148,17 @@ export default function SessionPage() {
         );
     }
 
+    if (!terminalSources) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-base-100">
+                <div className="flex flex-col items-center gap-4">
+                    <span className="loading loading-spinner loading-lg text-primary"></span>
+                    <p className="opacity-60">Initializing terminals...</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <SessionView
             repo={metadata.repoPath}
@@ -159,6 +178,8 @@ export default function SessionPage() {
             isResume={isResume}
             terminalPersistenceMode={terminalPersistenceMode}
             onSessionStart={handleSessionStart}
+            agentTerminalSrc={terminalSources.agentTerminalSrc}
+            floatingTerminalSrc={terminalSources.floatingTerminalSrc}
         />
     );
 }

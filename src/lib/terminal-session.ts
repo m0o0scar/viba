@@ -1,4 +1,9 @@
 export type TerminalSessionRole = 'agent' | 'terminal';
+export type GitRemoteProvider = 'github' | 'gitlab';
+export type TerminalSessionEnvironment = {
+  name: 'GITHUB_TOKEN' | 'GITLAB_TOKEN';
+  value: string;
+};
 
 function sanitizeTmuxSessionName(value: string): string {
   const safe = value.trim().replace(/[^a-zA-Z0-9_-]/g, '-');
@@ -9,10 +14,63 @@ export function getTmuxSessionName(sessionName: string, role: TerminalSessionRol
   return `viba-${sanitizeTmuxSessionName(sessionName).slice(0, 40)}-${role}`;
 }
 
-export function buildTtydTerminalSrc(sessionName: string, role: TerminalSessionRole): string {
+function normalizeGitRemoteUrl(remoteUrl: string): string {
+  const trimmed = remoteUrl.trim();
+  if (!trimmed) return '';
+
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const scpLikeMatch = trimmed.match(/^([^@]+@)?([^:]+):(.+)$/);
+  if (!scpLikeMatch) {
+    return '';
+  }
+
+  const userPart = scpLikeMatch[1] || '';
+  const host = scpLikeMatch[2];
+  const path = scpLikeMatch[3].replace(/^\/+/, '');
+  return `ssh://${userPart}${host}/${path}`;
+}
+
+export function parseGitRemoteHost(remoteUrl: string): string | null {
+  const normalized = normalizeGitRemoteUrl(remoteUrl);
+  if (!normalized) return null;
+
+  try {
+    return new URL(normalized).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+export function detectGitRemoteProvider(remoteUrl: string): GitRemoteProvider | null {
+  const host = parseGitRemoteHost(remoteUrl);
+  if (!host) return null;
+
+  if (host === 'github.com' || host.includes('github')) {
+    return 'github';
+  }
+
+  if (host === 'gitlab.com' || host.includes('gitlab')) {
+    return 'gitlab';
+  }
+
+  return null;
+}
+
+export function buildTtydTerminalSrc(
+  sessionName: string,
+  role: TerminalSessionRole,
+  environment?: TerminalSessionEnvironment | null,
+): string {
   const tmuxSession = getTmuxSessionName(sessionName, role);
   const params = new URLSearchParams();
   params.append('arg', 'new-session');
+  if (environment?.value) {
+    params.append('arg', '-e');
+    params.append('arg', `${environment.name}=${environment.value}`);
+  }
   params.append('arg', '-A');
   params.append('arg', '-s');
   params.append('arg', tmuxSession);
