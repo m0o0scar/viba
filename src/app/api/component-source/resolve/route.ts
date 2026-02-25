@@ -305,11 +305,18 @@ const resolveSourcePathByComponentNameFast = async (
   componentName: string
 ): Promise<string | null> => {
   const directCandidates = buildDirectCandidates(componentName);
-  for (const candidate of directCandidates) {
+
+  const checks = directCandidates.map(async (candidate) => {
     const absolute = path.resolve(workspaceRoot, candidate);
-    if (await fileExists(absolute)) {
-      return absolute;
-    }
+    const exists = await fileExists(absolute);
+    return exists ? absolute : null;
+  });
+
+  const results = await Promise.all(checks);
+  const firstMatch = results.find((result) => result !== null);
+
+  if (firstMatch) {
+    return firstMatch;
   }
 
   const patterns = buildSearchPatterns(componentName);
