@@ -19,6 +19,7 @@ import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName, isWindowsAbsolutePath } from '@/lib/path';
 import { notifySessionsUpdated } from '@/lib/session-updates';
 import { buildTtydTerminalSrc } from '@/lib/terminal-session';
+import { quoteShellArg } from '@/lib/shell';
 import { normalizePreviewUrl } from '@/lib/url';
 
 const SUPPORTED_IDES = [
@@ -82,7 +83,6 @@ type TerminalBootstrapState = 'idle' | 'in_progress' | 'done';
 type TerminalBootstrapRegistry = Record<string, TerminalBootstrapState>;
 type TerminalInteractionMode = 'scroll' | 'select';
 
-const quoteShellArg = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
