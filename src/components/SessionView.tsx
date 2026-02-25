@@ -19,6 +19,7 @@ import SessionFileBrowser from './SessionFileBrowser';
 import { getBaseName, isWindowsAbsolutePath } from '@/lib/path';
 import { notifySessionsUpdated } from '@/lib/session-updates';
 import { buildTtydTerminalSrc } from '@/lib/terminal-session';
+import { normalizePreviewUrl } from '@/lib/url';
 
 const SUPPORTED_IDES = [
     { id: 'vscode', name: 'VS Code', protocol: 'vscode' },
@@ -94,14 +95,6 @@ const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
-
-const normalizePreviewUrl = (rawValue: string): string | null => {
-    const trimmed = rawValue.trim();
-    if (!trimmed) return null;
-    if (/^https?:\/\//i.test(trimmed)) return trimmed;
-    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return null;
-    return `http://${trimmed}`;
-};
 
 type PreviewComponentStackEntry = {
     name?: unknown;
@@ -965,7 +958,7 @@ export function SessionView({
 
                 const sourcePath = typeof payload?.sourcePath === 'string' ? payload.sourcePath.trim() : '';
                 const resolvedName = typeof payload?.resolvedName === 'string' ? payload.resolvedName.trim() : '';
-                
+
                 if (sourcePath && resolvedName) return { sourcePath, resolvedName };
             } catch (error) {
                 console.error('Failed to resolve component source path:', error);
@@ -1785,7 +1778,7 @@ export function SessionView({
                                     ].join('\n');
                                     fullMessage = fullMessage ? `${fullMessage}\n\n${attachmentSection}` : attachmentSection;
                                 }
-                                
+
                                 let safeMessage = '';
                                 if (fullMessage) {
                                     if ((rawInitialMessage && rawInitialMessage.trim().length > 0) || (attachmentNames && attachmentNames.length > 0)) {
