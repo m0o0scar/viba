@@ -5,6 +5,14 @@ import { normalizePreviewUrl } from '@/lib/url';
 export type TerminalWindow = Window & {
     term?: {
         paste: (text: string) => void;
+        scrollToBottom?: () => void;
+        buffer?: {
+            active?: {
+                baseY: number;
+                cursorY: number;
+                getLine?: (lineIndex: number) => { translateToString: (trimRight?: boolean) => string } | undefined;
+            };
+        };
         options: {
             linkHandler?: TerminalLinkHandler | null;
             theme?: Record<string, string>;

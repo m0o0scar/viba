@@ -12,6 +12,7 @@
   },
   "files": [
     "bin",
+    "src/lib/cli-args.mjs",
     ".next/BUILD_ID",
     ".next/server",
     ".next/static",

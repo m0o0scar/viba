@@ -255,9 +255,9 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
     // Clean up environment variables to prevent conflicts
     // Specifically remove TURBOPACK which causes "Multiple bundler flags set" error
     // when running next dev inside the terminal if the parent process has it set.
-    delete env.TURBOPACK;
-    delete env.PORT;
-    delete env.NODE_ENV;
+    delete (env as any).TURBOPACK;
+    delete (env as any).PORT;
+    delete (env as any).NODE_ENV;
 
     const workingDir = os.homedir();
     const isWindows = os.platform() === 'win32';
