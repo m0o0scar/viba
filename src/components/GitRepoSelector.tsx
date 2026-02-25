@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2, Play, KeyRound, Settings } from 'lucide-react';
+import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Cpu, Trash2, Play, KeyRound, Settings, ExternalLink } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import {
   checkIsGitRepo,
@@ -1457,7 +1457,7 @@ export default function GitRepoSelector({
                               onClick={() => handleResumeSession(session)}
                               disabled={loading || deletingSessionName === session.sessionName}
                             >
-                              <Play className="w-3 h-3" /> Resume
+                              <ExternalLink className="w-3 h-3" /> Open
                             </button>
                             <button
                               className="btn btn-sm btn-secondary btn-outline gap-2"
