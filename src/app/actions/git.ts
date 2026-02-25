@@ -4,7 +4,17 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import simpleGit from 'simple-git';
-import { getTmuxSessionName, TerminalSessionRole } from '@/lib/terminal-session';
+import { getConfig } from '@/app/actions/config';
+import { getAllCredentials, getCredentialById, getCredentialToken } from '@/lib/credentials';
+import type { Credential } from '@/lib/credentials';
+import {
+  buildTtydTerminalSrc,
+  detectGitRemoteProvider,
+  getTmuxSessionName,
+  parseGitRemoteHost,
+  TerminalSessionEnvironment,
+  TerminalSessionRole,
+} from '@/lib/terminal-session';
 
 export type FileSystemItem = {
   name: string;
@@ -229,6 +239,141 @@ export async function installAgentCli(agentCli: string): Promise<{ success: bool
 declare global {
   var ttydProcess: ReturnType<typeof import('child_process').spawn> | undefined;
   var ttydPersistenceMode: 'tmux' | 'shell' | undefined;
+}
+
+type TerminalSessionSources = {
+  agentTerminalSrc: string;
+  floatingTerminalSrc: string;
+};
+
+function getGitLabCredentialHost(credential: Credential): string | null {
+  if (credential.type !== 'gitlab') return null;
+
+  try {
+    return new URL(credential.serverUrl).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function matchesProviderAndRemote(
+  credential: Credential | null,
+  provider: 'github' | 'gitlab',
+  remoteHost: string | null,
+): credential is Credential {
+  if (!credential || credential.type !== provider) return false;
+
+  if (provider === 'gitlab' && remoteHost) {
+    const credentialHost = getGitLabCredentialHost(credential);
+    return credentialHost === remoteHost;
+  }
+
+  return true;
+}
+
+function pickCandidateCredential(
+  credentials: Credential[],
+  provider: 'github' | 'gitlab',
+  remoteHost: string | null,
+): Credential | null {
+  if (provider === 'github') {
+    return credentials.find((credential) => credential.type === 'github') || null;
+  }
+
+  if (remoteHost) {
+    const hostMatch = credentials.find((credential) => (
+      credential.type === 'gitlab'
+      && getGitLabCredentialHost(credential) === remoteHost
+    ));
+    if (hostMatch) return hostMatch;
+  }
+
+  return credentials.find((credential) => credential.type === 'gitlab') || null;
+}
+
+async function getPrimaryRemoteUrl(repoPath: string): Promise<string | null> {
+  const git = simpleGit(repoPath);
+
+  try {
+    const originUrl = (await git.raw(['remote', 'get-url', 'origin'])).trim();
+    if (originUrl) return originUrl;
+  } catch {
+    // Fallback to first available remote below.
+  }
+
+  try {
+    const remotes = await git.getRemotes(true);
+    for (const remote of remotes) {
+      const fetchUrl = remote.refs?.fetch?.trim();
+      if (fetchUrl) return fetchUrl;
+
+      const pushUrl = remote.refs?.push?.trim();
+      if (pushUrl) return pushUrl;
+    }
+  } catch {
+    // Ignore and fallback to null.
+  }
+
+  return null;
+}
+
+async function resolveTerminalSessionEnvironment(repoPath: string): Promise<TerminalSessionEnvironment | null> {
+  const remoteUrl = await getPrimaryRemoteUrl(repoPath);
+  if (!remoteUrl) return null;
+
+  const provider = detectGitRemoteProvider(remoteUrl);
+  if (!provider) return null;
+
+  const remoteHost = parseGitRemoteHost(remoteUrl);
+  const config = await getConfig();
+  const repoSettings = config.repoSettings?.[repoPath];
+
+  let credential: Credential | null = null;
+  if (repoSettings?.credentialId) {
+    const selectedCredential = await getCredentialById(repoSettings.credentialId);
+    if (matchesProviderAndRemote(selectedCredential, provider, remoteHost)) {
+      credential = selectedCredential;
+    }
+  }
+
+  if (!credential) {
+    const allCredentials = await getAllCredentials();
+    credential = pickCandidateCredential(allCredentials, provider, remoteHost);
+  }
+
+  if (!credential) return null;
+
+  const token = await getCredentialToken(credential.id);
+  if (!token) return null;
+
+  return provider === 'github'
+    ? { name: 'GITHUB_TOKEN', value: token }
+    : { name: 'GITLAB_TOKEN', value: token };
+}
+
+export async function getSessionTerminalSources(
+  sessionName: string,
+  repoPath: string,
+): Promise<TerminalSessionSources> {
+  const fallback: TerminalSessionSources = {
+    agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent'),
+    floatingTerminalSrc: buildTtydTerminalSrc(sessionName, 'terminal'),
+  };
+
+  if (os.platform() === 'win32') {
+    return fallback;
+  }
+
+  try {
+    const environment = await resolveTerminalSessionEnvironment(repoPath);
+    return {
+      agentTerminalSrc: buildTtydTerminalSrc(sessionName, 'agent', environment),
+      floatingTerminalSrc: buildTtydTerminalSrc(sessionName, 'terminal', environment),
+    };
+  } catch (error) {
+    console.error('Failed to resolve terminal session environment:', error);
+    return fallback;
+  }
 }
 
 export async function startTtydProcess(): Promise<{ success: boolean; persistenceMode?: 'tmux' | 'shell'; error?: string }> {

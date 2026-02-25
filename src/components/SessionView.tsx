@@ -184,6 +184,8 @@ export interface SessionViewProps {
     isResume?: boolean;
     terminalPersistenceMode?: 'tmux' | 'shell';
     onSessionStart?: () => void;
+    agentTerminalSrc?: string;
+    floatingTerminalSrc?: string;
 }
 
 export function SessionView({
@@ -203,7 +205,9 @@ export function SessionView({
     onExit,
     isResume,
     terminalPersistenceMode = 'shell',
-    onSessionStart
+    onSessionStart,
+    agentTerminalSrc: agentTerminalSrcOverride,
+    floatingTerminalSrc: floatingTerminalSrcOverride,
 }: SessionViewProps) {
     const headerButtonLabelClass = 'hidden min-[1900px]:inline';
 
@@ -220,8 +224,14 @@ export function SessionView({
         injected: false,
         timer: null,
     });
-    const agentTerminalSrc = useMemo(() => buildTtydTerminalSrc(sessionName, 'agent'), [sessionName]);
-    const floatingTerminalSrc = useMemo(() => buildTtydTerminalSrc(sessionName, 'terminal'), [sessionName]);
+    const agentTerminalSrc = useMemo(
+        () => agentTerminalSrcOverride || buildTtydTerminalSrc(sessionName, 'agent'),
+        [agentTerminalSrcOverride, sessionName],
+    );
+    const floatingTerminalSrc = useMemo(
+        () => floatingTerminalSrcOverride || buildTtydTerminalSrc(sessionName, 'terminal'),
+        [floatingTerminalSrcOverride, sessionName],
+    );
 
     const terminalBootstrapStateRef = useRef<Record<TerminalBootstrapSlot, TerminalBootstrapState>>({
         agent: 'idle',
