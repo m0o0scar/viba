@@ -41,9 +41,10 @@ type AgentProvider = {
   models: Model[];
 };
 
+type SessionMode = 'fast' | 'plan';
+
 const agentProvidersData = agentProvidersDataRaw as unknown as AgentProvider[];
-const AUTO_COMMIT_INSTRUCTION =
-  'After each round of conversation, if work is completed and files changed, commit all changes with an appropriate git commit message. The commit message must include a clear title and a detailed body describing what changed and why, not just a title. No need to confirm when creating commits.';
+const SESSION_MODE_STORAGE_KEY = 'viba:new-session-mode';
 const AGENT_LOGIN_COMMANDS: Record<SupportedAgentCli, string> = {
   gemini: 'gemini',
   codex: 'codex',
@@ -95,6 +96,7 @@ export default function GitRepoSelector({
   const [showSessionAdvanced, setShowSessionAdvanced] = useState(false);
   const [initialMessage, setInitialMessage] = useState<string>('');
   const [title, setTitle] = useState<string>('');
+  const [sessionMode, setSessionMode] = useState<SessionMode>('fast');
   const [attachments, setAttachments] = useState<File[]>([]);
   const [prefilledAttachmentNames, setPrefilledAttachmentNames] = useState<string[]>([]);
   const [prefillSourceSessionName, setPrefillSourceSessionName] = useState<string | null>(null);
@@ -160,6 +162,19 @@ export default function GitRepoSelector({
     };
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (mode !== 'new') return;
+
+    try {
+      const storedMode = window.localStorage.getItem(SESSION_MODE_STORAGE_KEY);
+      if (storedMode === 'fast' || storedMode === 'plan') {
+        setSessionMode(storedMode);
+      }
+    } catch {
+      // Ignore localStorage errors.
+    }
+  }, [mode]);
 
   useEffect(() => {
     const refresh = () => {
@@ -519,6 +534,17 @@ export default function GitRepoSelector({
     if (selectedRepo) {
       const newConfig = await updateRepoSettings(selectedRepo, { agentModel: model });
       setConfig(newConfig);
+    }
+  };
+
+  const handleSessionModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextMode = e.target.value === 'plan' ? 'plan' : 'fast';
+    setSessionMode(nextMode);
+
+    try {
+      window.localStorage.setItem(SESSION_MODE_STORAGE_KEY, nextMode);
+    } catch {
+      // Ignore localStorage errors.
     }
   };
 
@@ -889,12 +915,6 @@ export default function GitRepoSelector({
         // Process initial message mentions
         const trimmedInitialMessage = initialMessage.trim();
         let processedMessage = trimmedInitialMessage;
-        if (processedMessage) {
-          const hasAutoCommitInstruction = processedMessage.includes(AUTO_COMMIT_INSTRUCTION);
-          if (!hasAutoCommitInstruction) {
-            processedMessage = `${processedMessage}\n\n${AUTO_COMMIT_INSTRUCTION}`;
-          }
-        }
 
         // Helper to match replacement
         processedMessage = processedMessage.replace(/@(\S+)/g, (match, name) => {
@@ -914,6 +934,7 @@ export default function GitRepoSelector({
           attachmentNames: allAttachmentNames,
           agentProvider: selectedProvider?.cli || 'agent',
           model: selectedModel || '',
+          sessionMode,
         });
 
         if (!launchContextResult.success) {
@@ -1363,6 +1384,24 @@ export default function GitRepoSelector({
                   </div>
 
                   <div className="divider"></div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium opacity-70">Session Mode</label>
+                    <select
+                      className="select select-bordered w-full focus:outline-none"
+                      value={sessionMode}
+                      onChange={handleSessionModeChange}
+                      disabled={loading}
+                    >
+                      <option value="fast">Fast Mode (default)</option>
+                      <option value="plan">Plan Mode</option>
+                    </select>
+                    <div className="text-xs opacity-50 px-1">
+                      {sessionMode === 'plan'
+                        ? 'Plan mode asks the agent to study the repo, propose a plan, and wait for your approval before implementation.'
+                        : 'Fast mode starts the agent with current behavior.'}
+                    </div>
+                  </div>
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium opacity-70">Title (Optional)</label>

@@ -53,6 +53,10 @@ const TRIDENT_WORKSPACE_URL = 'http://localhost:3100/workspace';
 const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
+const PLAN_MODE_STARTUP_INSTRUCTION =
+    'Plan mode requirements: study the repository thoroughly first, then present a concrete implementation plan, and wait for explicit user approval before making file changes or running write operations.';
+const AUTO_COMMIT_INSTRUCTION =
+    'After each round of conversation, if work is completed and files changed, commit all changes with an appropriate git commit message. The commit message must include a clear title and a detailed body describing what changed and why, not just a title. No need to confirm when creating commits.';
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
 
@@ -173,9 +177,8 @@ export interface SessionViewProps {
     startupScript?: string;
     devServerScript?: string;
     initialMessage?: string;
-    rawInitialMessage?: string;
     title?: string;
-    attachmentNames?: string[];
+    sessionMode?: 'fast' | 'plan';
     onExit: (force?: boolean) => void;
     isResume?: boolean;
     terminalPersistenceMode?: 'tmux' | 'shell';
@@ -193,9 +196,8 @@ export function SessionView({
     startupScript,
     devServerScript,
     initialMessage,
-    rawInitialMessage,
     title,
-    attachmentNames,
+    sessionMode = 'fast',
     onExit,
     isResume,
     terminalPersistenceMode = 'shell',
@@ -1611,35 +1613,41 @@ export function SessionView({
                                 }
                             } else {
                                 const safeTitle = title?.trim() || '';
-                                const parts = [];
-                                if (safeTitle) parts.push(safeTitle);
-                                if (initialMessage) parts.push(initialMessage);
-                                let fullMessage = parts.join('\n\n');
-                                if (attachmentNames && attachmentNames.length > 0) {
-                                    const attachmentBasePath = `${worktree || repo}-attachments`;
-                                    const attachmentSection = [
-                                        'Attachments:',
-                                        ...attachmentNames.map(name => `- ${attachmentBasePath}/${name}`)
-                                    ].join('\n');
-                                    fullMessage = fullMessage ? `${fullMessage}\n\n${attachmentSection}` : attachmentSection;
-                                }
-
+                                const trimmedInitialMessage = initialMessage?.trim() || '';
+                                const taskParts: string[] = [];
+                                if (safeTitle) taskParts.push(safeTitle);
+                                if (trimmedInitialMessage) taskParts.push(trimmedInitialMessage);
+                                const taskContent = taskParts.join('\n\n');
                                 let safeMessage = '';
-                                if (fullMessage) {
-                                    if ((rawInitialMessage && rawInitialMessage.trim().length > 0) || (attachmentNames && attachmentNames.length > 0)) {
-                                        try {
-                                            const result = await writeSessionPromptFile(sessionName, fullMessage);
-                                            if (result.success && result.filePath) {
-                                                safeMessage = ` "$(cat ${quoteShellArg(result.filePath)})"`;
-                                            } else {
-                                                console.error('Failed to write prompt file, falling back to inline prompt', result.error);
-                                                safeMessage = ` ${quoteShellArg(fullMessage)}`;
-                                            }
-                                        } catch (err) {
-                                            console.error('Exception writing prompt file', err);
+
+                                // Only send an initial prompt if the user provided title or message.
+                                if (taskContent) {
+                                    const instructionLines: string[] = [];
+                                    if (sessionMode === 'plan') {
+                                        instructionLines.push(PLAN_MODE_STARTUP_INSTRUCTION);
+                                    }
+                                    instructionLines.push(AUTO_COMMIT_INSTRUCTION);
+
+                                    const fullMessage = [
+                                        '# Instructions',
+                                        '',
+                                        instructionLines.join('\n'),
+                                        '',
+                                        '# Task',
+                                        '',
+                                        taskContent,
+                                    ].join('\n');
+
+                                    try {
+                                        const result = await writeSessionPromptFile(sessionName, fullMessage);
+                                        if (result.success && result.filePath) {
+                                            safeMessage = ` "$(cat ${quoteShellArg(result.filePath)})"`;
+                                        } else {
+                                            console.error('Failed to write prompt file, falling back to inline prompt', result.error);
                                             safeMessage = ` ${quoteShellArg(fullMessage)}`;
                                         }
-                                    } else {
+                                    } catch (err) {
+                                        console.error('Exception writing prompt file', err);
                                         safeMessage = ` ${quoteShellArg(fullMessage)}`;
                                     }
                                 }

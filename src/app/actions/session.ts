@@ -30,6 +30,7 @@ export type SessionLaunchContext = {
   attachmentNames?: string[];
   agentProvider?: string;
   model?: string;
+  sessionMode?: 'fast' | 'plan';
   isResume?: boolean;
   timestamp: string;
 };

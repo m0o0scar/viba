@@ -18,12 +18,11 @@ export default function SessionPage() {
 
     // Startup params — only populated on first open (initialized === false)
     const [initialMessage, setInitialMessage] = useState<string | undefined>(undefined);
-    const [rawInitialMessage, setRawInitialMessage] = useState<string | undefined>(undefined);
     const [startupScript, setStartupScript] = useState<string | undefined>(undefined);
-    const [attachmentNames, setAttachmentNames] = useState<string[]>([]);
     const [contextTitle, setContextTitle] = useState<string | undefined>(undefined);
     const [contextAgentProvider, setContextAgentProvider] = useState<string | undefined>(undefined);
     const [contextModel, setContextModel] = useState<string | undefined>(undefined);
+    const [contextSessionMode, setContextSessionMode] = useState<'fast' | 'plan' | undefined>(undefined);
 
     // True = send --resume to agent; False = send fresh start params
     const [isResume, setIsResume] = useState<boolean>(true);
@@ -71,12 +70,11 @@ export default function SessionPage() {
                     if (contextResult.success && contextResult.context) {
                         const ctx = contextResult.context;
                         setInitialMessage(ctx.initialMessage);
-                        setRawInitialMessage(ctx.rawInitialMessage);
                         setStartupScript(ctx.startupScript);
-                        setAttachmentNames(ctx.attachmentNames || []);
                         setContextTitle(ctx.title);
                         setContextAgentProvider(ctx.agentProvider);
                         setContextModel(ctx.model);
+                        setContextSessionMode(ctx.sessionMode);
                     }
                     // Whether or not we got context, this is a fresh start
                     setIsResume(false);
@@ -152,9 +150,8 @@ export default function SessionPage() {
             startupScript={startupScript}
             devServerScript={metadata.devServerScript}
             initialMessage={initialMessage}
-            rawInitialMessage={rawInitialMessage}
             title={contextTitle || metadata.title}
-            attachmentNames={attachmentNames}
+            sessionMode={contextSessionMode}
             onExit={handleExit}
             isResume={isResume}
             terminalPersistenceMode={terminalPersistenceMode}
