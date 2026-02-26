@@ -246,6 +246,15 @@ type TerminalSessionSources = {
   floatingTerminalSrc: string;
 };
 
+function toTerminalSessionEnvironment(
+  credential: Credential,
+  token: string,
+): TerminalSessionEnvironment {
+  return credential.type === 'github'
+    ? { name: 'GITHUB_TOKEN', value: token }
+    : { name: 'GITLAB_TOKEN', value: token };
+}
+
 function getGitLabCredentialHost(credential: Credential): string | null {
   if (credential.type !== 'gitlab') return null;
 
@@ -254,21 +263,6 @@ function getGitLabCredentialHost(credential: Credential): string | null {
   } catch {
     return null;
   }
-}
-
-function matchesProviderAndRemote(
-  credential: Credential | null,
-  provider: 'github' | 'gitlab',
-  remoteHost: string | null,
-): credential is Credential {
-  if (!credential || credential.type !== provider) return false;
-
-  if (provider === 'gitlab' && remoteHost) {
-    const credentialHost = getGitLabCredentialHost(credential);
-    return credentialHost === remoteHost;
-  }
-
-  return true;
 }
 
 function pickCandidateCredential(
@@ -318,6 +312,19 @@ async function getPrimaryRemoteUrl(repoPath: string): Promise<string | null> {
 }
 
 async function resolveTerminalSessionEnvironment(repoPath: string): Promise<TerminalSessionEnvironment | null> {
+  const config = await getConfig();
+  const repoSettings = config.repoSettings?.[repoPath];
+
+  if (repoSettings?.credentialId) {
+    const selectedCredential = await getCredentialById(repoSettings.credentialId);
+    if (selectedCredential) {
+      const token = await getCredentialToken(selectedCredential.id);
+      if (token) {
+        return toTerminalSessionEnvironment(selectedCredential, token);
+      }
+    }
+  }
+
   const remoteUrl = await getPrimaryRemoteUrl(repoPath);
   if (!remoteUrl) return null;
 
@@ -332,29 +339,15 @@ async function resolveTerminalSessionEnvironment(repoPath: string): Promise<Term
   if (!provider) return null;
 
   const remoteHost = parseGitRemoteHost(remoteUrl);
-  const config = await getConfig();
-  const repoSettings = config.repoSettings?.[repoPath];
 
-  let credential: Credential | null = null;
-  if (repoSettings?.credentialId) {
-    const selectedCredential = await getCredentialById(repoSettings.credentialId);
-    if (matchesProviderAndRemote(selectedCredential, provider, remoteHost)) {
-      credential = selectedCredential;
-    }
-  }
-
-  if (!credential) {
-    credential = pickCandidateCredential(allCredentials, provider, remoteHost);
-  }
+  const credential = pickCandidateCredential(allCredentials, provider, remoteHost);
 
   if (!credential) return null;
 
   const token = await getCredentialToken(credential.id);
   if (!token) return null;
 
-  return provider === 'github'
-    ? { name: 'GITHUB_TOKEN', value: token }
-    : { name: 'GITLAB_TOKEN', value: token };
+  return toTerminalSessionEnvironment(credential, token);
 }
 
 export async function getSessionTerminalSources(
