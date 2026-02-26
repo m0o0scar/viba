@@ -57,8 +57,10 @@ const PLAN_MODE_STARTUP_INSTRUCTION =
     'Plan mode: inspect the relevant code first, present a concrete implementation plan, and wait for explicit user approval before any file edits or write commands.';
 const AUTO_COMMIT_INSTRUCTION =
     'After each round, if work is complete and files changed, commit all changes without confirmation. Use a commit message with a clear title and a detailed body explaining what changed and why. If GITHUB_TOKEN or GITLAB_TOKEN is set, push the current branch after committed rounds and create (or update) a pull/merge request with an appropriate title and description; include the pull/merge request link in the first push reply.';
+const AGENT_BROWSER_SKILL_INSTRUCTION =
+    'For visual web tasks, use the `agent-browser` skill (https://skills.sh/vercel-labs/agent-browser/agent-browser) when your coding agent CLI supports skills.';
 const VISUAL_EVIDENCE_INSTRUCTION =
-    'When working on a visual-related feature or bugfix in a web project, after coding is complete, load the relevant page in Chrome via the appropriate MCP tool or skill, take screenshot(s), and include them as evidence in the pull/merge request.';
+    'When working on a visual-related feature or bugfix in a web project, after coding is complete, use `agent-browser` or equivalent Chrome MCP tooling to load the relevant page, take screenshot(s), and include them as evidence in the pull/merge request.';
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
 
@@ -1687,6 +1689,7 @@ export function SessionView({
                                         instructionLines.push(PLAN_MODE_STARTUP_INSTRUCTION);
                                     }
                                     instructionLines.push(AUTO_COMMIT_INSTRUCTION);
+                                    instructionLines.push(AGENT_BROWSER_SKILL_INSTRUCTION);
                                     instructionLines.push(VISUAL_EVIDENCE_INSTRUCTION);
 
                                     const fullMessage = [

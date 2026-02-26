@@ -49,12 +49,139 @@ const AGENT_CLI_CONFIG: Record<SupportedAgentCli, AgentCliConfig> = {
     installCommand: 'curl https://cursor.com/install -fsS | bash',
   },
 };
+const AGENT_BROWSER_SKILL_NAME = 'agent-browser';
+const AGENT_BROWSER_SKILL_REPO = 'https://github.com/vercel-labs/agent-browser.git';
+const AGENT_BROWSER_SKILL_REPO_PATH = 'skills/agent-browser';
+const AGENT_BROWSER_SKILL_SOURCE_URL = 'https://skills.sh/vercel-labs/agent-browser/agent-browser';
 
 function normalizeAgentCli(agentCli: string): SupportedAgentCli | null {
   if (agentCli === 'gemini' || agentCli === 'codex' || agentCli === 'agent') {
     return agentCli;
   }
   return null;
+}
+
+type ProcessResult = {
+  exitCode: number;
+  output: string;
+};
+
+async function runProcess(
+  command: string,
+  args: string[],
+  options?: { cwd?: string }
+): Promise<ProcessResult> {
+  const { spawn } = await import('child_process');
+  return new Promise<ProcessResult>((resolve) => {
+    const outputChunks: string[] = [];
+    const child = spawn(command, args, {
+      cwd: options?.cwd,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      outputChunks.push(chunk.toString());
+    });
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      outputChunks.push(chunk.toString());
+    });
+
+    child.on('close', (code) => {
+      resolve({
+        exitCode: code ?? 1,
+        output: outputChunks.join('').trim(),
+      });
+    });
+
+    child.on('error', (error) => {
+      resolve({
+        exitCode: 1,
+        output: error instanceof Error ? error.message : String(error),
+      });
+    });
+  });
+}
+
+function getCodexSkillsDirectory(): string {
+  const codexHome = process.env.CODEX_HOME?.trim() || path.join(os.homedir(), '.codex');
+  return path.join(codexHome, 'skills');
+}
+
+async function ensureAgentBrowserSkillInstalledForCodex(): Promise<void> {
+  const skillsDirectory = getCodexSkillsDirectory();
+  const targetSkillDirectory = path.join(skillsDirectory, AGENT_BROWSER_SKILL_NAME);
+  const targetSkillManifest = path.join(targetSkillDirectory, 'SKILL.md');
+
+  try {
+    await fs.access(targetSkillManifest);
+    return;
+  } catch {
+    // Install when missing.
+  }
+
+  const gitVersionResult = await runProcess('git', ['--version']);
+  if (gitVersionResult.exitCode !== 0) {
+    console.warn('Skipping Codex agent-browser skill installation: git is not available.');
+    return;
+  }
+
+  const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'viba-agent-browser-'));
+  const repositoryDirectory = path.join(tempDirectory, 'repo');
+
+  try {
+    const cloneResult = await runProcess('git', [
+      'clone',
+      '--depth',
+      '1',
+      '--filter=blob:none',
+      '--sparse',
+      AGENT_BROWSER_SKILL_REPO,
+      repositoryDirectory,
+    ]);
+    if (cloneResult.exitCode !== 0) {
+      console.warn(`Failed to clone ${AGENT_BROWSER_SKILL_REPO}: ${cloneResult.output || 'unknown clone failure'}`);
+      return;
+    }
+
+    const sparseResult = await runProcess('git', [
+      '-C',
+      repositoryDirectory,
+      'sparse-checkout',
+      'set',
+      AGENT_BROWSER_SKILL_REPO_PATH,
+    ]);
+    if (sparseResult.exitCode !== 0) {
+      console.warn(`Failed to checkout ${AGENT_BROWSER_SKILL_REPO_PATH}: ${sparseResult.output || 'unknown sparse-checkout failure'}`);
+      return;
+    }
+
+    const sourceSkillDirectory = path.join(repositoryDirectory, AGENT_BROWSER_SKILL_REPO_PATH);
+    const sourceSkillManifest = path.join(sourceSkillDirectory, 'SKILL.md');
+    try {
+      await fs.access(sourceSkillManifest);
+    } catch {
+      console.warn(
+        `Expected ${AGENT_BROWSER_SKILL_REPO_PATH}/SKILL.md in ${AGENT_BROWSER_SKILL_REPO} (source: ${AGENT_BROWSER_SKILL_SOURCE_URL}), but it was not found.`
+      );
+      return;
+    }
+
+    await fs.mkdir(skillsDirectory, { recursive: true });
+    await fs.cp(sourceSkillDirectory, targetSkillDirectory, {
+      recursive: true,
+      force: false,
+      errorOnExist: true,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'EEXIST') {
+      return;
+    }
+    console.warn('Failed to install Codex agent-browser skill:', error);
+  } finally {
+    await fs.rm(tempDirectory, { recursive: true, force: true });
+  }
 }
 
 export async function getHomeDirectory() {
@@ -221,6 +348,9 @@ export async function installAgentCli(agentCli: string): Promise<{ success: bool
     });
 
     if (exitCode === 0) {
+      if (normalizedCli === 'codex') {
+        await ensureAgentBrowserSkillInstalledForCodex();
+      }
       return { success: true };
     }
 
