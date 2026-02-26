@@ -199,7 +199,11 @@ export default function SessionPage() {
                 }
 
                 setMetadata(data);
-                const resolvedTerminalSources = await getSessionTerminalSources(data.sessionName, data.repoPath);
+                const resolvedTerminalSources = await getSessionTerminalSources(
+                    data.sessionName,
+                    data.repoPath,
+                    data.agent,
+                );
                 setTerminalSources(resolvedTerminalSources);
 
                 // Determine fresh start vs resume purely from the initialized flag:

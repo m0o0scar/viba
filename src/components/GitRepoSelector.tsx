@@ -20,7 +20,7 @@ import {
 import { cloneRemoteRepository, resolveRepositoryByName } from '@/app/actions/repository';
 import { copySessionAttachments, createSession, deleteSession, getSessionPrefillContext, listSessions, saveSessionLaunchContext, SessionMetadata } from '@/app/actions/session';
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
-import { listCredentials } from '@/app/actions/credentials';
+import { listAgentApiCredentials, listCredentials } from '@/app/actions/credentials';
 import type { Credential } from '@/lib/credentials';
 import { useRouter } from 'next/navigation';
 import { getBaseName } from '@/lib/path';
@@ -995,6 +995,16 @@ export default function GitRepoSelector({
     setTimeout(() => checkAndInject(), 500);
   }, [isLoginModalOpen, loginCommand]);
 
+  const hasConfiguredAgentApiCredential = useCallback(async (agentCli: SupportedAgentCli): Promise<boolean> => {
+    try {
+      const result = await listAgentApiCredentials();
+      if (!result.success) return false;
+      return result.credentials.some((credential) => credential.agent === agentCli);
+    } catch {
+      return false;
+    }
+  }, []);
+
   const ensureAgentCliReady = useCallback(async (): Promise<boolean> => {
     const agentCli = toSupportedAgentCli(selectedProvider?.cli);
     if (!agentCli) return true;
@@ -1028,13 +1038,18 @@ export default function GitRepoSelector({
       return false;
     }
 
+    const hasAgentApiCredential = await hasConfiguredAgentApiCredential(agentCli);
+    if (hasAgentApiCredential) {
+      return true;
+    }
+
     setLoginAgentCli(agentCli);
     setLoginCommand(AGENT_LOGIN_COMMANDS[agentCli]);
     setLoginCommandInjected(false);
     setLoginModalError(null);
     setIsLoginModalOpen(true);
     return false;
-  }, [selectedProvider?.cli, toSupportedAgentCli]);
+  }, [hasConfiguredAgentApiCredential, selectedProvider?.cli, toSupportedAgentCli]);
 
   const startSession = async (options: { skipAgentSetup?: boolean } = {}) => {
     if (!selectedRepo) return;
