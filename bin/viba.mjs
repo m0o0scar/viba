@@ -17,6 +17,7 @@ const DEFAULT_PORT = 3200;
 const AGENT_BROWSER_SKILL_NAME = "agent-browser";
 const AGENT_BROWSER_SKILL_SOURCE_URL = "https://skills.sh/vercel-labs/agent-browser/agent-browser";
 const AGENT_BROWSER_SKILL_REPO_URL = "https://github.com/vercel-labs/agent-browser";
+const AGENT_BROWSER_TARGET_AGENTS = ["codex", "cursor", "gemini-cli"];
 
 function getNextBin() {
   return require.resolve("next/dist/bin/next");
@@ -190,11 +191,17 @@ function getCodexSkillsDirectory() {
   return path.join(codexHome, "skills");
 }
 
-function ensureAgentBrowserSkillInstalled() {
-  const skillsDirectory = getCodexSkillsDirectory();
-  const targetSkillManifest = path.join(skillsDirectory, AGENT_BROWSER_SKILL_NAME, "SKILL.md");
+function getGlobalAgentsSkillsDirectory() {
+  return path.join(os.homedir(), ".agents", "skills");
+}
 
-  if (fs.existsSync(targetSkillManifest)) {
+function ensureAgentBrowserSkillInstalled() {
+  const targetSkillManifests = [
+    path.join(getGlobalAgentsSkillsDirectory(), AGENT_BROWSER_SKILL_NAME, "SKILL.md"),
+    path.join(getCodexSkillsDirectory(), AGENT_BROWSER_SKILL_NAME, "SKILL.md"),
+  ];
+
+  if (targetSkillManifests.some((manifestPath) => fs.existsSync(manifestPath))) {
     return;
   }
 
@@ -206,7 +213,17 @@ function ensureAgentBrowserSkillInstalled() {
   console.log(`Ensuring Codex skill '${AGENT_BROWSER_SKILL_NAME}' is installed from ${AGENT_BROWSER_SKILL_SOURCE_URL}...`);
   const addResult = spawnSync(
     "npx",
-    ["skills", "add", AGENT_BROWSER_SKILL_REPO_URL, "--skill", AGENT_BROWSER_SKILL_NAME, "-g", "-y"],
+    [
+      "skills",
+      "add",
+      AGENT_BROWSER_SKILL_REPO_URL,
+      "--skill",
+      AGENT_BROWSER_SKILL_NAME,
+      "--agent",
+      ...AGENT_BROWSER_TARGET_AGENTS,
+      "-g",
+      "-y",
+    ],
     { cwd: APP_ROOT, env: process.env, stdio: "pipe" },
   );
   if (addResult.status !== 0) {

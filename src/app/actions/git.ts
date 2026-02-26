@@ -52,6 +52,7 @@ const AGENT_CLI_CONFIG: Record<SupportedAgentCli, AgentCliConfig> = {
 const AGENT_BROWSER_SKILL_NAME = 'agent-browser';
 const AGENT_BROWSER_SKILL_REPO_URL = 'https://github.com/vercel-labs/agent-browser';
 const AGENT_BROWSER_SKILL_SOURCE_URL = 'https://skills.sh/vercel-labs/agent-browser/agent-browser';
+const AGENT_BROWSER_TARGET_AGENTS = ['codex', 'cursor', 'gemini-cli'] as const;
 
 function normalizeAgentCli(agentCli: string): SupportedAgentCli | null {
   if (agentCli === 'gemini' || agentCli === 'codex' || agentCli === 'agent') {
@@ -108,12 +109,21 @@ function getCodexSkillsDirectory(): string {
   return path.join(codexHome, 'skills');
 }
 
+function getGlobalAgentsSkillsDirectory(): string {
+  return path.join(os.homedir(), '.agents', 'skills');
+}
+
 async function ensureAgentBrowserSkillInstalledForCodex(): Promise<void> {
-  const skillsDirectory = getCodexSkillsDirectory();
-  const targetSkillManifest = path.join(skillsDirectory, AGENT_BROWSER_SKILL_NAME, 'SKILL.md');
+  const targetSkillManifests = [
+    path.join(getGlobalAgentsSkillsDirectory(), AGENT_BROWSER_SKILL_NAME, 'SKILL.md'),
+    path.join(getCodexSkillsDirectory(), AGENT_BROWSER_SKILL_NAME, 'SKILL.md'),
+  ];
 
   try {
-    await fs.access(targetSkillManifest);
+    await Promise.any(targetSkillManifests.map(async (manifestPath) => {
+      await fs.access(manifestPath);
+      return manifestPath;
+    }));
     return;
   } catch {
     // Install when missing.
@@ -130,6 +140,8 @@ async function ensureAgentBrowserSkillInstalledForCodex(): Promise<void> {
     AGENT_BROWSER_SKILL_REPO_URL,
     '--skill',
     AGENT_BROWSER_SKILL_NAME,
+    '--agent',
+    ...AGENT_BROWSER_TARGET_AGENTS,
     '-g',
     '-y',
   ]);
@@ -139,10 +151,13 @@ async function ensureAgentBrowserSkillInstalledForCodex(): Promise<void> {
   }
 
   try {
-    await fs.access(targetSkillManifest);
+    await Promise.any(targetSkillManifests.map(async (manifestPath) => {
+      await fs.access(manifestPath);
+      return manifestPath;
+    }));
   } catch {
     console.warn(
-      `Expected ${targetSkillManifest} after installing from ${AGENT_BROWSER_SKILL_SOURCE_URL}, but it was not found.`
+      `Expected ${AGENT_BROWSER_SKILL_NAME}/SKILL.md in either ${getGlobalAgentsSkillsDirectory()} or ${getCodexSkillsDirectory()} after installing from ${AGENT_BROWSER_SKILL_SOURCE_URL}, but it was not found.`
     );
   }
 }
