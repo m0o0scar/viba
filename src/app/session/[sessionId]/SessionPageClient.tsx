@@ -1,10 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { SessionView } from '@/components/SessionView';
 import { consumeSessionLaunchContext, getSessionMetadata, SessionMetadata, markSessionInitialized } from '@/app/actions/session';
 import { getSessionTerminalSources, startTtydProcess } from '@/app/actions/git';
+
+type SessionNotificationMessage = {
+    title: string;
+    description: string;
+};
+
+type SessionNotificationPayload = {
+    type: 'session-notification';
+    sessionId: string;
+    title: string;
+    description: string;
+    timestamp: string;
+};
 
 export default function SessionPage() {
     const params = useParams<{ sessionId: string }>();
@@ -32,6 +45,18 @@ export default function SessionPage() {
     // True = send --resume to agent; False = send fresh start params
     const [isResume, setIsResume] = useState<boolean>(true);
     const [terminalPersistenceMode, setTerminalPersistenceMode] = useState<'tmux' | 'shell'>('shell');
+    const [sessionNotification, setSessionNotification] = useState<SessionNotificationMessage | null>(null);
+
+    const handleOpenSessionNotification = useCallback(() => {
+        setSessionNotification(null);
+        if (!sessionId) return;
+
+        window.focus();
+        const targetPath = `/session/${sessionId}`;
+        if (window.location.pathname !== targetPath) {
+            router.push(targetPath);
+        }
+    }, [router, sessionId]);
 
     useEffect(() => {
         document.documentElement.classList.add('session-page');
@@ -39,6 +64,127 @@ export default function SessionPage() {
             document.documentElement.classList.remove('session-page');
         };
     }, []);
+
+    useEffect(() => {
+        if (!sessionId) return;
+
+        let cancelled = false;
+        let socket: WebSocket | null = null;
+        let reconnectTimer: number | null = null;
+        let reconnectAttempt = 0;
+        let browserNotification: Notification | null = null;
+
+        const clearReconnectTimer = () => {
+            if (reconnectTimer === null) return;
+            window.clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        };
+
+        const scheduleReconnect = () => {
+            if (cancelled) return;
+            const delay = Math.min(10000, 1000 * (2 ** reconnectAttempt));
+            reconnectAttempt += 1;
+            reconnectTimer = window.setTimeout(() => {
+                reconnectTimer = null;
+                void connect();
+            }, delay);
+        };
+
+        const showBrowserNotification = async (payload: SessionNotificationPayload) => {
+            if (!('Notification' in window)) return;
+
+            let permission = Notification.permission;
+            if (permission === 'default') {
+                permission = await Notification.requestPermission();
+            }
+            if (permission !== 'granted') return;
+
+            if (browserNotification) {
+                browserNotification.close();
+            }
+
+            browserNotification = new Notification(payload.title, {
+                body: payload.description,
+                tag: `viba-session-notification-${payload.sessionId}`,
+            });
+            browserNotification.onclick = (event) => {
+                event.preventDefault();
+                handleOpenSessionNotification();
+                browserNotification?.close();
+            };
+        };
+
+        const handleIncomingNotification = (payload: SessionNotificationPayload) => {
+            setSessionNotification({
+                title: payload.title,
+                description: payload.description,
+            });
+            void showBrowserNotification(payload);
+        };
+
+        const connect = async () => {
+            try {
+                const response = await fetch(
+                    `/api/notifications/socket?sessionId=${encodeURIComponent(sessionId)}`,
+                    { cache: 'no-store' }
+                );
+                if (!response.ok) {
+                    throw new Error('Failed to initialize notification socket');
+                }
+
+                const data = await response.json() as { wsUrl?: string };
+                if (!data.wsUrl) {
+                    throw new Error('Notification socket URL missing');
+                }
+
+                if (cancelled) return;
+
+                socket = new WebSocket(data.wsUrl);
+                socket.onopen = () => {
+                    reconnectAttempt = 0;
+                    clearReconnectTimer();
+                };
+                socket.onerror = () => {
+                    socket?.close();
+                };
+                socket.onclose = () => {
+                    if (cancelled) return;
+                    scheduleReconnect();
+                };
+                socket.onmessage = (event) => {
+                    try {
+                        const payload = JSON.parse(event.data as string) as Partial<SessionNotificationPayload>;
+                        if (
+                            payload.type !== 'session-notification' ||
+                            payload.sessionId !== sessionId ||
+                            typeof payload.title !== 'string' ||
+                            !payload.title.trim() ||
+                            typeof payload.description !== 'string' ||
+                            !payload.description.trim() ||
+                            typeof payload.timestamp !== 'string'
+                        ) {
+                            return;
+                        }
+
+                        handleIncomingNotification(payload as SessionNotificationPayload);
+                    } catch {
+                        // Ignore malformed notification messages.
+                    }
+                };
+            } catch {
+                scheduleReconnect();
+            }
+        };
+
+        void connect();
+
+        return () => {
+            cancelled = true;
+            clearReconnectTimer();
+            socket?.close();
+            browserNotification?.close();
+        };
+    }, [handleOpenSessionNotification, sessionId]);
 
     useEffect(() => {
         if (!sessionId) return;
@@ -160,26 +306,49 @@ export default function SessionPage() {
     }
 
     return (
-        <SessionView
-            repo={metadata.repoPath}
-            worktree={metadata.worktreePath}
-            branch={metadata.branchName}
-            baseBranch={metadata.baseBranch}
-            sessionName={metadata.sessionName}
-            agent={contextAgentProvider || metadata.agent}
-            model={contextModel || metadata.model}
-            startupScript={startupScript}
-            devServerScript={metadata.devServerScript}
-            initialMessage={initialMessage}
-            attachmentNames={contextAttachmentNames}
-            title={contextTitle || metadata.title}
-            sessionMode={contextSessionMode}
-            onExit={handleExit}
-            isResume={isResume}
-            terminalPersistenceMode={terminalPersistenceMode}
-            onSessionStart={handleSessionStart}
-            agentTerminalSrc={terminalSources.agentTerminalSrc}
-            floatingTerminalSrc={terminalSources.floatingTerminalSrc}
-        />
+        <>
+            {sessionNotification && (
+                <div className="fixed right-4 top-4 z-[1001] w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-base-300 bg-base-100 shadow-xl">
+                    <button
+                        type="button"
+                        className="w-full px-4 pb-3 pt-3 text-left transition-colors hover:bg-base-200"
+                        onClick={handleOpenSessionNotification}
+                    >
+                        <p className="text-sm font-semibold">{sessionNotification.title}</p>
+                        <p className="mt-1 text-sm opacity-80">{sessionNotification.description}</p>
+                    </button>
+                    <div className="flex justify-end border-t border-base-300 px-2 py-1">
+                        <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            onClick={() => setSessionNotification(null)}
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            )}
+            <SessionView
+                repo={metadata.repoPath}
+                worktree={metadata.worktreePath}
+                branch={metadata.branchName}
+                baseBranch={metadata.baseBranch}
+                sessionName={metadata.sessionName}
+                agent={contextAgentProvider || metadata.agent}
+                model={contextModel || metadata.model}
+                startupScript={startupScript}
+                devServerScript={metadata.devServerScript}
+                initialMessage={initialMessage}
+                attachmentNames={contextAttachmentNames}
+                title={contextTitle || metadata.title}
+                sessionMode={contextSessionMode}
+                onExit={handleExit}
+                isResume={isResume}
+                terminalPersistenceMode={terminalPersistenceMode}
+                onSessionStart={handleSessionStart}
+                agentTerminalSrc={terminalSources.agentTerminalSrc}
+                floatingTerminalSrc={terminalSources.floatingTerminalSrc}
+            />
+        </>
     );
 }

@@ -63,6 +63,8 @@ const SYSTEMATIC_DEBUGGING_SKILL_INSTRUCTION =
     'For bugfix/debugging tasks, use the `systematic-debugging` skill (https://github.com/obra/superpowers).';
 const VISUAL_EVIDENCE_INSTRUCTION =
     'When working on a visual-related feature or bugfix in a web project, after coding is complete, use `agent-browser` or equivalent Chrome MCP tooling to load the relevant page, take screenshot(s), and include them as evidence in the pull/merge request.';
+const NOTIFICATION_INSTRUCTION =
+    'When your task is completed or you need user attention (for plan approval, permissions, or blockers), send a notification to the matching Viba session.';
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
 
@@ -1694,11 +1696,19 @@ export function SessionView({
                                     instructionLines.push(AGENT_BROWSER_SKILL_INSTRUCTION);
                                     instructionLines.push(SYSTEMATIC_DEBUGGING_SKILL_INSTRUCTION);
                                     instructionLines.push(VISUAL_EVIDENCE_INSTRUCTION);
+                                    instructionLines.push(NOTIFICATION_INSTRUCTION);
+                                    const notificationApiUrl = `${window.location.origin}/api/notifications`;
+                                    instructionLines.push(
+                                        `Notification API endpoint: ${notificationApiUrl} (POST JSON with sessionId, title, and description).`
+                                    );
+                                    instructionLines.push(
+                                        `Notification payload template: {"sessionId":"${sessionName}","title":"<short title>","description":"<clear detail about completion or required attention>"}.`
+                                    );
 
                                     const fullMessage = [
                                         '# Instructions',
                                         '',
-                                        instructionLines.join('\n'),
+                                        instructionLines.map((line) => `- ${line}`).join('\n'),
                                         '',
                                         '# Task',
                                         '',
