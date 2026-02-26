@@ -14,10 +14,19 @@ const __dirname = path.dirname(__filename);
 const APP_ROOT = path.resolve(__dirname, "..");
 const require = createRequire(import.meta.url);
 const DEFAULT_PORT = 3200;
-const AGENT_BROWSER_SKILL_NAME = "agent-browser";
-const AGENT_BROWSER_SKILL_SOURCE_URL = "https://skills.sh/vercel-labs/agent-browser/agent-browser";
-const AGENT_BROWSER_SKILL_REPO_URL = "https://github.com/vercel-labs/agent-browser";
-const AGENT_BROWSER_TARGET_AGENTS = ["codex", "cursor", "gemini-cli"];
+const CODEX_SKILL_TARGET_AGENTS = ["codex", "cursor", "gemini-cli"];
+const CODEX_SKILL_DEFINITIONS = [
+  {
+    name: "agent-browser",
+    sourceUrl: "https://skills.sh/vercel-labs/agent-browser/agent-browser",
+    repoUrl: "https://github.com/vercel-labs/agent-browser",
+  },
+  {
+    name: "systematic-debugging",
+    sourceUrl: "https://github.com/obra/superpowers",
+    repoUrl: "https://github.com/obra/superpowers",
+  },
+];
 
 function getNextBin() {
   return require.resolve("next/dist/bin/next");
@@ -195,40 +204,45 @@ function getGlobalAgentsSkillsDirectory() {
   return path.join(os.homedir(), ".agents", "skills");
 }
 
-function ensureAgentBrowserSkillInstalled() {
-  const targetSkillManifests = [
-    path.join(getGlobalAgentsSkillsDirectory(), AGENT_BROWSER_SKILL_NAME, "SKILL.md"),
-    path.join(getCodexSkillsDirectory(), AGENT_BROWSER_SKILL_NAME, "SKILL.md"),
-  ];
+function ensureCodexSkillsInstalled() {
+  const missingSkills = CODEX_SKILL_DEFINITIONS.filter((skillDefinition) => {
+    const targetSkillManifests = [
+      path.join(getGlobalAgentsSkillsDirectory(), skillDefinition.name, "SKILL.md"),
+      path.join(getCodexSkillsDirectory(), skillDefinition.name, "SKILL.md"),
+    ];
+    return !targetSkillManifests.some((manifestPath) => fs.existsSync(manifestPath));
+  });
 
-  if (targetSkillManifests.some((manifestPath) => fs.existsSync(manifestPath))) {
+  if (missingSkills.length === 0) {
     return;
   }
 
   if (!isCommandAvailable("npx")) {
-    console.warn("Skipping Codex agent-browser skill installation: npx is not available.");
+    console.warn("Skipping Codex skill installation: npx is not available.");
     return;
   }
 
-  console.log(`Ensuring Codex skill '${AGENT_BROWSER_SKILL_NAME}' is installed from ${AGENT_BROWSER_SKILL_SOURCE_URL}...`);
-  const addResult = spawnSync(
-    "npx",
-    [
-      "skills",
-      "add",
-      AGENT_BROWSER_SKILL_REPO_URL,
-      "--skill",
-      AGENT_BROWSER_SKILL_NAME,
-      "--agent",
-      ...AGENT_BROWSER_TARGET_AGENTS,
-      "-g",
-      "-y",
-    ],
-    { cwd: APP_ROOT, env: process.env, stdio: "pipe" },
-  );
-  if (addResult.status !== 0) {
-    const detail = addResult.stderr?.toString().trim() || addResult.stdout?.toString().trim() || "unknown error";
-    console.warn(`Failed to install Codex agent-browser skill via npx skills add: ${detail}`);
+  for (const skillDefinition of missingSkills) {
+    console.log(`Ensuring Codex skill '${skillDefinition.name}' is installed from ${skillDefinition.sourceUrl}...`);
+    const addResult = spawnSync(
+      "npx",
+      [
+        "skills",
+        "add",
+        skillDefinition.repoUrl,
+        "--skill",
+        skillDefinition.name,
+        "--agent",
+        ...CODEX_SKILL_TARGET_AGENTS,
+        "-g",
+        "-y",
+      ],
+      { cwd: APP_ROOT, env: process.env, stdio: "pipe" },
+    );
+    if (addResult.status !== 0) {
+      const detail = addResult.stderr?.toString().trim() || addResult.stdout?.toString().trim() || "unknown error";
+      console.warn(`Failed to install Codex ${skillDefinition.name} skill via npx skills add: ${detail}`);
+    }
   }
 }
 
@@ -306,7 +320,7 @@ async function main() {
     if (process.platform !== "win32") {
       ensureCommandInstalled("tmux");
     }
-    ensureAgentBrowserSkillInstalled();
+    ensureCodexSkillsInstalled();
 
     const envPort = Number.parseInt(process.env.PORT || "", 10);
     const preferredPort =

@@ -49,10 +49,19 @@ const AGENT_CLI_CONFIG: Record<SupportedAgentCli, AgentCliConfig> = {
     installCommand: 'curl https://cursor.com/install -fsS | bash',
   },
 };
-const AGENT_BROWSER_SKILL_NAME = 'agent-browser';
-const AGENT_BROWSER_SKILL_REPO_URL = 'https://github.com/vercel-labs/agent-browser';
-const AGENT_BROWSER_SKILL_SOURCE_URL = 'https://skills.sh/vercel-labs/agent-browser/agent-browser';
-const AGENT_BROWSER_TARGET_AGENTS = ['codex', 'cursor', 'gemini-cli'] as const;
+const CODEX_SKILL_TARGET_AGENTS = ['codex', 'cursor', 'gemini-cli'] as const;
+const CODEX_SKILL_DEFINITIONS = [
+  {
+    name: 'agent-browser',
+    repoUrl: 'https://github.com/vercel-labs/agent-browser',
+    sourceUrl: 'https://skills.sh/vercel-labs/agent-browser/agent-browser',
+  },
+  {
+    name: 'systematic-debugging',
+    repoUrl: 'https://github.com/obra/superpowers',
+    sourceUrl: 'https://github.com/obra/superpowers',
+  },
+] as const;
 
 function normalizeAgentCli(agentCli: string): SupportedAgentCli | null {
   if (agentCli === 'gemini' || agentCli === 'codex' || agentCli === 'agent') {
@@ -113,10 +122,10 @@ function getGlobalAgentsSkillsDirectory(): string {
   return path.join(os.homedir(), '.agents', 'skills');
 }
 
-async function ensureAgentBrowserSkillInstalledForCodex(): Promise<void> {
+async function isSkillInstalled(skillName: string): Promise<boolean> {
   const targetSkillManifests = [
-    path.join(getGlobalAgentsSkillsDirectory(), AGENT_BROWSER_SKILL_NAME, 'SKILL.md'),
-    path.join(getCodexSkillsDirectory(), AGENT_BROWSER_SKILL_NAME, 'SKILL.md'),
+    path.join(getGlobalAgentsSkillsDirectory(), skillName, 'SKILL.md'),
+    path.join(getCodexSkillsDirectory(), skillName, 'SKILL.md'),
   ];
 
   try {
@@ -124,41 +133,52 @@ async function ensureAgentBrowserSkillInstalledForCodex(): Promise<void> {
       await fs.access(manifestPath);
       return manifestPath;
     }));
-    return;
+    return true;
   } catch {
-    // Install when missing.
+    return false;
+  }
+}
+
+async function ensureCodexSkillsInstalledForCodex(): Promise<void> {
+  const missingSkills: typeof CODEX_SKILL_DEFINITIONS[number][] = [];
+  for (const skillDefinition of CODEX_SKILL_DEFINITIONS) {
+    if (!(await isSkillInstalled(skillDefinition.name))) {
+      missingSkills.push(skillDefinition);
+    }
+  }
+
+  if (missingSkills.length === 0) {
+    return;
   }
 
   const npxVersionResult = await runProcess('npx', ['--version']);
   if (npxVersionResult.exitCode !== 0) {
-    console.warn('Skipping Codex agent-browser skill installation: npx is not available.');
-    return;
-  }
-  const addResult = await runProcess('npx', [
-    'skills',
-    'add',
-    AGENT_BROWSER_SKILL_REPO_URL,
-    '--skill',
-    AGENT_BROWSER_SKILL_NAME,
-    '--agent',
-    ...AGENT_BROWSER_TARGET_AGENTS,
-    '-g',
-    '-y',
-  ]);
-  if (addResult.exitCode !== 0) {
-    console.warn(`Failed to install Codex agent-browser skill via npx skills add: ${addResult.output || 'unknown error'}`);
+    console.warn('Skipping Codex skill installation: npx is not available.');
     return;
   }
 
-  try {
-    await Promise.any(targetSkillManifests.map(async (manifestPath) => {
-      await fs.access(manifestPath);
-      return manifestPath;
-    }));
-  } catch {
-    console.warn(
-      `Expected ${AGENT_BROWSER_SKILL_NAME}/SKILL.md in either ${getGlobalAgentsSkillsDirectory()} or ${getCodexSkillsDirectory()} after installing from ${AGENT_BROWSER_SKILL_SOURCE_URL}, but it was not found.`
-    );
+  for (const skillDefinition of missingSkills) {
+    const addResult = await runProcess('npx', [
+      'skills',
+      'add',
+      skillDefinition.repoUrl,
+      '--skill',
+      skillDefinition.name,
+      '--agent',
+      ...CODEX_SKILL_TARGET_AGENTS,
+      '-g',
+      '-y',
+    ]);
+    if (addResult.exitCode !== 0) {
+      console.warn(`Failed to install Codex ${skillDefinition.name} skill via npx skills add: ${addResult.output || 'unknown error'}`);
+      continue;
+    }
+
+    if (!(await isSkillInstalled(skillDefinition.name))) {
+      console.warn(
+        `Expected ${skillDefinition.name}/SKILL.md in either ${getGlobalAgentsSkillsDirectory()} or ${getCodexSkillsDirectory()} after installing from ${skillDefinition.sourceUrl}, but it was not found.`
+      );
+    }
   }
 }
 
@@ -327,7 +347,7 @@ export async function installAgentCli(agentCli: string): Promise<{ success: bool
 
     if (exitCode === 0) {
       if (normalizedCli === 'codex') {
-        await ensureAgentBrowserSkillInstalledForCodex();
+        await ensureCodexSkillsInstalledForCodex();
       }
       return { success: true };
     }
