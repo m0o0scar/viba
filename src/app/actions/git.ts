@@ -321,7 +321,14 @@ async function resolveTerminalSessionEnvironment(repoPath: string): Promise<Term
   const remoteUrl = await getPrimaryRemoteUrl(repoPath);
   if (!remoteUrl) return null;
 
-  const provider = detectGitRemoteProvider(remoteUrl);
+  const allCredentials = await getAllCredentials();
+  const provider = detectGitRemoteProvider(remoteUrl, {
+    gitlabHosts: allCredentials.flatMap((credential) => {
+      if (credential.type !== 'gitlab') return [];
+      const host = getGitLabCredentialHost(credential);
+      return host ? [host] : [];
+    }),
+  });
   if (!provider) return null;
 
   const remoteHost = parseGitRemoteHost(remoteUrl);
@@ -337,7 +344,6 @@ async function resolveTerminalSessionEnvironment(repoPath: string): Promise<Term
   }
 
   if (!credential) {
-    const allCredentials = await getAllCredentials();
     credential = pickCandidateCredential(allCredentials, provider, remoteHost);
   }
 

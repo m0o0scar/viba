@@ -4,6 +4,9 @@ export type TerminalSessionEnvironment = {
   name: 'GITHUB_TOKEN' | 'GITLAB_TOKEN';
   value: string;
 };
+type DetectGitRemoteProviderOptions = {
+  gitlabHosts?: string[];
+};
 
 function sanitizeTmuxSessionName(value: string): string {
   const safe = value.trim().replace(/[^a-zA-Z0-9_-]/g, '-');
@@ -44,7 +47,27 @@ export function parseGitRemoteHost(remoteUrl: string): string | null {
   }
 }
 
-export function detectGitRemoteProvider(remoteUrl: string): GitRemoteProvider | null {
+function normalizeKnownHost(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  try {
+    return new URL(trimmed).hostname.toLowerCase();
+  } catch {
+    // Fall through to parse as a bare host (optionally with port).
+  }
+
+  try {
+    return new URL(`ssh://${trimmed}`).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+export function detectGitRemoteProvider(
+  remoteUrl: string,
+  options?: DetectGitRemoteProviderOptions,
+): GitRemoteProvider | null {
   const host = parseGitRemoteHost(remoteUrl);
   if (!host) return null;
 
@@ -53,6 +76,10 @@ export function detectGitRemoteProvider(remoteUrl: string): GitRemoteProvider | 
   }
 
   if (host === 'gitlab.com' || host.includes('gitlab')) {
+    return 'gitlab';
+  }
+
+  if (options?.gitlabHosts?.some((knownHost) => normalizeKnownHost(knownHost) === host)) {
     return 'gitlab';
   }
 

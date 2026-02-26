@@ -22,6 +22,15 @@ describe('detectGitRemoteProvider', () => {
     assert.strictEqual(detectGitRemoteProvider('https://gitlab.com/acme/repo.git'), 'gitlab');
   });
 
+  it('detects self-hosted GitLab remotes when host is known from credentials', () => {
+    assert.strictEqual(
+      detectGitRemoteProvider('git@git.corp.example:team/repo.git', {
+        gitlabHosts: ['https://git.corp.example'],
+      }),
+      'gitlab',
+    );
+  });
+
   it('returns null for unknown hosts', () => {
     assert.strictEqual(detectGitRemoteProvider('https://example.com/acme/repo.git'), null);
   });
