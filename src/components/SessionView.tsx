@@ -1584,7 +1584,7 @@ export function SessionView({
                     try {
                         term.options.theme = {
                             ...(term.options.theme || {}),
-                            selectionBackground: 'rgba(59, 130, 246, 0.4)',
+                            selectionBackground: '#A5CDFF',
                         };
                     } catch { /* ignore if API unavailable */ }
 
@@ -1829,7 +1829,7 @@ export function SessionView({
                     try {
                         term.options.theme = {
                             ...(term.options.theme || {}),
-                            selectionBackground: 'rgba(59, 130, 246, 0.4)',
+                            selectionBackground: '#A5CDFF',
                         };
                     } catch { /* ignore if API unavailable */ }
 

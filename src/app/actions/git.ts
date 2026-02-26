@@ -543,11 +543,11 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
 
     const ttydArgs = [
       '-p', '7681',
-      '-t', 'theme={"background": "white", "foreground": "black", "cursor": "black", "selectionBackground": "rgba(59, 130, 246, 0.4)"}',
+      '-t', 'theme={"background":"rgba(255, 255, 255, 0.85)","foreground":"#000000","cursor":"#545454","selectionBackground":"#A5CDFF","black":"#000000","red":"#FF3B30","green":"#28CD41","yellow":"#FFCC00","blue":"#007AFF","magenta":"#FF2D55","cyan":"#5AC8FA","white":"#E5E5EA","brightBlack":"#8E8E93","brightRed":"#FF453A","brightGreen":"#32D74B","brightYellow":"#FFD60A","brightBlue":"#0A84FF","brightMagenta":"#FF375F","brightCyan":"#64D2FF","brightWhite":"#FFFFFF"}',
       '-t', 'disableResizeOverlay=true',
-      '-t', 'fontSize=12',
-      '-t', 'fontWeight=300',
-      '-t', 'fontWeightBold=500',
+      '-t', 'fontFamily=SF Mono, Monaco, Menlo, Consolas, monospace',
+      '-t', 'fontSize=13',
+      '-t', 'lineHeight=1.2',
       '-w', workingDir,
       '-W',
     ];
