@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Trash2, Play, KeyRound, Settings, ExternalLink, CloudDownload } from 'lucide-react';
+import { FolderGit2, GitBranch as GitBranchIcon, Plus, X, ChevronRight, FolderCog, Bot, Trash2, Play, KeyRound, Settings, ExternalLink, CloudDownload, Search } from 'lucide-react';
 import FileBrowser from './FileBrowser';
 import {
   checkIsGitRepo,
@@ -24,6 +24,7 @@ import { listAgentApiCredentials, listCredentials } from '@/app/actions/credenti
 import type { Credential } from '@/lib/credentials';
 import { useRouter } from 'next/navigation';
 import { getBaseName } from '@/lib/path';
+import { getStableRepoCardGradient } from '@/lib/repo-card-gradient';
 import { notifySessionsUpdated, SESSIONS_UPDATED_EVENT, SESSIONS_UPDATED_STORAGE_KEY } from '@/lib/session-updates';
 import Image from 'next/image';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
@@ -118,6 +119,7 @@ export default function GitRepoSelector({
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginAgentCli, setLoginAgentCli] = useState<SupportedAgentCli | null>(null);
   const [loginCommand, setLoginCommand] = useState('');
+  const [homeSearchQuery, setHomeSearchQuery] = useState('');
   const [loginCommandInjected, setLoginCommandInjected] = useState(false);
   const [loginModalError, setLoginModalError] = useState<string | null>(null);
   const [repoSettingsError, setRepoSettingsError] = useState<string | null>(null);
@@ -1204,7 +1206,16 @@ export default function GitRepoSelector({
     return counts;
   }, [allSessions]);
 
-  const recentRepos = config?.recentRepos ?? [];
+  const recentRepos = useMemo(() => config?.recentRepos ?? [], [config?.recentRepos]);
+  const filteredRecentRepos = useMemo(() => {
+    const normalizedQuery = homeSearchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return recentRepos;
+
+    return recentRepos.filter((repo) => {
+      const baseName = getBaseName(repo).toLowerCase();
+      return baseName.includes(normalizedQuery) || repo.toLowerCase().includes(normalizedQuery);
+    });
+  }, [homeSearchQuery, recentRepos]);
   const selectableRepos = selectedRepo
     ? (recentRepos.includes(selectedRepo) ? recentRepos : [selectedRepo, ...recentRepos])
     : recentRepos;
@@ -1212,133 +1223,203 @@ export default function GitRepoSelector({
   return (
     <>
       {mode === 'home' && (
-        <div className="card w-full max-w-4xl bg-base-200 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Image src="/icon.png" alt="Viba" width={24} height={24} className="rounded-sm" />
-                Viba
+        <div className="w-full max-w-7xl">
+          <div className="relative overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/80 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.4)] backdrop-blur-xl">
+            <div className="pointer-events-none absolute inset-x-0 -top-20 h-64 bg-[radial-gradient(circle_at_top_left,_rgba(19,91,236,0.18),_transparent_62%)]" />
+            <div className="pointer-events-none absolute -right-16 top-24 h-52 w-52 rounded-full bg-[radial-gradient(circle,_rgba(99,102,241,0.18),_transparent_68%)]" />
+
+            <header className="relative z-10 flex flex-col gap-4 border-b border-slate-200/80 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-7">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/90 shadow-sm">
+                  <Image src="/icon.png" alt="Viba" width={22} height={22} className="rounded-sm" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold tracking-tight text-slate-900">Viba</h2>
+                  <p className="text-xs text-slate-500">AI Coding Agent Dashboard</p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="input input-sm flex h-10 w-full items-center gap-2 border-slate-200 bg-slate-100/90 text-slate-700 shadow-none md:w-72">
+                  <Search className="h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    className="grow text-sm"
+                    placeholder="Search repositories..."
+                    value={homeSearchQuery}
+                    onChange={(event) => setHomeSearchQuery(event.target.value)}
+                  />
+                </label>
                 <button
-                  className="btn btn-ghost btn-sm gap-2"
+                  className="btn btn-ghost btn-sm gap-2 text-slate-700"
                   onClick={() => router.push('/credentials')}
                   title="Manage GitHub/GitLab credentials"
                 >
-                  <KeyRound className="w-4 h-4" />
+                  <KeyRound className="h-4 w-4" />
                   Credentials
                 </button>
                 <button
-                  className="btn btn-ghost btn-sm gap-2"
+                  className="btn btn-ghost btn-sm gap-2 text-slate-700"
                   onClick={() => setIsSelectingRoot(true)}
                   title={config?.defaultRoot ? `Default: ${config.defaultRoot}` : "Set default browsing folder"}
                 >
-                  <FolderCog className="w-4 h-4" />
-                  {config?.defaultRoot ? "Change Default" : "Set Default Root"}
+                  <FolderCog className="h-4 w-4" />
+                  {config?.defaultRoot ? "Change Root" : "Set Root"}
                 </button>
-                <button className="btn btn-secondary btn-sm gap-2" onClick={openCloneRemoteDialog}>
-                  <CloudDownload className="w-4 h-4" /> Clone Remote Repo
-                </button>
-                <button className="btn btn-primary btn-sm gap-2" onClick={() => setIsBrowsing(true)}>
-                  <Plus className="w-4 h-4" /> Open Local Repo
+                <button className="btn btn-primary btn-sm gap-2" onClick={openCloneRemoteDialog}>
+                  <CloudDownload className="h-4 w-4" />
+                  New Repository
                 </button>
               </div>
-            </h2>
+            </header>
 
-            {error && <div className="alert alert-error text-sm py-2 px-3 mt-2">{error}</div>}
+            <div className="relative z-10 px-4 py-5 md:px-7 md:py-7">
+              {error && (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
 
-            <div className="mt-4 space-y-4">
+              {!isLoaded ? (
+                <div className="flex h-56 items-center justify-center rounded-2xl border border-slate-200 bg-white/70">
+                  <span className="loading loading-spinner loading-md text-primary"></span>
+                </div>
+              ) : filteredRecentRepos.length === 0 ? (
+                <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white/70 text-center">
+                  <p className="text-sm text-slate-500">
+                    {homeSearchQuery.trim() ? 'No repositories match your search.' : 'No recent repositories found.'}
+                  </p>
+                  {!homeSearchQuery.trim() && (
+                    <button className="btn btn-primary btn-sm mt-3 gap-2" onClick={openCloneRemoteDialog}>
+                      <Plus className="h-4 w-4" />
+                      Add your first repository
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredRecentRepos.map((repo) => {
+                    const credentialLabel = getRepoCredentialLabel(repo);
+                    const runningSessionCount = runningSessionCountByRepo.get(repo) ?? 0;
+                    const cardGradient = getStableRepoCardGradient(getBaseName(repo));
 
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold opacity-70 uppercase tracking-wide">Recent Repositories</h3>
-                {!isLoaded ? (
-                  <div className="flex items-center justify-center py-8 bg-base-100 rounded-lg">
-                    <span className="loading loading-spinner loading-md"></span>
-                  </div>
-                ) : (!config || config.recentRepos.length === 0) ? (
-                  <div className="text-center py-8 text-base-content/40 italic bg-base-100 rounded-lg">
-                    No recent repositories found.
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {config.recentRepos.map(repo => {
-                      const credentialLabel = getRepoCredentialLabel(repo);
-                      const runningSessionCount = runningSessionCountByRepo.get(repo) ?? 0;
-
-                      return (
-                        <div
-                          key={repo}
-                          onClick={() => handleSelectRepo(repo)}
-                          className="flex items-center justify-between p-3 bg-base-100 hover:bg-base-300 rounded-md cursor-pointer group transition-all border border-base-300"
-                        >
-                          <div className="flex items-center gap-3 overflow-hidden shrink min-w-0">
-                            <FolderGit2 className="w-5 h-5 text-secondary shrink-0" />
-                            <div className="flex flex-col overflow-hidden">
-                              <span className="font-medium truncate">{getBaseName(repo)}</span>
-                              <span className="text-xs opacity-50 truncate">{repo}</span>
-                              <span className="text-[10px] opacity-60 mt-0.5">
-                                Credential: {credentialLabel}
-                              </span>
+                    return (
+                      <div
+                        key={repo}
+                        onClick={() => handleSelectRepo(repo)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            void handleSelectRepo(repo);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        className="group relative h-[248px] overflow-hidden rounded-2xl border border-white/70 text-left shadow-[0_14px_40px_-24px_rgba(15,23,42,0.65)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_24px_48px_-26px_rgba(15,23,42,0.55)]"
+                        style={cardGradient}
+                      >
+                        <div className="absolute inset-0 bg-white/40" />
+                        <div className="relative flex h-full flex-col justify-between p-5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/90 text-slate-700 shadow-sm">
+                              <FolderGit2 className="h-5 w-5" />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {runningSessionCount > 0 && (
+                                <span
+                                  className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-rose-500 px-2 text-xs font-bold text-white shadow-sm"
+                                  title={`${runningSessionCount} running session${runningSessionCount === 1 ? '' : 's'}`}
+                                >
+                                  {runningSessionCount}
+                                </span>
+                              )}
+                              <button
+                                onClick={(event) => {
+                                  void handleOpenRepoSettings(event, repo);
+                                }}
+                                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-600 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-slate-900 group-hover:opacity-100"
+                                title="Repository settings"
+                              >
+                                <Settings className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={(event) => handleRemoveRecent(event, repo)}
+                                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-500 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-rose-600 group-hover:opacity-100"
+                                title="Remove from history"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {runningSessionCount > 0 && (
-                              <span
-                                className="badge badge-sm badge-secondary"
-                                title={`${runningSessionCount} running session${runningSessionCount === 1 ? '' : 's'}`}
-                              >
-                                {runningSessionCount}
-                              </span>
-                            )}
-                            <button
-                              onClick={(e) => {
-                                void handleOpenRepoSettings(e, repo);
-                              }}
-                              className="btn btn-circle btn-ghost btn-xs opacity-0 group-hover:opacity-100"
-                              title="Repository settings"
-                            >
-                              <Settings className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={(e) => handleRemoveRecent(e, repo)}
-                              className="btn btn-circle btn-ghost btn-xs opacity-0 group-hover:opacity-100 text-error"
-                              title="Remove from history"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                            <ChevronRight className="w-4 h-4 opacity-30" />
+
+                          <div className="space-y-1.5">
+                            <h3 className="truncate text-lg font-bold text-slate-900">
+                              {getBaseName(repo)}
+                            </h3>
+                            <p className="truncate font-mono text-xs text-slate-600">{repo}</p>
+                            <p className="truncate text-[11px] font-medium text-slate-500">
+                              Credential: {credentialLabel}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
+                            <span>Open repository</span>
+                            <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                      </div>
+                    );
+                  })}
+
+                  <button
+                    onClick={openCloneRemoteDialog}
+                    className="group flex h-[248px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 text-slate-600 transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:bg-white"
+                  >
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm transition-transform group-hover:scale-105">
+                      <Plus className="h-7 w-7 text-slate-400 transition-colors group-hover:text-primary" />
+                    </span>
+                    <span className="text-lg font-semibold transition-colors group-hover:text-primary">
+                      Add Repository
+                    </span>
+                    <span className="text-sm text-slate-400">Import from local or git URL</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
       {mode === 'home' && isRepoSettingsDialogOpen && repoForSettings && (
-        <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-base-content/60 p-4">
-          <div className="w-full max-w-xl rounded-xl border border-base-300 bg-base-100 shadow-2xl">
+        <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/35 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6">
+              <h3 className="text-lg font-bold text-slate-900">Repository Settings</h3>
+              <button
+                className="btn btn-circle btn-ghost btn-sm text-slate-500"
+                onClick={dismissRepoSettingsDialog}
+                disabled={isSavingRepoSettings}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
             <div className="space-y-4 p-5 md:p-6">
-              <h3 className="text-xl font-semibold">Repository Settings</h3>
-              <p className="text-sm opacity-75">
+              <p className="text-sm text-slate-600">
                 Choose which credential this repository should use for authenticated Git operations.
               </p>
 
               <div className="space-y-2">
-                <label className="text-xs uppercase tracking-wide opacity-70">Repository</label>
-                <div className="rounded-md border border-base-300 bg-base-200 px-3 py-2 font-mono text-xs break-all">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Repository</label>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700 break-all">
                   {repoForSettings}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs uppercase tracking-wide opacity-70">Credential</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Credential</label>
                 <select
-                  className="select select-bordered w-full"
+                  className="select w-full border-slate-200 bg-slate-50 text-slate-700 focus:border-primary focus:outline-none"
                   value={repoCredentialSelection}
                   onChange={(event) => setRepoCredentialSelection(event.target.value)}
                   disabled={isSavingRepoSettings}
@@ -1351,28 +1432,28 @@ export default function GitRepoSelector({
                   ))}
                 </select>
                 {credentialOptions.length === 0 && !isLoadingCredentialOptions && (
-                  <div className="text-xs opacity-60">
+                  <div className="text-xs text-slate-500">
                     No credentials found. Add credentials from the Credentials page.
                   </div>
                 )}
               </div>
 
               {isLoadingCredentialOptions && (
-                <div className="text-sm opacity-70 flex items-center gap-2">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
                   <span className="loading loading-spinner loading-xs"></span>
                   Loading credentials...
                 </div>
               )}
 
               {repoSettingsError && (
-                <div className="alert alert-error text-sm py-2">
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   {repoSettingsError}
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                 <button
-                  className="btn btn-ghost"
+                  className="btn btn-ghost text-slate-700"
                   onClick={dismissRepoSettingsDialog}
                   disabled={isSavingRepoSettings}
                 >
@@ -1393,83 +1474,127 @@ export default function GitRepoSelector({
       )}
 
       {mode === 'home' && isCloneRemoteDialogOpen && (
-        <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-base-content/60 p-4">
-          <div className="w-full max-w-xl rounded-xl border border-base-300 bg-base-100 shadow-2xl">
-            <div className="space-y-4 p-5 md:p-6">
-              <h3 className="text-xl font-semibold">Clone Remote Repository</h3>
-              <p className="text-sm opacity-75">
-                Clone into <span className="font-mono">~/.viba/repos</span> and open it as the selected repository.
-              </p>
+        <div className="fixed inset-0 z-[1002] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-4 md:px-6">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Add New Repository</h3>
+                <p className="text-sm text-slate-500">Connect a local folder or clone from URL</p>
+              </div>
+              <button className="btn btn-circle btn-ghost btn-sm text-slate-500" onClick={dismissCloneRemoteDialog} disabled={isCloningRemote}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
 
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-wide opacity-70">Remote URL</label>
-                <input
-                  className="input input-bordered w-full font-mono text-sm"
-                  placeholder="https://github.com/org/repo.git"
-                  value={remoteRepoUrl}
-                  onChange={(event) => setRemoteRepoUrl(event.target.value)}
-                  disabled={isCloningRemote}
-                />
+            <div className="flex flex-1 flex-col overflow-y-auto md:flex-row">
+              <div className="flex-1 space-y-4 border-b border-slate-100 p-5 md:border-b-0 md:border-r md:p-6">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Browse Local</h4>
+                <p className="text-sm text-slate-600">
+                  Select an existing Git repository folder from your local machine.
+                </p>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                  Default root: <span className="font-mono">{config?.defaultRoot || '~'}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-primary btn-sm gap-2"
+                    onClick={() => {
+                      dismissCloneRemoteDialog();
+                      setIsBrowsing(true);
+                    }}
+                  >
+                    <FolderGit2 className="h-4 w-4" />
+                    Browse Local Repository
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm gap-2 text-slate-700"
+                    onClick={() => {
+                      dismissCloneRemoteDialog();
+                      setIsSelectingRoot(true);
+                    }}
+                  >
+                    <FolderCog className="h-4 w-4" />
+                    Set Default Folder
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-wide opacity-70">Credential</label>
-                <select
-                  className="select select-bordered w-full"
-                  value={cloneCredentialSelection}
-                  onChange={(event) => setCloneCredentialSelection(event.target.value)}
-                  disabled={isCloningRemote || isLoadingCloneCredentialOptions}
-                >
-                  <option value="auto">Auto (match repository remote)</option>
-                  {credentialOptions.map((credential) => (
-                    <option key={credential.id} value={credential.id}>
-                      {getCredentialOptionLabel(credential)}
-                    </option>
-                  ))}
-                </select>
-                {credentialOptions.length === 0 && !isLoadingCloneCredentialOptions && (
-                  <div className="text-xs opacity-60">
-                    No credentials found. Clone will use anonymous access unless remote auth is otherwise configured.
+              <div className="w-full space-y-4 bg-slate-50/35 p-5 md:w-[420px] md:p-6">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Clone Remote</h4>
+                <p className="text-sm text-slate-600">
+                  Clone into <span className="font-mono">~/.viba/repos</span> and open it immediately.
+                </p>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Repository URL</label>
+                  <input
+                    className="input w-full border-slate-200 bg-white font-mono text-sm text-slate-800 focus:border-primary focus:outline-none"
+                    placeholder="https://github.com/org/repo.git"
+                    value={remoteRepoUrl}
+                    onChange={(event) => setRemoteRepoUrl(event.target.value)}
+                    disabled={isCloningRemote}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Credential</label>
+                  <select
+                    className="select w-full border-slate-200 bg-white text-slate-700 focus:border-primary focus:outline-none"
+                    value={cloneCredentialSelection}
+                    onChange={(event) => setCloneCredentialSelection(event.target.value)}
+                    disabled={isCloningRemote || isLoadingCloneCredentialOptions}
+                  >
+                    <option value="auto">Auto (match repository remote)</option>
+                    {credentialOptions.map((credential) => (
+                      <option key={credential.id} value={credential.id}>
+                        {getCredentialOptionLabel(credential)}
+                      </option>
+                    ))}
+                  </select>
+                  {credentialOptions.length === 0 && !isLoadingCloneCredentialOptions && (
+                    <div className="text-xs text-slate-500">
+                      No credentials found. Clone uses anonymous access unless remote auth is configured.
+                    </div>
+                  )}
+                </div>
+
+                {isLoadingCloneCredentialOptions && (
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <span className="loading loading-spinner loading-xs"></span>
+                    Loading credentials...
                   </div>
                 )}
-              </div>
 
-              {isLoadingCloneCredentialOptions && (
-                <div className="text-sm opacity-70 flex items-center gap-2">
-                  <span className="loading loading-spinner loading-xs"></span>
-                  Loading credentials...
+                {isCloningRemote && (
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                    <span className="loading loading-spinner loading-xs"></span>
+                    Cloning repository...
+                  </div>
+                )}
+
+                {cloneRemoteError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {cloneRemoteError}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                  <button
+                    className="btn btn-ghost text-slate-700"
+                    onClick={dismissCloneRemoteDialog}
+                    disabled={isCloningRemote}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-primary gap-2"
+                    onClick={() => void handleCloneRemoteRepo()}
+                    disabled={isCloningRemote || !remoteRepoUrl.trim() || isLoadingCloneCredentialOptions}
+                  >
+                    {isCloningRemote ? <span className="loading loading-spinner loading-xs"></span> : <CloudDownload className="h-4 w-4" />}
+                    Clone Repository
+                  </button>
                 </div>
-              )}
-
-              {isCloningRemote && (
-                <div className="alert py-2 text-sm flex items-center gap-2">
-                  <span className="loading loading-spinner loading-xs"></span>
-                  Cloning repository...
-                </div>
-              )}
-
-              {cloneRemoteError && (
-                <div className="alert alert-error text-sm py-2">
-                  {cloneRemoteError}
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  className="btn btn-ghost"
-                  onClick={dismissCloneRemoteDialog}
-                  disabled={isCloningRemote}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => void handleCloneRemoteRepo()}
-                  disabled={isCloningRemote || !remoteRepoUrl.trim() || isLoadingCloneCredentialOptions}
-                >
-                  {isCloningRemote ? <span className="loading loading-spinner loading-xs"></span> : null}
-                  Clone
-                </button>
               </div>
             </div>
           </div>
