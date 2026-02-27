@@ -181,6 +181,7 @@ export interface SessionViewProps {
     startupScript?: string;
     devServerScript?: string;
     initialMessage?: string;
+    attachmentPaths?: string[];
     attachmentNames?: string[];
     title?: string;
     sessionMode?: 'fast' | 'plan';
@@ -202,6 +203,7 @@ export function SessionView({
     startupScript,
     devServerScript,
     initialMessage,
+    attachmentPaths,
     attachmentNames,
     title,
     sessionMode = 'fast',
@@ -1575,16 +1577,21 @@ export function SessionView({
                             } else {
                                 const trimmedInitialMessage = initialMessage?.trim() || '';
                                 const taskContent = trimmedInitialMessage;
-                                const attachmentPaths = (attachmentNames || [])
-                                    .map((name) => name.trim())
-                                    .filter(Boolean)
-                                    .map((name) => `${worktree || repo}-attachments/${name}`);
+                                const normalizedAttachmentPaths = (
+                                    attachmentPaths && attachmentPaths.length > 0
+                                        ? attachmentPaths
+                                        : (attachmentNames || [])
+                                            .map((name) => `${worktree || repo}-attachments/${name}`)
+                                )
+                                    .map((entry) => entry.trim())
+                                    .filter(Boolean);
+                                const resolvedAttachmentPaths = Array.from(new Set(normalizedAttachmentPaths));
                                 const taskSections: string[] = [];
                                 if (taskContent) taskSections.push(taskContent);
-                                if (attachmentPaths.length > 0) {
+                                if (resolvedAttachmentPaths.length > 0) {
                                     taskSections.push([
                                         'Attachments:',
-                                        ...attachmentPaths.map((attachmentPath) => `- ${attachmentPath}`),
+                                        ...resolvedAttachmentPaths.map((attachmentPath) => `- ${attachmentPath}`),
                                     ].join('\n'));
                                 }
                                 const fullTaskContent = taskSections.join('\n\n');

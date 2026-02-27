@@ -12,13 +12,12 @@ import {
   getStartupScript,
   getDefaultDevServerScript,
   listRepoFiles,
-  saveAttachments,
   checkAgentCliInstalled,
   installAgentCli,
   SupportedAgentCli,
 } from '@/app/actions/git';
 import { cloneRemoteRepository, resolveRepositoryByName } from '@/app/actions/repository';
-import { copySessionAttachments, createSession, deleteSession, getSessionPrefillContext, listSessions, saveSessionLaunchContext, SessionMetadata } from '@/app/actions/session';
+import { createSession, deleteSession, getSessionPrefillContext, listSessions, saveSessionLaunchContext, SessionMetadata } from '@/app/actions/session';
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
 import { listAgentApiCredentials, listCredentials } from '@/app/actions/credentials';
 import type { Credential } from '@/lib/credentials';
@@ -28,6 +27,7 @@ import { getStableRepoCardGradient } from '@/lib/repo-card-gradient';
 import { notifySessionsUpdated, SESSIONS_UPDATED_EVENT, SESSIONS_UPDATED_STORAGE_KEY } from '@/lib/session-updates';
 import Image from 'next/image';
 import { useDialogKeyboardShortcuts } from '@/hooks/useDialogKeyboardShortcuts';
+import SessionFileBrowser from './SessionFileBrowser';
 
 type SessionMode = 'fast' | 'plan';
 type RepoCredentialSelection = 'auto' | string;
@@ -123,9 +123,10 @@ export default function GitRepoSelector({
   const [showSessionAdvanced, setShowSessionAdvanced] = useState(false);
   const [initialMessage, setInitialMessage] = useState<string>('');
   const [sessionMode, setSessionMode] = useState<SessionMode>('fast');
-  const [attachments, setAttachments] = useState<File[]>([]);
-  const [prefilledAttachmentNames, setPrefilledAttachmentNames] = useState<string[]>([]);
-  const [prefillSourceSessionName, setPrefillSourceSessionName] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [isAttachmentBrowserOpen, setIsAttachmentBrowserOpen] = useState(false);
+  const [lastAttachmentBrowserPath, setLastAttachmentBrowserPath] = useState<string>('');
+  const [prefilledAttachmentPaths, setPrefilledAttachmentPaths] = useState<string[]>([]);
   const [hasAppliedPrefill, setHasAppliedPrefill] = useState(false);
 
   const [loading, setLoading] = useState(false);
@@ -495,6 +496,11 @@ export default function GitRepoSelector({
   }, [mode, repoPath, selectedRepo]);
 
   useEffect(() => {
+    if (mode !== 'new' || !selectedRepo) return;
+    setLastAttachmentBrowserPath((prev) => prev || selectedRepo);
+  }, [mode, selectedRepo]);
+
+  useEffect(() => {
     if (mode !== 'new') return;
     if (repoPath) {
       setIsResolvingRepoFromName(false);
@@ -545,8 +551,7 @@ export default function GitRepoSelector({
 
   useEffect(() => {
     setHasAppliedPrefill(false);
-    setPrefilledAttachmentNames([]);
-    setPrefillSourceSessionName(null);
+    setPrefilledAttachmentPaths([]);
   }, [prefillFromSession]);
 
   useEffect(() => {
@@ -575,8 +580,7 @@ export default function GitRepoSelector({
       }
 
       setInitialMessage(context.initialMessage || '');
-      setPrefilledAttachmentNames(context.attachmentNames || []);
-      setPrefillSourceSessionName(context.sourceSessionName);
+      setPrefilledAttachmentPaths(context.attachmentPaths || []);
       setShowSessionAdvanced(true);
       setHasAppliedPrefill(true);
     };
@@ -723,31 +727,12 @@ export default function GitRepoSelector({
     await saveDevServerScriptValue(devServerScript);
   };
 
-  const normalizeAttachmentFile = useCallback((file: File, index: number): File => {
-    if (file.name && file.name.trim().length > 0) {
-      return file;
-    }
+  const appendAttachmentPaths = useCallback((incomingPaths: string[]) => {
+    if (incomingPaths.length === 0) return;
 
-    const extension = file.type
-      ? file.type.split('/')[1]?.split('+')[0] || 'bin'
-      : 'bin';
-    const generatedName = `pasted-file-${Date.now()}-${index + 1}.${extension}`;
-
-    return new File([file], generatedName, {
-      type: file.type,
-      lastModified: file.lastModified || Date.now(),
-    });
-  }, []);
-
-  const appendAttachments = useCallback((incomingFiles: File[]) => {
-    if (incomingFiles.length === 0) return;
-
-    setAttachments(prev => {
-      const byName = new Map(prev.map(file => [file.name, file]));
-      incomingFiles.forEach(file => {
-        byName.set(file.name, file);
-      });
-      return Array.from(byName.values());
+    setAttachments((prev) => {
+      const normalized = incomingPaths.map((entry) => entry.trim()).filter(Boolean);
+      return Array.from(new Set([...prev, ...normalized]));
     });
   }, []);
 
@@ -760,11 +745,19 @@ export default function GitRepoSelector({
 
   // Cache filtered files
   const [repoFilesCache, setRepoFilesCache] = useState<string[]>([]);
+  const selectedAttachmentNames = useMemo(
+    () => attachments.map((attachmentPath) => getBaseName(attachmentPath)),
+    [attachments],
+  );
+  const prefilledAttachmentNames = useMemo(
+    () => prefilledAttachmentPaths.map((attachmentPath) => getBaseName(attachmentPath)),
+    [prefilledAttachmentPaths],
+  );
 
-  const updateSuggestions = (query: string, files: string[], currentAttachments: File[], carriedAttachments: string[]) => {
+  const updateSuggestions = (query: string, files: string[], currentAttachments: string[], carriedAttachments: string[]) => {
     const lowerQ = query.toLowerCase();
 
-    const attachmentNames = [...currentAttachments.map(f => f.name), ...carriedAttachments];
+    const attachmentNames = [...currentAttachments, ...carriedAttachments];
     // prioritize attachments
     const matchedAttachments = attachmentNames.filter(n => n.toLowerCase().includes(lowerQ));
     const matchedFiles = files.filter(f => f.toLowerCase().includes(lowerQ)).slice(0, 20);
@@ -821,7 +814,7 @@ export default function GitRepoSelector({
             files = await listRepoFiles(selectedRepo);
             setRepoFilesCache(files);
           }
-          updateSuggestions(query, files, attachments, prefilledAttachmentNames);
+          updateSuggestions(query, files, selectedAttachmentNames, prefilledAttachmentNames);
         }
         return;
       }
@@ -844,47 +837,12 @@ export default function GitRepoSelector({
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
-
-    const selectedFiles = Array.from(e.target.files).map((file, index) => normalizeAttachmentFile(file, index));
-    appendAttachments(selectedFiles);
-    e.target.value = '';
-  };
-
-  useEffect(() => {
-    if (mode !== 'new' || !selectedRepo) return;
-
-    const handlePaste = (event: ClipboardEvent) => {
-      const clipboardData = event.clipboardData;
-      if (!clipboardData) return;
-
-      const fromItems = Array.from(clipboardData.items)
-        .filter(item => item.kind === 'file')
-        .map(item => item.getAsFile())
-        .filter((file): file is File => file !== null);
-
-      const pastedFiles = (fromItems.length > 0 ? fromItems : Array.from(clipboardData.files))
-        .map((file, index) => normalizeAttachmentFile(file, index));
-
-      if (pastedFiles.length === 0) return;
-
-      event.preventDefault();
-      appendAttachments(pastedFiles);
-    };
-
-    window.addEventListener('paste', handlePaste);
-    return () => {
-      window.removeEventListener('paste', handlePaste);
-    };
-  }, [appendAttachments, mode, normalizeAttachmentFile, selectedRepo]);
-
   const removeAttachment = (idx: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== idx));
   };
 
   const removePrefilledAttachment = (idx: number) => {
-    setPrefilledAttachmentNames(prev => prev.filter((_, i) => i !== idx));
+    setPrefilledAttachmentPaths(prev => prev.filter((_, i) => i !== idx));
   };
 
 
@@ -1093,38 +1051,22 @@ export default function GitRepoSelector({
       });
 
       if (wtResult.success && wtResult.sessionName && wtResult.worktreePath && wtResult.branchName) {
-        let uploadedAttachmentNames: string[] = [];
-        let carriedAttachmentNames: string[] = [];
-
-        // Upload newly selected attachments.
-        if (attachments.length > 0) {
-          const formData = new FormData();
-          attachments.forEach(file => formData.append(file.name, file)); // Use filename as key or just 'files'
-          // Backend iterates entries [name, file].
-          uploadedAttachmentNames = await saveAttachments(wtResult.worktreePath, formData);
-        }
-
-        // Copy carried attachments from the source session.
-        if (prefillSourceSessionName && prefilledAttachmentNames.length > 0) {
-          const copiedResult = await copySessionAttachments(
-            prefillSourceSessionName,
-            wtResult.worktreePath,
-            prefilledAttachmentNames
-          );
-
-          if (!copiedResult.success) {
-            setError(copiedResult.error || 'Failed to carry over attachments from source session');
-            setLoading(false);
-            return;
+        const allAttachmentPaths = Array.from(
+          new Set(
+            [...attachments, ...prefilledAttachmentPaths]
+              .map((entry) => entry.trim())
+              .filter(Boolean)
+          )
+        );
+        const attachmentPathByName = new Map<string, string>();
+        for (const attachmentPath of allAttachmentPaths) {
+          const baseName = getBaseName(attachmentPath).trim();
+          if (!baseName) continue;
+          if (!attachmentPathByName.has(baseName)) {
+            attachmentPathByName.set(baseName, attachmentPath);
           }
-
-          carriedAttachmentNames = copiedResult.copiedAttachmentNames;
         }
-
-        const allAttachmentNames = Array.from(new Set([
-          ...uploadedAttachmentNames,
-          ...carriedAttachmentNames,
-        ]));
+        const allAttachmentNames = Array.from(attachmentPathByName.keys());
 
         // Process initial message mentions
         const trimmedInitialMessage = initialMessage.trim();
@@ -1132,8 +1074,9 @@ export default function GitRepoSelector({
 
         // Helper to match replacement
         processedMessage = processedMessage.replace(/@(\S+)/g, (match, name) => {
-          if (allAttachmentNames.includes(name)) {
-            return `${wtResult.worktreePath}-attachments/${name}`;
+          const attachmentPath = attachmentPathByName.get(name);
+          if (attachmentPath) {
+            return attachmentPath;
           }
           // Assume repo file - keep relative path as we run in worktree root
           return name;
@@ -1145,6 +1088,7 @@ export default function GitRepoSelector({
           initialMessage: processedMessage || undefined,
           rawInitialMessage: trimmedInitialMessage || undefined,
           startupScript: startupScript || undefined,
+          attachmentPaths: allAttachmentPaths,
           attachmentNames: allAttachmentNames,
           agentProvider: 'codex',
           model: '',
@@ -1971,72 +1915,60 @@ export default function GitRepoSelector({
                 <div className="border-t border-slate-100 pt-4 dark:border-slate-700/70">
                   <div className="mb-3 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
                     <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Attachments</h4>
-                    <label
-                      htmlFor="new-session-attachments-input"
-                      className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-blue-700"
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => setIsAttachmentBrowserOpen(true)}
+                      disabled={loading || !selectedRepo}
                     >
                       <CloudDownload className="h-4 w-4" />
                       Select Attachments
-                    </label>
-                    <input
-                      id="new-session-attachments-input"
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={handleFileSelect}
-                      disabled={loading}
-                    />
+                    </button>
                   </div>
 
                   <div className="min-h-[88px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-[#0d1117]/40">
-                    <div className="flex flex-wrap gap-3">
-                      {attachments.map((file, idx) => (
-                        <div key={`upload-${idx}`} className="group relative w-20">
-                          <div className="relative flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-                            <span className="px-2 text-center text-[11px] font-medium text-slate-700 dark:text-slate-200">{file.name.split('.').pop()?.toUpperCase() || 'FILE'}</span>
-                            <button
-                              type="button"
-                              className="absolute right-1 top-1 rounded-full bg-slate-100 p-0.5 text-slate-500 opacity-0 transition hover:text-red-500 group-hover:opacity-100 dark:bg-slate-700 dark:text-slate-400 dark:hover:text-red-400"
-                              onClick={() => removeAttachment(idx)}
-                              title="Remove attachment"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                          <span className="mt-1 block truncate text-center text-[10px] text-slate-600 dark:text-slate-400">{file.name}</span>
-                        </div>
+                    <div className="flex flex-wrap gap-2">
+                      {attachments.map((attachmentPath, idx) => (
+                        <span
+                          key={`upload-${attachmentPath}-${idx}`}
+                          className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          title={attachmentPath}
+                        >
+                          <span className="truncate">{getBaseName(attachmentPath)}</span>
+                          <button
+                            type="button"
+                            className="rounded text-slate-500 transition hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400"
+                            onClick={() => removeAttachment(idx)}
+                            title="Remove attachment"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
                       ))}
 
-                      {prefilledAttachmentNames.map((name, idx) => (
-                        <div key={`prefill-${name}-${idx}`} className="group relative w-20">
-                          <div className="relative flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-                            <span className="px-2 text-center text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                              {name.split('.').pop()?.toUpperCase() || 'FILE'}
-                            </span>
-                            <button
-                              type="button"
-                              className="absolute right-1 top-1 rounded-full bg-slate-100 p-0.5 text-slate-500 opacity-0 transition hover:text-red-500 group-hover:opacity-100 dark:bg-slate-700 dark:text-slate-400 dark:hover:text-red-400"
-                              onClick={() => removePrefilledAttachment(idx)}
-                              title="Remove carried attachment"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                          <span className="mt-1 block truncate text-center text-[10px] text-slate-600 dark:text-slate-400">{name}</span>
-                        </div>
+                      {prefilledAttachmentPaths.map((attachmentPath, idx) => (
+                        <span
+                          key={`prefill-${attachmentPath}-${idx}`}
+                          className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          title={attachmentPath}
+                        >
+                          <span className="truncate">{getBaseName(attachmentPath)}</span>
+                          <button
+                            type="button"
+                            className="rounded text-slate-500 transition hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400"
+                            onClick={() => removePrefilledAttachment(idx)}
+                            title="Remove carried attachment"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
                       ))}
 
-                      <label
-                        htmlFor="new-session-attachments-input"
-                        className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-slate-400 transition hover:border-primary hover:bg-primary/5 hover:text-primary dark:border-slate-700 dark:text-slate-500"
-                      >
-                        <Plus className="h-4 w-4" />
-                        <span className="text-[9px] font-semibold uppercase">Add File</span>
-                      </label>
+                      {(attachments.length === 0 && prefilledAttachmentPaths.length === 0) && (
+                        <span className="text-xs text-slate-500 dark:text-slate-400">No attachments selected.</span>
+                      )}
                     </div>
                   </div>
-
-                  <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">Paste files from clipboard with Cmd/Ctrl+V anywhere on this page.</div>
                 </div>
 
                 <div className="mt-6 flex items-center justify-end gap-3 border-t border-slate-100 pt-5 dark:border-slate-700/70">
@@ -2162,6 +2094,18 @@ export default function GitRepoSelector({
         </div>
       )}
 
+
+      {mode === 'new' && selectedRepo && isAttachmentBrowserOpen && (
+        <SessionFileBrowser
+          initialPath={lastAttachmentBrowserPath || selectedRepo}
+          onPathChange={setLastAttachmentBrowserPath}
+          onConfirm={async (paths) => {
+            appendAttachmentPaths(paths);
+            setIsAttachmentBrowserOpen(false);
+          }}
+          onCancel={() => setIsAttachmentBrowserOpen(false)}
+        />
+      )}
 
       {mode === 'home' && isBrowsing && (
         <FileBrowser
