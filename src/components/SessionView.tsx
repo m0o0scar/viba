@@ -2083,7 +2083,7 @@ export function SessionView({
                 <div className="flex h-full min-w-[360px] flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#161b22]">
                     <div className="min-h-0 flex flex-1 flex-col">
                         <form
-                            className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-[#30363d] dark:bg-[#161b22]"
+                            className="flex h-9 items-center gap-2 border-b border-slate-200 bg-white px-3 dark:border-[#30363d] dark:bg-[#161b22]"
                             onSubmit={handlePreviewSubmit}
                         >
                             <div className="mr-1 flex gap-1.5">
