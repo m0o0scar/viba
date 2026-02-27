@@ -1480,6 +1480,19 @@ export function SessionView({
         void loadPreviewViaProxy(previewInputUrl, true);
     };
 
+    const handleOpenPreviewInNewTab = useCallback(() => {
+        const preferredTarget = previewInputUrl.trim() || previewUrl;
+        const normalizedTarget = normalizePreviewUrl(preferredTarget);
+
+        if (!normalizedTarget) {
+            setFeedback('Please enter a preview URL');
+            return;
+        }
+
+        window.open(normalizedTarget, '_blank', 'noopener,noreferrer');
+        setFeedback(`Opened preview in new tab: ${normalizedTarget}`);
+    }, [previewInputUrl, previewUrl]);
+
     const handleStartDevServer = () => {
         const script = devServerScript?.trim();
         if (!script || !terminalRef.current || isTerminalForegroundProcessRunning) return;
@@ -2135,7 +2148,7 @@ export function SessionView({
                             title="Clean up and exit"
                         >
                             <Trash2 className="w-3 h-3" />
-                            <span className={headerButtonLabelClass}>Purge</span>
+                            <span className={headerButtonLabelClass}>Delete</span>
                         </button>
                     </div>
 
@@ -2254,8 +2267,13 @@ export function SessionView({
                                     <MousePointer2 className="h-3 w-3" />
                                 )}
                             </button>
-                            <button className="btn btn-xs h-7 min-h-7 border-slate-200 bg-white text-slate-700 hover:bg-slate-50" type="submit">
-                                Go
+                            <button
+                                className="btn btn-xs h-7 min-h-7 gap-1 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                type="button"
+                                onClick={handleOpenPreviewInNewTab}
+                            >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                Open in new tab
                             </button>
                         </form>
                         <div className="min-h-0 flex-1 bg-slate-50">
@@ -2307,14 +2325,14 @@ export function SessionView({
                         <button
                             className="flex h-10 w-full items-center justify-between border-t border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                             onClick={() => setIsTerminalMinimized((prev) => !prev)}
-                            title={isTerminalMinimized ? 'Expand build output' : 'Collapse build output'}
+                            title={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
                             type="button"
                         >
                             <span className="flex items-center gap-2">
                                 <span className="h-2 w-2 rounded-full bg-amber-500"></span>
-                                Build Output
+                                Terminal
                             </span>
-                            <ChevronDown className={`h-4 w-4 transition-transform ${isTerminalMinimized ? '' : 'rotate-180'}`} />
+                            <ChevronDown className={`h-4 w-4 transition-transform ${isTerminalMinimized ? 'rotate-180' : ''}`} />
                         </button>
                         <div className={`${isTerminalMinimized ? 'h-0 overflow-hidden' : 'min-h-0 flex-1 overflow-hidden border-t border-slate-200 bg-white'}`}>
                             <iframe
