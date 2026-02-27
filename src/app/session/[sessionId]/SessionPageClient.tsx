@@ -34,7 +34,7 @@ export default function SessionPage() {
     const [contextTitle, setContextTitle] = useState<string | undefined>(undefined);
     const [contextAgentProvider, setContextAgentProvider] = useState<string | undefined>(undefined);
     const [contextSessionMode, setContextSessionMode] = useState<'fast' | 'plan' | undefined>(undefined);
-    const [contextAttachmentNames, setContextAttachmentNames] = useState<string[]>([]);
+    const [contextAttachmentPaths, setContextAttachmentPaths] = useState<string[]>([]);
 
     // True = send --resume to agent; False = send fresh start params
     const [isResume, setIsResume] = useState<boolean>(true);
@@ -221,7 +221,20 @@ export default function SessionPage() {
                         setContextTitle(ctx.title);
                         setContextAgentProvider(ctx.agentProvider);
                         setContextSessionMode(ctx.sessionMode);
-                        setContextAttachmentNames(ctx.attachmentNames || []);
+                        const launchAttachmentPaths = (ctx.attachmentPaths || [])
+                            .map((entry) => entry.trim())
+                            .filter(Boolean);
+                        const resolvedAttachmentPaths = launchAttachmentPaths.length > 0
+                            ? Array.from(new Set(launchAttachmentPaths))
+                            : Array.from(
+                                new Set(
+                                    (ctx.attachmentNames || [])
+                                        .map((name) => name.trim())
+                                        .filter(Boolean)
+                                        .map((name) => `${data.worktreePath}-attachments/${name}`)
+                                )
+                            );
+                        setContextAttachmentPaths(resolvedAttachmentPaths);
                     }
                     // Whether or not we got context, this is a fresh start
                     setIsResume(false);
@@ -307,7 +320,7 @@ export default function SessionPage() {
             startupScript={startupScript}
             devServerScript={metadata.devServerScript}
             initialMessage={initialMessage}
-            attachmentNames={contextAttachmentNames}
+            attachmentPaths={contextAttachmentPaths}
             title={contextTitle || metadata.title}
             sessionMode={contextSessionMode}
             onExit={handleExit}

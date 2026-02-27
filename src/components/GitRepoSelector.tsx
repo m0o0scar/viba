@@ -12,13 +12,12 @@ import {
   getStartupScript,
   getDefaultDevServerScript,
   listRepoFiles,
-  saveAttachmentsFromPaths,
   checkAgentCliInstalled,
   installAgentCli,
   SupportedAgentCli,
 } from '@/app/actions/git';
 import { cloneRemoteRepository, resolveRepositoryByName } from '@/app/actions/repository';
-import { copySessionAttachments, createSession, deleteSession, getSessionPrefillContext, listSessions, saveSessionLaunchContext, SessionMetadata } from '@/app/actions/session';
+import { createSession, deleteSession, getSessionPrefillContext, listSessions, saveSessionLaunchContext, SessionMetadata } from '@/app/actions/session';
 import { getConfig, updateConfig, updateRepoSettings, Config } from '@/app/actions/config';
 import { listAgentApiCredentials, listCredentials } from '@/app/actions/credentials';
 import type { Credential } from '@/lib/credentials';
@@ -127,8 +126,7 @@ export default function GitRepoSelector({
   const [attachments, setAttachments] = useState<string[]>([]);
   const [isAttachmentBrowserOpen, setIsAttachmentBrowserOpen] = useState(false);
   const [lastAttachmentBrowserPath, setLastAttachmentBrowserPath] = useState<string>('');
-  const [prefilledAttachmentNames, setPrefilledAttachmentNames] = useState<string[]>([]);
-  const [prefillSourceSessionName, setPrefillSourceSessionName] = useState<string | null>(null);
+  const [prefilledAttachmentPaths, setPrefilledAttachmentPaths] = useState<string[]>([]);
   const [hasAppliedPrefill, setHasAppliedPrefill] = useState(false);
 
   const [loading, setLoading] = useState(false);
@@ -553,8 +551,7 @@ export default function GitRepoSelector({
 
   useEffect(() => {
     setHasAppliedPrefill(false);
-    setPrefilledAttachmentNames([]);
-    setPrefillSourceSessionName(null);
+    setPrefilledAttachmentPaths([]);
   }, [prefillFromSession]);
 
   useEffect(() => {
@@ -583,8 +580,7 @@ export default function GitRepoSelector({
       }
 
       setInitialMessage(context.initialMessage || '');
-      setPrefilledAttachmentNames(context.attachmentNames || []);
-      setPrefillSourceSessionName(context.sourceSessionName);
+      setPrefilledAttachmentPaths(context.attachmentPaths || []);
       setShowSessionAdvanced(true);
       setHasAppliedPrefill(true);
     };
@@ -753,6 +749,10 @@ export default function GitRepoSelector({
     () => attachments.map((attachmentPath) => getBaseName(attachmentPath)),
     [attachments],
   );
+  const prefilledAttachmentNames = useMemo(
+    () => prefilledAttachmentPaths.map((attachmentPath) => getBaseName(attachmentPath)),
+    [prefilledAttachmentPaths],
+  );
 
   const updateSuggestions = (query: string, files: string[], currentAttachments: string[], carriedAttachments: string[]) => {
     const lowerQ = query.toLowerCase();
@@ -842,7 +842,7 @@ export default function GitRepoSelector({
   };
 
   const removePrefilledAttachment = (idx: number) => {
-    setPrefilledAttachmentNames(prev => prev.filter((_, i) => i !== idx));
+    setPrefilledAttachmentPaths(prev => prev.filter((_, i) => i !== idx));
   };
 
 
@@ -1051,42 +1051,22 @@ export default function GitRepoSelector({
       });
 
       if (wtResult.success && wtResult.sessionName && wtResult.worktreePath && wtResult.branchName) {
-        let uploadedAttachmentNames: string[] = [];
-        let carriedAttachmentNames: string[] = [];
-
-        // Copy newly selected attachments from source file paths.
-        if (attachments.length > 0) {
-          const copyResult = await saveAttachmentsFromPaths(wtResult.worktreePath, attachments);
-          uploadedAttachmentNames = copyResult.savedAttachmentNames;
-
-          if (copyResult.failedSourcePaths.length > 0) {
-            const failedCount = copyResult.failedSourcePaths.length;
-            const label = failedCount === 1 ? 'file' : 'files';
-            setError(`Skipped ${failedCount} attachment ${label} that could not be copied.`);
+        const allAttachmentPaths = Array.from(
+          new Set(
+            [...attachments, ...prefilledAttachmentPaths]
+              .map((entry) => entry.trim())
+              .filter(Boolean)
+          )
+        );
+        const attachmentPathByName = new Map<string, string>();
+        for (const attachmentPath of allAttachmentPaths) {
+          const baseName = getBaseName(attachmentPath).trim();
+          if (!baseName) continue;
+          if (!attachmentPathByName.has(baseName)) {
+            attachmentPathByName.set(baseName, attachmentPath);
           }
         }
-
-        // Copy carried attachments from the source session.
-        if (prefillSourceSessionName && prefilledAttachmentNames.length > 0) {
-          const copiedResult = await copySessionAttachments(
-            prefillSourceSessionName,
-            wtResult.worktreePath,
-            prefilledAttachmentNames
-          );
-
-          if (!copiedResult.success) {
-            setError(copiedResult.error || 'Failed to carry over attachments from source session');
-            setLoading(false);
-            return;
-          }
-
-          carriedAttachmentNames = copiedResult.copiedAttachmentNames;
-        }
-
-        const allAttachmentNames = Array.from(new Set([
-          ...uploadedAttachmentNames,
-          ...carriedAttachmentNames,
-        ]));
+        const allAttachmentNames = Array.from(attachmentPathByName.keys());
 
         // Process initial message mentions
         const trimmedInitialMessage = initialMessage.trim();
@@ -1094,8 +1074,9 @@ export default function GitRepoSelector({
 
         // Helper to match replacement
         processedMessage = processedMessage.replace(/@(\S+)/g, (match, name) => {
-          if (allAttachmentNames.includes(name)) {
-            return `${wtResult.worktreePath}-attachments/${name}`;
+          const attachmentPath = attachmentPathByName.get(name);
+          if (attachmentPath) {
+            return attachmentPath;
           }
           // Assume repo file - keep relative path as we run in worktree root
           return name;
@@ -1107,6 +1088,7 @@ export default function GitRepoSelector({
           initialMessage: processedMessage || undefined,
           rawInitialMessage: trimmedInitialMessage || undefined,
           startupScript: startupScript || undefined,
+          attachmentPaths: allAttachmentPaths,
           attachmentNames: allAttachmentNames,
           agentProvider: 'codex',
           model: '',
@@ -1964,13 +1946,13 @@ export default function GitRepoSelector({
                         </span>
                       ))}
 
-                      {prefilledAttachmentNames.map((name, idx) => (
+                      {prefilledAttachmentPaths.map((attachmentPath, idx) => (
                         <span
-                          key={`prefill-${name}-${idx}`}
+                          key={`prefill-${attachmentPath}-${idx}`}
                           className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                          title={name}
+                          title={attachmentPath}
                         >
-                          <span className="truncate">{name}</span>
+                          <span className="truncate">{getBaseName(attachmentPath)}</span>
                           <button
                             type="button"
                             className="rounded text-slate-500 transition hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400"
@@ -1982,7 +1964,7 @@ export default function GitRepoSelector({
                         </span>
                       ))}
 
-                      {(attachments.length === 0 && prefilledAttachmentNames.length === 0) && (
+                      {(attachments.length === 0 && prefilledAttachmentPaths.length === 0) && (
                         <span className="text-xs text-slate-500 dark:text-slate-400">No attachments selected.</span>
                       )}
                     </div>

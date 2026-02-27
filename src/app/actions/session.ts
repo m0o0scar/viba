@@ -27,6 +27,7 @@ export type SessionLaunchContext = {
   initialMessage?: string;
   rawInitialMessage?: string;
   startupScript?: string;
+  attachmentPaths?: string[];
   attachmentNames?: string[];
   agentProvider?: string;
   model?: string;
@@ -40,7 +41,7 @@ export type SessionPrefillContext = {
   repoPath: string;
   title?: string;
   initialMessage?: string;
-  attachmentNames: string[];
+  attachmentPaths: string[];
   agentProvider: string;
   model: string;
 };
@@ -179,12 +180,27 @@ export async function getSessionPrefillContext(
   }
 
   const launchContext = launchContextResult.context;
+  const rawAttachmentPaths = launchContext?.attachmentPaths || [];
+  const normalizedAttachmentPaths = rawAttachmentPaths
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const attachmentPaths = normalizedAttachmentPaths.length > 0
+    ? Array.from(new Set(normalizedAttachmentPaths))
+    : Array.from(
+      new Set(
+        (launchContext?.attachmentNames || [])
+          .map((name) => name.trim())
+          .filter(Boolean)
+          .map((name) => path.join(`${metadata.worktreePath}-attachments`, name))
+      )
+    );
+
   const prefill: SessionPrefillContext = {
     sourceSessionName: sessionName,
     repoPath: metadata.repoPath,
     title: launchContext?.title || metadata.title,
     initialMessage: launchContext?.rawInitialMessage || launchContext?.initialMessage,
-    attachmentNames: launchContext?.attachmentNames || [],
+    attachmentPaths,
     agentProvider: launchContext?.agentProvider || metadata.agent,
     model: launchContext?.model || metadata.model,
   };
