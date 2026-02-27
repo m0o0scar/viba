@@ -207,7 +207,7 @@ export default function FileBrowser({ title, initialPath, onSelect, onCancel, ch
                   </div>
                   {item.isGitRepo && (
                     <button
-                      className="btn btn-xs btn-primary"
+                      className="btn btn-xs btn-primary cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
                         void handleSelectPath(item.path);
