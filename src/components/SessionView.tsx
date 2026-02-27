@@ -222,6 +222,7 @@ export function SessionView({
     const splitResizeRef = useRef({ startX: 0, startRatio: DEFAULT_AGENT_PANE_RATIO });
     const agentFrameLinkCleanupRef = useRef<(() => void) | null>(null);
     const terminalFrameLinkCleanupRef = useRef<(() => void) | null>(null);
+    const agentAutoModeCleanupRef = useRef<(() => void) | null>(null);
     const terminalProcessMonitorCleanupRef = useRef<(() => void) | null>(null);
     const terminalStartupScriptStateRef = useRef<{ injected: boolean; timer: number | null }>({
         injected: false,
@@ -261,6 +262,7 @@ export function SessionView({
             injected: false,
             timer: null,
         };
+        agentAutoModeCleanupRef.current?.();
     }, [sessionName]);
 
     useEffect(() => {
@@ -269,6 +271,7 @@ export function SessionView({
                 window.clearTimeout(terminalStartupScriptStateRef.current.timer);
                 terminalStartupScriptStateRef.current.timer = null;
             }
+            agentAutoModeCleanupRef.current?.();
         };
     }, []);
 
@@ -543,8 +546,8 @@ export function SessionView({
     const [isResizing, setIsResizing] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
     const resizeRef = useRef({ startX: 0, startY: 0, startWidth: 0, startHeight: 0 });
-    const [terminalInteractionMode, setTerminalInteractionMode] = useState<TerminalInteractionMode>('scroll');
-    const [isUpdatingTerminalInteractionMode, setIsUpdatingTerminalInteractionMode] = useState(false);
+    const [, setTerminalInteractionMode] = useState<TerminalInteractionMode>('scroll');
+    const terminalInteractionModeRef = useRef<TerminalInteractionMode>('scroll');
     const terminalInteractionRequestIdRef = useRef(0);
 
     useEffect(() => {
@@ -710,7 +713,7 @@ export function SessionView({
 
     useEffect(() => {
         setTerminalInteractionMode('scroll');
-        setIsUpdatingTerminalInteractionMode(false);
+        terminalInteractionModeRef.current = 'scroll';
         terminalInteractionRequestIdRef.current += 1;
     }, [sessionName]);
 
@@ -736,9 +739,6 @@ export function SessionView({
         if (terminalPersistenceMode !== 'tmux') return true;
 
         const requestId = ++terminalInteractionRequestIdRef.current;
-        if (!options?.silent) {
-            setIsUpdatingTerminalInteractionMode(true);
-        }
 
         const mouseEnabled = mode === 'scroll';
         const [agentResult, terminalResult] = await Promise.all([
@@ -748,10 +748,6 @@ export function SessionView({
 
         if (requestId !== terminalInteractionRequestIdRef.current) {
             return false;
-        }
-
-        if (!options?.silent) {
-            setIsUpdatingTerminalInteractionMode(false);
         }
 
         const failed = [agentResult, terminalResult].find((result) => !result.success);
@@ -787,20 +783,22 @@ export function SessionView({
         void applyTerminalInteractionMode('scroll', { silent: true });
     }, [applyTerminalInteractionMode, terminalPersistenceMode]);
 
-    const handleToggleTerminalInteractionMode = useCallback(() => {
-        if (terminalPersistenceMode !== 'tmux' || isUpdatingTerminalInteractionMode) return;
+    const requestTerminalInteractionMode = useCallback((mode: TerminalInteractionMode) => {
+        if (terminalPersistenceMode !== 'tmux') return;
+        if (terminalInteractionModeRef.current === mode) return;
 
-        const previousMode = terminalInteractionMode;
-        const nextMode: TerminalInteractionMode = previousMode === 'scroll' ? 'select' : 'scroll';
-        setTerminalInteractionMode(nextMode);
+        const previousMode = terminalInteractionModeRef.current;
+        terminalInteractionModeRef.current = mode;
+        setTerminalInteractionMode(mode);
 
         void (async () => {
-            const success = await applyTerminalInteractionMode(nextMode);
+            const success = await applyTerminalInteractionMode(mode, { silent: true });
             if (!success) {
+                terminalInteractionModeRef.current = previousMode;
                 setTerminalInteractionMode(previousMode);
             }
         })();
-    }, [applyTerminalInteractionMode, isUpdatingTerminalInteractionMode, terminalInteractionMode, terminalPersistenceMode]);
+    }, [applyTerminalInteractionMode, terminalPersistenceMode]);
 
     const handleShowDiffWithTrident = () => {
         if (!worktree || !branch) return;
@@ -1482,6 +1480,42 @@ export function SessionView({
                         directOpenBehavior: 'new_tab',
                         modifierOpenBehavior: 'new_tab',
                     });
+                    agentAutoModeCleanupRef.current?.();
+                    const frameDocument = iframe.contentDocument;
+                    if (frameDocument) {
+                        let isMouseDown = false;
+                        let switchedToSelect = false;
+                        const capture = true;
+
+                        const handleMouseDown = () => {
+                            isMouseDown = true;
+                            switchedToSelect = false;
+                        };
+
+                        const handleMouseMove = () => {
+                            if (!isMouseDown || switchedToSelect) return;
+                            switchedToSelect = true;
+                            requestTerminalInteractionMode('select');
+                        };
+
+                        const handleMouseUp = () => {
+                            if (!isMouseDown) return;
+                            isMouseDown = false;
+                            switchedToSelect = false;
+                            requestTerminalInteractionMode('scroll');
+                        };
+
+                        frameDocument.addEventListener('mousedown', handleMouseDown, capture);
+                        frameDocument.addEventListener('mousemove', handleMouseMove, capture);
+                        frameDocument.addEventListener('mouseup', handleMouseUp, capture);
+
+                        agentAutoModeCleanupRef.current = () => {
+                            frameDocument.removeEventListener('mousedown', handleMouseDown, capture);
+                            frameDocument.removeEventListener('mousemove', handleMouseMove, capture);
+                            frameDocument.removeEventListener('mouseup', handleMouseUp, capture);
+                            agentAutoModeCleanupRef.current = null;
+                        };
+                    }
 
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
                     try {
@@ -1937,28 +1971,6 @@ export function SessionView({
                             <span className={headerButtonLabelClass}>Dev</span>
                         </button>
                     </div>
-
-                    <div className="flex items-center border border-base-content/20 rounded overflow-hidden bg-base-100">
-                        <button
-                            className={`btn btn-ghost btn-xs rounded-none h-6 min-h-6 border-none px-2 hover:bg-base-content/10 ${terminalInteractionMode === 'select' ? 'text-warning' : ''}`}
-                            onClick={handleToggleTerminalInteractionMode}
-                            disabled={terminalPersistenceMode !== 'tmux' || isUpdatingTerminalInteractionMode}
-                            title={terminalPersistenceMode === 'tmux'
-                                ? (terminalInteractionMode === 'scroll'
-                                    ? 'Switch to text select mode for easier copy'
-                                    : 'Switch to scroll mode for wheel scrollback')
-                                : 'Mode toggle is available only in tmux persistence mode'}
-                        >
-                            {isUpdatingTerminalInteractionMode ? (
-                                <span className="loading loading-spinner loading-xs"></span>
-                            ) : (
-                                <MousePointer2 className="w-3 h-3" />
-                            )}
-                            <span>{terminalInteractionMode === 'scroll' ? 'Scroll Mode' : 'Text Select'}</span>
-                        </button>
-                    </div>
-
-
 
                     <div className="flex items-center border border-base-content/20 rounded relative bg-base-100" ref={rebaseDropdownRef}>
                         <div className="relative">
