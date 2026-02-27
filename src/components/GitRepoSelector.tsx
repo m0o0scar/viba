@@ -1718,39 +1718,43 @@ export default function GitRepoSelector({
 
       {mode === 'new' && selectedRepo && (
         <div className="w-full max-w-[1240px]">
-          {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
+          {error && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-900/30 dark:text-red-200">
+              {error}
+            </div>
+          )}
 
           <div className="mb-8">
             <div className="mb-2 flex items-center gap-4">
               <button
                 type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900"
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 onClick={() => router.push('/')}
                 aria-label="Back to home"
               >
                 <ChevronRight className="h-6 w-6 rotate-180" />
               </button>
-              <h1 className="text-3xl font-black tracking-[-0.02em] text-slate-900 md:text-4xl">Assign New Task</h1>
+              <h1 className="text-3xl font-black tracking-[-0.02em] text-slate-900 md:text-4xl dark:text-white">Assign New Task</h1>
             </div>
-            <p className="ml-14 text-sm text-slate-500 md:text-base">
+            <p className="ml-14 text-sm text-slate-500 md:text-base dark:text-slate-400">
               Configure the environment and describe the work required for your AI agent.
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
             <div className="space-y-6 lg:col-span-4">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-900">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
+                <h3 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
                   <FolderGit2 className="h-5 w-5 text-primary" />
                   Context Setup
                 </h3>
 
                 <div className="space-y-4">
                   <label className="flex flex-col gap-2">
-                    <span className="text-sm font-medium text-slate-700">Select Repository</span>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Select Repository</span>
                     <div className="relative">
                       <select
-                        className="h-12 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        className="h-12 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
                         value={selectedRepo}
                         onChange={(event) => {
                           void handleCurrentRepoChange(event);
@@ -1763,18 +1767,18 @@ export default function GitRepoSelector({
                           </option>
                         ))}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />
                     </div>
-                    <span className="truncate font-mono text-[11px] text-slate-500" title={selectedRepo}>
+                    <span className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400" title={selectedRepo}>
                       {selectedRepo}
                     </span>
                   </label>
 
                   <label className="flex flex-col gap-2">
-                    <span className="text-sm font-medium text-slate-700">Base Branch</span>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Base Branch</span>
                     <div className="relative">
                       <select
-                        className="h-12 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        className="h-12 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-10 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
                         value={currentBranchName}
                         onChange={handleBranchChange}
                         disabled={loading}
@@ -1788,13 +1792,13 @@ export default function GitRepoSelector({
                       </select>
                       {loading
                         ? <span className="loading loading-spinner loading-xs absolute right-3 top-1/2 -translate-y-1/2"></span>
-                        : <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />}
+                        : <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-500" />}
                     </div>
                   </label>
 
                   <button
                     type="button"
-                    className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+                    className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
                     onClick={() => setShowSessionAdvanced((prev) => !prev)}
                   >
                     <ChevronRight className={`h-4 w-4 transition-transform ${showSessionAdvanced ? 'rotate-90' : ''}`} />
@@ -1802,12 +1806,12 @@ export default function GitRepoSelector({
                   </button>
 
                   {showSessionAdvanced && (
-                    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-[#30363d] dark:bg-[#0d1117]/55">
                       <label className="flex flex-col gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Start Up Command</span>
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Start Up Command</span>
                         <input
                           type="text"
-                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
                           placeholder="npm install"
                           value={startupScript}
                           onChange={handleStartupScriptChange}
@@ -1823,10 +1827,10 @@ export default function GitRepoSelector({
                       </label>
 
                       <label className="flex flex-col gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dev Server Command</span>
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Dev Server Command</span>
                         <input
                           type="text"
-                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
                           placeholder="npm run dev"
                           value={devServerScript}
                           onChange={handleDevServerScriptChange}
@@ -1842,9 +1846,9 @@ export default function GitRepoSelector({
                       </label>
 
                       <label className="flex flex-col gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Session Mode</span>
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Session Mode</span>
                         <select
-                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100"
                           value={sessionMode}
                           onChange={handleSessionModeChange}
                           disabled={loading}
@@ -1859,11 +1863,11 @@ export default function GitRepoSelector({
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="mb-4 text-lg font-bold text-slate-900">Ongoing Tasks</h3>
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
+                <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Ongoing Tasks</h3>
                 <div className="space-y-2">
                   {existingSessions.length === 0 && (
-                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500 dark:border-[#30363d] dark:bg-[#0d1117]/45 dark:text-slate-400">
                       No ongoing sessions for this repository.
                     </div>
                   )}
@@ -1871,7 +1875,7 @@ export default function GitRepoSelector({
                   {existingSessions.map((session) => (
                     <div
                       key={session.sessionName}
-                      className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50"
+                      className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-slate-100 hover:bg-slate-50 dark:hover:border-slate-700/70 dark:hover:bg-slate-800/50"
                     >
                       <div
                         className={`h-2 w-2 flex-shrink-0 rounded-full ${
@@ -1879,15 +1883,15 @@ export default function GitRepoSelector({
                         }`}
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-slate-900">{session.title || session.sessionName}</p>
-                        <p className="truncate text-xs text-slate-500">
+                        <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{session.title || session.sessionName}</p>
+                        <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                           {getBaseName(session.repoPath)} • {session.agent}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                         <button
                           type="button"
-                          className="rounded p-1 text-slate-400 transition-colors hover:text-primary"
+                          className="rounded p-1 text-slate-400 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
                           title="Open"
                           onClick={() => handleResumeSession(session)}
                           disabled={loading || deletingSessionName === session.sessionName}
@@ -1896,7 +1900,7 @@ export default function GitRepoSelector({
                         </button>
                         <button
                           type="button"
-                          className="rounded p-1 text-slate-400 transition-colors hover:text-amber-500"
+                          className="rounded p-1 text-slate-400 transition-colors hover:text-amber-500 dark:text-slate-400 dark:hover:text-amber-400"
                           title="New Attempt"
                           onClick={() => handleNewAttemptFromSession(session)}
                           disabled={loading || deletingSessionName === session.sessionName}
@@ -1905,7 +1909,7 @@ export default function GitRepoSelector({
                         </button>
                         <button
                           type="button"
-                          className="rounded p-1 text-slate-400 transition-colors hover:text-red-500"
+                          className="rounded p-1 text-slate-400 transition-colors hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400"
                           title={deletingSessionName === session.sessionName ? 'Deleting...' : 'Delete'}
                           onClick={() => handleDeleteSession(session)}
                           disabled={loading || deletingSessionName === session.sessionName}
@@ -1920,8 +1924,8 @@ export default function GitRepoSelector({
             </div>
 
             <div className="flex flex-col lg:col-span-8">
-              <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <label className="mb-4 flex items-center gap-2 text-lg font-bold text-slate-900" htmlFor="task-description">
+              <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
+                <label className="mb-4 flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white" htmlFor="task-description">
                   <Bot className="h-5 w-5 text-primary" />
                   Task Description
                 </label>
@@ -1929,7 +1933,7 @@ export default function GitRepoSelector({
                 <div className="group relative mb-4 flex h-[360px] flex-grow flex-col md:h-[420px]">
                   <textarea
                     id="task-description"
-                    className="h-full w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-5 font-mono text-sm leading-relaxed text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30"
+                    className="h-full w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-5 font-mono text-sm leading-relaxed text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-100 dark:placeholder:text-slate-500"
                     placeholder={`Describe the task for the AI agent...\nExample:\n1. Create a new component for the user profile card.\n2. Ensure it fetches data from the /api/user endpoint.\n3. Add error handling for failed requests.\n\nTip: Type @ to mention files.`}
                     value={initialMessage}
                     onChange={handleMessageChange}
@@ -1943,12 +1947,14 @@ export default function GitRepoSelector({
                   />
 
                   {showSuggestions && suggestionList.length > 0 && (
-                    <div className="absolute left-3 right-3 top-[calc(100%-8rem)] z-50 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                    <div className="absolute left-3 right-3 top-[calc(100%-8rem)] z-50 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-[#30363d] dark:bg-[#161b22]">
                       {suggestionList.map((suggestion, idx) => (
                         <button
                           key={suggestion}
                           className={`w-full truncate border-b border-slate-100 px-3 py-2 text-left text-xs last:border-0 ${
-                            idx === selectedIndex ? 'bg-primary text-white' : 'text-slate-700 hover:bg-slate-50'
+                            idx === selectedIndex
+                              ? 'bg-primary text-white'
+                              : 'text-slate-700 hover:bg-slate-50 dark:border-slate-700/60 dark:text-slate-300 dark:hover:bg-slate-800/60'
                           }`}
                           onMouseDown={(event) => {
                             event.preventDefault();
@@ -1962,9 +1968,9 @@ export default function GitRepoSelector({
                   )}
                 </div>
 
-                <div className="border-t border-slate-100 pt-4">
+                <div className="border-t border-slate-100 pt-4 dark:border-slate-700/70">
                   <div className="mb-3 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
-                    <h4 className="text-sm font-semibold text-slate-700">Attachments</h4>
+                    <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Attachments</h4>
                     <label
                       htmlFor="new-session-attachments-input"
                       className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-blue-700"
@@ -1982,47 +1988,47 @@ export default function GitRepoSelector({
                     />
                   </div>
 
-                  <div className="min-h-[88px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-3">
+                  <div className="min-h-[88px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-[#0d1117]/40">
                     <div className="flex flex-wrap gap-3">
                       {attachments.map((file, idx) => (
                         <div key={`upload-${idx}`} className="group relative w-20">
-                          <div className="relative flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 bg-white">
-                            <span className="px-2 text-center text-[11px] font-medium text-slate-700">{file.name.split('.').pop()?.toUpperCase() || 'FILE'}</span>
+                          <div className="relative flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+                            <span className="px-2 text-center text-[11px] font-medium text-slate-700 dark:text-slate-200">{file.name.split('.').pop()?.toUpperCase() || 'FILE'}</span>
                             <button
                               type="button"
-                              className="absolute right-1 top-1 rounded-full bg-slate-100 p-0.5 text-slate-500 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+                              className="absolute right-1 top-1 rounded-full bg-slate-100 p-0.5 text-slate-500 opacity-0 transition hover:text-red-500 group-hover:opacity-100 dark:bg-slate-700 dark:text-slate-400 dark:hover:text-red-400"
                               onClick={() => removeAttachment(idx)}
                               title="Remove attachment"
                             >
                               <X className="h-3 w-3" />
                             </button>
                           </div>
-                          <span className="mt-1 block truncate text-center text-[10px] text-slate-600">{file.name}</span>
+                          <span className="mt-1 block truncate text-center text-[10px] text-slate-600 dark:text-slate-400">{file.name}</span>
                         </div>
                       ))}
 
                       {prefilledAttachmentNames.map((name, idx) => (
                         <div key={`prefill-${name}-${idx}`} className="group relative w-20">
-                          <div className="relative flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 bg-white">
-                            <span className="px-2 text-center text-[11px] font-medium text-slate-700">
+                          <div className="relative flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+                            <span className="px-2 text-center text-[11px] font-medium text-slate-700 dark:text-slate-200">
                               {name.split('.').pop()?.toUpperCase() || 'FILE'}
                             </span>
                             <button
                               type="button"
-                              className="absolute right-1 top-1 rounded-full bg-slate-100 p-0.5 text-slate-500 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+                              className="absolute right-1 top-1 rounded-full bg-slate-100 p-0.5 text-slate-500 opacity-0 transition hover:text-red-500 group-hover:opacity-100 dark:bg-slate-700 dark:text-slate-400 dark:hover:text-red-400"
                               onClick={() => removePrefilledAttachment(idx)}
                               title="Remove carried attachment"
                             >
                               <X className="h-3 w-3" />
                             </button>
                           </div>
-                          <span className="mt-1 block truncate text-center text-[10px] text-slate-600">{name}</span>
+                          <span className="mt-1 block truncate text-center text-[10px] text-slate-600 dark:text-slate-400">{name}</span>
                         </div>
                       ))}
 
                       <label
                         htmlFor="new-session-attachments-input"
-                        className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-slate-400 transition hover:border-primary hover:bg-primary/5 hover:text-primary"
+                        className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-slate-400 transition hover:border-primary hover:bg-primary/5 hover:text-primary dark:border-slate-700 dark:text-slate-500"
                       >
                         <Plus className="h-4 w-4" />
                         <span className="text-[9px] font-semibold uppercase">Add File</span>
@@ -2030,12 +2036,12 @@ export default function GitRepoSelector({
                     </div>
                   </div>
 
-                  <div className="mt-2 text-xs text-slate-500">Paste files from clipboard with Cmd/Ctrl+V anywhere on this page.</div>
+                  <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">Paste files from clipboard with Cmd/Ctrl+V anywhere on this page.</div>
                 </div>
 
-                <div className="mt-6 flex items-center justify-end gap-3 border-t border-slate-100 pt-5">
-                  <span className="mr-auto hidden text-xs text-slate-400 sm:block">
-                    Press <kbd className="rounded border border-slate-200 bg-slate-100 px-2 py-1 font-sans text-[11px]">Ctrl + Enter</kbd> to submit
+                <div className="mt-6 flex items-center justify-end gap-3 border-t border-slate-100 pt-5 dark:border-slate-700/70">
+                  <span className="mr-auto hidden text-xs text-slate-400 dark:text-slate-500 sm:block">
+                    Press <kbd className="rounded border border-slate-200 bg-slate-100 px-2 py-1 font-sans text-[11px] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">Ctrl + Enter</kbd> to submit
                   </span>
                   <button
                     type="button"
@@ -2053,11 +2059,11 @@ export default function GitRepoSelector({
       )}
 
       {mode === 'new' && !selectedRepo && !!repoPath && !error && (
-        <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]">
           <div className="flex flex-col items-center gap-3 text-center">
             <span className="loading loading-spinner loading-lg text-primary"></span>
-            <h2 className="text-lg font-semibold text-slate-900">Loading repository...</h2>
-            <p className="text-sm text-slate-500">Preparing your task workspace.</p>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Loading repository...</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Preparing your task workspace.</p>
           </div>
         </div>
       )}
