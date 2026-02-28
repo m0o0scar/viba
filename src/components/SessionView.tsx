@@ -1544,15 +1544,27 @@ export function SessionView({
             iframe.contentWindow.addEventListener('beforeunload', (event) => {
                 event.stopImmediatePropagation();
             }, true);
-            // Force xterm.js to treat mouse drag/click as shift-clicks, which bypasses application mouse reporting
-            // and allows for native text selection without holding Shift, while still allowing wheel scroll.
-            const overrideShift = (e: Event) => {
-                Object.defineProperty(e, 'shiftKey', { get: () => true, configurable: true });
-            };
-            iframe.contentWindow.document.addEventListener('mousedown', overrideShift, true);
-            iframe.contentWindow.document.addEventListener('mousemove', overrideShift, true);
-            iframe.contentWindow.document.addEventListener('mouseup', overrideShift, true);
-            iframe.contentWindow.document.addEventListener('click', overrideShift, true);
+            // Inject script to force xterm.js to treat mouse drag/click as shift-clicks,
+            // bypassing application mouse reporting for text selection while keeping wheel scroll active.
+            try {
+                const script = iframe.contentDocument?.createElement('script');
+                if (script) {
+                    script.textContent = `
+                        const originalShiftKey = Object.getOwnPropertyDescriptor(MouseEvent.prototype, 'shiftKey');
+                        Object.defineProperty(MouseEvent.prototype, 'shiftKey', {
+                            get: function() {
+                                if (this.type === 'mousedown' || this.type === 'mousemove' || this.type === 'mouseup' || this.type === 'click') {
+                                    return true;
+                                }
+                                return originalShiftKey ? originalShiftKey.get.call(this) : false;
+                            }
+                        });
+                    `;
+                    iframe.contentDocument?.head?.appendChild(script);
+                }
+            } catch (e) {
+                console.error("Failed to inject shift override script", e);
+            }
         }
 
         setFeedback('Connecting to terminal...');
@@ -1846,15 +1858,27 @@ export function SessionView({
             iframe.contentWindow.addEventListener('beforeunload', (event) => {
                 event.stopImmediatePropagation();
             }, true);
-            // Force xterm.js to treat mouse drag/click as shift-clicks, which bypasses application mouse reporting
-            // and allows for native text selection without holding Shift, while still allowing wheel scroll.
-            const overrideShift = (e: Event) => {
-                Object.defineProperty(e, 'shiftKey', { get: () => true, configurable: true });
-            };
-            iframe.contentWindow.document.addEventListener('mousedown', overrideShift, true);
-            iframe.contentWindow.document.addEventListener('mousemove', overrideShift, true);
-            iframe.contentWindow.document.addEventListener('mouseup', overrideShift, true);
-            iframe.contentWindow.document.addEventListener('click', overrideShift, true);
+            // Inject script to force xterm.js to treat mouse drag/click as shift-clicks,
+            // bypassing application mouse reporting for text selection while keeping wheel scroll active.
+            try {
+                const script = iframe.contentDocument?.createElement('script');
+                if (script) {
+                    script.textContent = `
+                        const originalShiftKey = Object.getOwnPropertyDescriptor(MouseEvent.prototype, 'shiftKey');
+                        Object.defineProperty(MouseEvent.prototype, 'shiftKey', {
+                            get: function() {
+                                if (this.type === 'mousedown' || this.type === 'mousemove' || this.type === 'mouseup' || this.type === 'click') {
+                                    return true;
+                                }
+                                return originalShiftKey ? originalShiftKey.get.call(this) : false;
+                            }
+                        });
+                    `;
+                    iframe.contentDocument?.head?.appendChild(script);
+                }
+            } catch (e) {
+                console.error("Failed to inject shift override script", e);
+            }
         }
 
         const checkAndInject = (attempts = 0) => {

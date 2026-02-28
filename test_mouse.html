@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+  <div id="target" style="width: 100px; height: 100px; background: red;"></div>
+  <script>
+    const target = document.getElementById('target');
+    const overrideShift = (e) => {
+      try {
+        Object.defineProperty(e, 'shiftKey', { get: () => true, configurable: true });
+        console.log('override successful, shiftKey:', e.shiftKey);
+      } catch (err) {
+        console.log('override failed:', err.message);
+      }
+    };
+    document.addEventListener('mousedown', overrideShift, true);
+    target.addEventListener('mousedown', (e) => {
+      console.log('target mousedown shiftKey:', e.shiftKey);
+    });
+  </script>
+</body>
+</html>

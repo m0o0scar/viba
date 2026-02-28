@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+  </head>
+  <body>
+    <div id="terminal"></div>
+    <script>
+      const originalShiftKey = Object.getOwnPropertyDescriptor(MouseEvent.prototype, 'shiftKey');
+      Object.defineProperty(MouseEvent.prototype, 'shiftKey', {
+          get: function() {
+              if (this.type === 'mousedown' || this.type === 'mousemove' || this.type === 'mouseup' || this.type === 'click') {
+                  return true;
+              }
+              return originalShiftKey ? originalShiftKey.get.call(this) : false;
+          }
+      });
+
+      var term = new Terminal();
+      term.open(document.getElementById('terminal'));
+      term.write('Hello from \x1B[1;3;31mxterm.js\x1B[0m $ ');
+      term.write('\r\nTesting scroll and select mouse bypass.\r\n');
+
+      term.write('\x1b[?1000h');
+      term.onData(e => {
+        console.log('data:', JSON.stringify(e));
+      });
+    </script>
+  </body>
+</html>
