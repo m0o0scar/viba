@@ -41,6 +41,9 @@ type TerminalOnWriteParsedDisposable = { dispose?: () => void };
 type TerminalWithOnWriteParsed = NonNullable<TerminalWindow['term']> & {
     onWriteParsed?: (callback: () => void) => TerminalOnWriteParsedDisposable | void;
 };
+type TerminalWithClearLineShortcutState = NonNullable<TerminalWindow['term']> & {
+    __vibaClearLineShortcutInstalled?: boolean;
+};
 
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
@@ -1633,8 +1636,9 @@ export function SessionView({
                         modifierOpenBehavior: 'new_tab',
                     });
 
-                    // Clear user input on Cmd+Delete
-                    if (typeof term.attachCustomKeyEventHandler === 'function') {
+                    // Clear current input line on Cmd+Backspace/Cmd+Delete.
+                    const terminalWithShortcutState = term as TerminalWithClearLineShortcutState;
+                    if (!terminalWithShortcutState.__vibaClearLineShortcutInstalled && typeof term.attachCustomKeyEventHandler === 'function') {
                         const existingCustomKeyEventHandler = term.customKeyEventHandler;
                         term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
                             if (event.type === 'keydown' && event.metaKey && (event.key === 'Backspace' || event.key === 'Delete')) {
@@ -1658,43 +1662,17 @@ export function SessionView({
                                 }
                                 return false;
                             }
-                            if (typeof existingCustomKeyEventHandler === 'function') {
-                                return existingCustomKeyEventHandler(event);
-                            }
-                            return true;
-                        });
-                    }
 
-                    // Clear user input on Cmd+Delete
-                    if (typeof term.attachCustomKeyEventHandler === 'function') {
-                        const existingCustomKeyEventHandler = term.customKeyEventHandler;
-                        term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-                            if (event.type === 'keydown' && event.metaKey && (event.key === 'Backspace' || event.key === 'Delete')) {
-                                const coreService = term._core?.coreService;
-                                if (coreService && typeof coreService.triggerDataEvent === 'function') {
-                                    coreService.triggerDataEvent('\x15', true);
-                                } else {
-                                    const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
-                                    if (textarea) {
-                                        textarea.dispatchEvent(new KeyboardEvent('keydown', {
-                                            bubbles: true,
-                                            cancelable: true,
-                                            key: 'u',
-                                            keyCode: 85,
-                                            ctrlKey: true,
-                                            view: win
-                                        }));
-                                    } else {
-                                        term.paste('\x15');
-                                    }
-                                }
-                                return false;
-                            }
                             if (typeof existingCustomKeyEventHandler === 'function') {
-                                return existingCustomKeyEventHandler(event);
+                                try {
+                                    return existingCustomKeyEventHandler.call(term, event) !== false;
+                                } catch (error) {
+                                    console.error('Existing terminal key handler failed:', error);
+                                }
                             }
                             return true;
                         });
+                        terminalWithShortcutState.__vibaClearLineShortcutInstalled = true;
                     }
 
                     // Set selection highlight color via xterm.js 5 theme API (canvas renderer)
