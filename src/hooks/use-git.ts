@@ -254,12 +254,20 @@ export function useGitConflictFileVersions(repoPath: string | null, filePath: st
   });
 }
 
-export function useGitLog(repoPath: string | null, limit: number = 50) {
+export function useGitLog(
+  repoPath: string | null,
+  limit: number = 50,
+  options: { scope?: 'all' | 'current' } = {},
+) {
+  const scope = options.scope ?? 'all';
+
   return useQuery<GitLog>({
-    queryKey: ['git', repoPath, 'log', limit],
+    queryKey: ['git', repoPath, 'log', limit, scope],
     queryFn: async () => {
       if (!repoPath) return null;
-      const res = await fetch(`${API_BASE}/git/log?path=${encodeURIComponent(repoPath)}&limit=${limit}`);
+      const res = await fetch(
+        `${API_BASE}/git/log?path=${encodeURIComponent(repoPath)}&limit=${limit}&scope=${scope}`
+      );
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const err = new Error(errorData.error || 'Failed to fetch log') as GitError;
@@ -297,6 +305,37 @@ export function useGitBranches(repoPath: string | null) {
       return res.json();
     },
     enabled: !!repoPath,
+  });
+}
+
+export function useGitMergeBase(repoPath: string | null, targetRef: string | null, sourceRef: string | null) {
+  return useQuery<string | null>({
+    queryKey: ['git', repoPath, 'merge-base', targetRef, sourceRef],
+    queryFn: async () => {
+      if (!repoPath || !targetRef || !sourceRef) return null;
+      const res = await fetch(`${API_BASE}/git/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoPath,
+          action: 'get-merge-base',
+          data: { targetRef, sourceRef },
+        }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        const err = new Error(errorData.error || 'Failed to fetch merge-base') as GitError;
+        err.status = res.status;
+        throw err;
+      }
+      const data = await res.json();
+      return typeof data.mergeBase === 'string' && data.mergeBase.trim() ? data.mergeBase.trim() : null;
+    },
+    enabled: !!repoPath && !!targetRef && !!sourceRef,
+    retry: (failureCount, error: GitError) => {
+      if (error.status === 404 || error.status === 400) return false;
+      return failureCount < 2;
+    },
   });
 }
 

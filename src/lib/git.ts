@@ -200,10 +200,9 @@ export class GitService {
     };
   }
 
-  async getLog(limit: number = 100): Promise<GitLog> {
-    // Custom format to ensure we get parents and refs correctly
-    const log = await this.git.log({
-      '--all': null,
+  async getLog(limit: number = 100, options: { includeAll?: boolean } = {}): Promise<GitLog> {
+    const { includeAll = true } = options;
+    const logOptions: Parameters<SimpleGit['log']>[0] = {
       // Keep refs stable regardless of user-level git config (e.g. log.decorate=full).
       '--decorate': 'short',
       '--max-count': limit,
@@ -217,16 +216,21 @@ export class GitService {
         author_email: '%ae',
         body: '%b'
       }
-    });
+    };
+
+    if (includeAll) logOptions['--all'] = null;
+
+    // Custom format to ensure we get parents and refs correctly.
+    const log = await this.git.log(logOptions);
 
     // Transform simple-git ListLogLine to our Commit type
     // simple-git handles the parsing if we pass the format object keys correctly matching our type, mostly.
     // Parents in simple-git are usually just space separated string in the custom format result unless processed.
     // We might need to map it.
 
-    const commits = log.all.map((c: any) => ({
-      ...c,
-      parents: c.parents ? c.parents.split(' ').filter(Boolean) : []
+    const commits = log.all.map((commit) => ({
+      ...commit,
+      parents: typeof commit.parents === 'string' ? commit.parents.split(' ').filter(Boolean) : []
     }));
 
     return {
@@ -1187,6 +1191,20 @@ export class GitService {
     } catch (e) {
       console.warn('Failed to get commit range file diff:', e);
       return '';
+    }
+  }
+
+  async getMergeBase(targetRef: string, sourceRef: string): Promise<string | null> {
+    const trimmedTargetRef = targetRef.trim();
+    const trimmedSourceRef = sourceRef.trim();
+    if (!trimmedTargetRef || !trimmedSourceRef) return null;
+
+    try {
+      const mergeBase = await this.git.raw(['merge-base', trimmedTargetRef, trimmedSourceRef]);
+      const normalized = mergeBase.trim();
+      return normalized || null;
+    } catch {
+      return null;
     }
   }
 

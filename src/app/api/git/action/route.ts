@@ -9,7 +9,7 @@ import fs from 'node:fs';
 
 const actionSchema = z.object({
   repoPath: z.string(),
-  action: z.enum(['commit', 'push', 'pull', 'stage', 'unstage', 'fetch', 'checkout', 'checkout-to-local', 'branch', 'create-tag', 'delete-branch', 'delete-worktree', 'delete-remote-branch', 'delete-remote', 'delete-tag', 'delete-remote-tag', 'rename-branch', 'rename-remote-branch', 'rename-remote', 'add-remote', 'reset', 'revert', 'cherry-pick', 'cherry-pick-multiple', 'cherry-pick-abort', 'rebase', 'merge', 'check-merge-conflicts', 'check-rebase-conflicts', 'get-conflict-state', 'get-conflict-file-versions', 'resolve-conflict-file', 'continue-merge', 'abort-merge', 'continue-rebase', 'abort-rebase', 'get-remotes', 'get-remote-branches', 'get-tracking-branch', 'get-latest-commit-message', 'push-to-remote', 'pull-from-remote', 'stash', 'stash-list', 'stash-apply', 'stash-drop', 'stash-pop', 'stash-files', 'stash-file-diff', 'reword', 'discard', 'cleanup-lock-file']),
+  action: z.enum(['commit', 'push', 'pull', 'stage', 'unstage', 'fetch', 'checkout', 'checkout-to-local', 'branch', 'create-tag', 'delete-branch', 'delete-worktree', 'delete-remote-branch', 'delete-remote', 'delete-tag', 'delete-remote-tag', 'rename-branch', 'rename-remote-branch', 'rename-remote', 'add-remote', 'reset', 'revert', 'cherry-pick', 'cherry-pick-multiple', 'cherry-pick-abort', 'rebase', 'merge', 'check-merge-conflicts', 'check-rebase-conflicts', 'get-conflict-state', 'get-conflict-file-versions', 'resolve-conflict-file', 'continue-merge', 'abort-merge', 'continue-rebase', 'abort-rebase', 'get-remotes', 'get-remote-branches', 'get-tracking-branch', 'get-latest-commit-message', 'get-merge-base', 'push-to-remote', 'pull-from-remote', 'stash', 'stash-list', 'stash-apply', 'stash-drop', 'stash-pop', 'stash-files', 'stash-file-diff', 'reword', 'discard', 'cleanup-lock-file']),
   data: z.any().optional(), // Payload depends on action
 });
 
@@ -325,6 +325,11 @@ export async function POST(request: Request) {
         if (!data?.branch) throw new Error('Branch name is required');
         const message = await git.getLatestCommitMessage(data.branch);
         return NextResponse.json({ success: true, message });
+      case 'get-merge-base':
+        if (!data?.targetRef) throw new Error('Target ref is required');
+        if (!data?.sourceRef) throw new Error('Source ref is required');
+        const mergeBase = await git.getMergeBase(data.targetRef, data.sourceRef);
+        return NextResponse.json({ success: true, mergeBase });
       case 'push-to-remote':
         console.log('[API] push-to-remote action received:', data);
         if (!data?.localBranch) throw new Error('Local branch is required');

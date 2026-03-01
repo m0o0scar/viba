@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useTheme } from 'next-themes';
-import { useCommitDiff, useCommitFileDiff } from '@/hooks/use-git';
+import { useCommitDiff, useCommitFileDiff, useGitStatus } from '@/hooks/use-git';
 import { cn, isFileBinary, isImageFile, getChangedLineCountFromDiff } from '@/lib/utils';
 import { GroupedDiffViewer } from './grouped-diff-viewer';
 import { ImageDiffView } from './image-diff-view';
 import { useEscapeDismiss } from '@/hooks/use-escape-dismiss';
 import { CommitFileTreeItem, buildCommitFileTree, collectCommitFolderPaths, getParentPaths } from './commit-file-tree';
+import { DiffView } from './diff-view';
 
 // Component to show commit file diff
 export function CommitFileDiffView({
@@ -106,23 +107,54 @@ export function CommitChangesView({
   commitHash = null,
   fromCommitHash = null,
   toCommitHash = null,
+  showWorkingTreeWhenNoCommit = false,
+  fileListWidthClass = 'w-64',
 }: {
   repoPath: string;
   commitHash?: string | null;
   fromCommitHash?: string | null;
   toCommitHash?: string | null;
+  showWorkingTreeWhenNoCommit?: boolean;
+  fileListWidthClass?: string;
 }) {
   const isCommitRangeSelection = !!fromCommitHash && !!toCommitHash;
-  const selectionKey = isCommitRangeSelection ? `${fromCommitHash}..${toCommitHash}` : (commitHash ?? 'none');
+  const isWorkingTreeSelection = showWorkingTreeWhenNoCommit && !commitHash && !fromCommitHash && !toCommitHash;
+  const selectionKey = isWorkingTreeSelection
+    ? 'working-tree'
+    : (isCommitRangeSelection ? `${fromCommitHash}..${toCommitHash}` : (commitHash ?? 'none'));
   const { data, isLoading } = useCommitDiff(repoPath, {
     commitHash,
     fromCommitHash,
     toCommitHash,
   });
+  const { data: statusData, isLoading: isStatusLoading } = useGitStatus(repoPath);
+  const statusFiles = statusData?.files;
   const [selectedFileBySelection, setSelectedFileBySelection] = useState<Record<string, string | null>>({});
   const [isFullPageDiff, setIsFullPageDiff] = useState(false);
   const [collapsedFoldersByCommit, setCollapsedFoldersByCommit] = useState<Record<string, Set<string>>>({});
-  const fileTree = useMemo(() => buildCommitFileTree(data?.files ?? []), [data?.files]);
+  const workingTreeFiles = useMemo(() => {
+    if (!statusFiles || statusFiles.length === 0) return [];
+
+    const filesByPath = new Map<string, { path: string; additions: number; deletions: number; status: string }>();
+    for (const file of statusFiles) {
+      const indexStatus = (file.index || '').trim();
+      const workingStatus = (file.working_dir || '').trim();
+      const normalizedStatus = [indexStatus, workingStatus].find((value) => ['A', 'D', 'R', 'M'].includes(value)) || 'M';
+      filesByPath.set(file.path, {
+        path: file.path,
+        additions: 0,
+        deletions: 0,
+        status: normalizedStatus,
+      });
+    }
+
+    return Array.from(filesByPath.values());
+  }, [statusFiles]);
+  const files = useMemo(
+    () => (isWorkingTreeSelection ? workingTreeFiles : (data?.files ?? [])),
+    [isWorkingTreeSelection, workingTreeFiles, data?.files]
+  );
+  const fileTree = useMemo(() => buildCommitFileTree(files), [files]);
   const allFolderPaths = useMemo(() => collectCommitFolderPaths(fileTree), [fileTree]);
   const collapsedFolders = useMemo(
     () => collapsedFoldersByCommit[selectionKey] ?? new Set<string>(),
@@ -144,7 +176,6 @@ export function CommitChangesView({
   });
   const diffViewportRef = useRef<HTMLDivElement>(null);
   const selectedFile = useMemo(() => {
-    const files = data?.files ?? [];
     if (files.length === 0) return null;
 
     const savedSelection = selectedFileBySelection[selectionKey] ?? null;
@@ -153,7 +184,7 @@ export function CommitChangesView({
     }
 
     return files[0].path;
-  }, [data?.files, selectedFileBySelection, selectionKey]);
+  }, [files, selectedFileBySelection, selectionKey]);
   const handleSelectFile = useCallback((path: string) => {
     setSelectedFileBySelection((previous) => {
       if ((previous[selectionKey] ?? null) === path) {
@@ -231,14 +262,18 @@ export function CommitChangesView({
     });
   }, [selectionKey]);
 
-  if (isLoading) {
+  const isLoadingCurrentSelection = isWorkingTreeSelection ? isStatusLoading : isLoading;
+
+  if (isLoadingCurrentSelection) {
     return <div className="flex items-center justify-center p-8 h-full"><span className="loading loading-spinner text-base-content/50"></span></div>;
   }
 
-  if (!data || data.files.length === 0) {
+  if (files.length === 0) {
     return (
       <div className="flex items-center justify-center p-8 h-full opacity-50">
-        {isCommitRangeSelection ? 'No changes in selected commit range' : 'No changes in this commit'}
+        {isWorkingTreeSelection
+          ? 'No uncommitted local changes'
+          : (isCommitRangeSelection ? 'No changes in selected commit range' : 'No changes in this commit')}
       </div>
     );
   }
@@ -251,9 +286,9 @@ export function CommitChangesView({
       )}
     >
       {/* File list */}
-      <div className="w-64 border-r border-base-300 flex flex-col bg-base-200/30 shrink-0">
+      <div className={cn(fileListWidthClass, 'border-r border-base-300 flex flex-col bg-base-200/30 shrink-0')}>
         <div className="px-3 py-2 text-xs font-bold opacity-70 border-b border-base-300 bg-base-100">
-          {data.files.length} file{data.files.length !== 1 ? 's' : ''} changed
+          {files.length} file{files.length !== 1 ? 's' : ''} changed
         </div>
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="p-1">
@@ -301,15 +336,19 @@ export function CommitChangesView({
               </div>
             </div>
             <div ref={diffViewportRef} className="flex-1 overflow-auto diff-viewer-wrapper">
-              <CommitFileDiffView
-                key={`${selectionKey}:${selectedFile}`}
-                repoPath={repoPath}
-                commitHash={commitHash}
-                fromCommitHash={fromCommitHash}
-                toCommitHash={toCommitHash}
-                filePath={selectedFile}
-                splitView={splitView}
-              />
+              {isWorkingTreeSelection ? (
+                <DiffView repoPath={repoPath} filePath={selectedFile} />
+              ) : (
+                <CommitFileDiffView
+                  key={`${selectionKey}:${selectedFile}`}
+                  repoPath={repoPath}
+                  commitHash={commitHash}
+                  fromCommitHash={fromCommitHash}
+                  toCommitHash={toCommitHash}
+                  filePath={selectedFile}
+                  splitView={splitView}
+                />
+              )}
             </div>
           </div>
         ) : (

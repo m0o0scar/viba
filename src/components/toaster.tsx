@@ -14,7 +14,7 @@ export function Toaster() {
   if (!mounted) return null;
 
   return (
-    <div className="toast toast-bottom toast-end z-50 p-4 gap-2">
+    <div className="toast toast-bottom toast-end pointer-events-none z-50 p-4 gap-2">
       {toasts.map((toast) => {
         let alertClass = 'alert-info';
         if (toast.type === 'success') alertClass = 'alert-success';
@@ -22,7 +22,7 @@ export function Toaster() {
         else if (toast.type === 'error' || toast.variant === 'destructive') alertClass = 'alert-error';
 
         return (
-          <div key={toast.id} className={`alert ${alertClass} shadow-lg max-w-md w-auto flex-col items-start gap-1 p-3 text-sm animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+          <div key={toast.id} className={`alert ${alertClass} pointer-events-auto shadow-lg max-w-md w-auto flex-col items-start gap-1 p-3 text-sm animate-in fade-in slide-in-from-bottom-2 duration-300`}>
              <div className="w-full">
                 {toast.title && <h3 className="font-bold">{toast.title}</h3>}
                 {toast.description && <div className="opacity-90 break-words">{toast.description}</div>}

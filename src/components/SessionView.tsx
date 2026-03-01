@@ -15,6 +15,7 @@ import { setTmuxSessionMouseMode, setTmuxSessionStatusVisibility } from '@/app/a
 import { getConfig, updateConfig } from '@/app/actions/config';
 import { Trash2, ExternalLink, Play, GitMerge, GitPullRequestArrow, GitBranch, ArrowUp, ArrowDown, FolderOpen, ChevronLeft, ChevronRight, Grip, ChevronDown, Plus, MousePointer2, ArrowLeft, ArrowRight, RotateCw, ScrollText, TextCursorInput, X } from 'lucide-react';
 import SessionFileBrowser from './SessionFileBrowser';
+import { SessionRepoViewer } from './SessionRepoViewer';
 import { getBaseName, isWindowsAbsolutePath } from '@/lib/path';
 import { notifySessionsUpdated } from '@/lib/session-updates';
 import { buildTtydTerminalSrc } from '@/lib/terminal-session';
@@ -51,7 +52,6 @@ const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'viba-right-panel-collapsed';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
 const DEFAULT_COLLAPSED_RIGHT_PANEL_WIDTH = 560;
 const TERMINAL_HEADER_HEIGHT = 36;
-const TRIDENT_WORKSPACE_URL = 'http://localhost:3100/git';
 const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
@@ -587,6 +587,7 @@ export function SessionView({
     const [previewUrl, setPreviewUrl] = useState('');
     const [isPreviewPickerActive, setIsPreviewPickerActive] = useState(false);
     const [isResolvingElement, setIsResolvingElement] = useState(false);
+    const [isRepoViewActive, setIsRepoViewActive] = useState(false);
     const [agentPaneRatio, setAgentPaneRatio] = useState(DEFAULT_AGENT_PANE_RATIO);
     const [isSplitResizing, setIsSplitResizing] = useState(false);
     const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
@@ -943,16 +944,6 @@ export function SessionView({
             }
         })();
     }, [applyTerminalInteractionMode, isUpdatingTerminalInteractionMode, terminalInteractionMode, terminalPersistenceMode]);
-
-    const handleShowDiffWithTrident = () => {
-        if (!worktree || !branch) return;
-
-        const params = new URLSearchParams({
-            path: worktree,
-            branch,
-        });
-        window.open(`${TRIDENT_WORKSPACE_URL}?${params.toString()}`, '_blank', 'noopener,noreferrer');
-    };
 
     const handleNewAttempt = () => {
         if (!repo || !sessionName) return;
@@ -2147,6 +2138,19 @@ export function SessionView({
                         </button>
                     </div>
 
+                    <div className="flex items-center overflow-hidden rounded border border-base-content/20 bg-base-100 dark:border-[#30363d] dark:bg-[#0d1117]">
+                        <button
+                            type="button"
+                            className={`btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 hover:bg-base-content/10 dark:hover:bg-[#30363d]/60 ${isRepoViewActive ? 'bg-slate-100 text-slate-900 dark:bg-[#30363d] dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'}`}
+                            onClick={() => setIsRepoViewActive((previous) => !previous)}
+                            aria-pressed={isRepoViewActive}
+                            title={isRepoViewActive ? 'Show preview and terminal panel' : 'Show repository viewer'}
+                        >
+                            <GitBranch className="h-3 w-3" />
+                            <span className={headerButtonLabelClass}>Repo</span>
+                        </button>
+                    </div>
+
                     {currentBaseBranch && (
                         <div className="flex items-center gap-2 text-xs opacity-80" title={`Divergence against ${currentBaseBranch}`}>
                             <span className="inline-flex items-center gap-1">
@@ -2203,18 +2207,6 @@ export function SessionView({
                                 >
                                     <ExternalLink className="h-3 w-3" />
                                     <span className="agent-activity-action-label">Open in IDE</span>
-                                </button>
-                            </div>
-                            <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
-                                <button
-                                    className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                                    onClick={handleShowDiffWithTrident}
-                                    disabled={!worktree || !branch}
-                                    title="Open this worktree and branch in Trident"
-                                    aria-label="Diff"
-                                >
-                                    <GitBranch className="h-3 w-3" />
-                                    <span className="agent-activity-action-label">Diff</span>
                                 </button>
                             </div>
                             <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
@@ -2300,171 +2292,181 @@ export function SessionView({
                             transform: isRightPanelCollapsed ? 'translateX(calc(100% + 0.75rem))' : 'translateX(0px)',
                         }}
                     >
-                        <div className="min-h-0 flex flex-1 flex-col">
-                            <form
-                                className="flex h-9 items-center gap-2 border-b border-slate-200 bg-white px-3 dark:border-[#30363d] dark:bg-[#161b22]"
-                                onSubmit={handlePreviewSubmit}
-                            >
-                                <div className="mr-1 flex gap-1.5">
-                                    <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-                                    <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
-                                    <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
-                                </div>
-                                <button
-                                    className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
-                                    type="button"
-                                    onClick={() => handlePreviewNavigate('back')}
-                                    disabled={!previewUrl}
-                                    title="Go back"
-                                    aria-label="Go back"
-                                >
-                                    <ArrowLeft className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                    className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
-                                    type="button"
-                                    onClick={() => handlePreviewNavigate('forward')}
-                                    disabled={!previewUrl}
-                                    title="Go forward"
-                                    aria-label="Go forward"
-                                >
-                                    <ArrowRight className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                    className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
-                                    type="button"
-                                    onClick={() => handlePreviewNavigate('reload')}
-                                    disabled={!previewUrl}
-                                    title="Reload preview"
-                                    aria-label="Reload preview"
-                                >
-                                    <RotateCw className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                    className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
-                                    type="button"
-                                    onClick={handleUnloadPreview}
-                                    disabled={!previewUrl}
-                                    title="Unload preview"
-                                    aria-label="Unload preview"
-                                >
-                                    <X className="h-3.5 w-3.5" />
-                                </button>
-                                <input
-                                    ref={previewAddressInputRef}
-                                    type="text"
-                                    className="input input-xs h-7 min-h-7 w-full border-slate-200 bg-slate-100 font-mono text-slate-700 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300 dark:placeholder:text-slate-500"
-                                    value={previewInputUrl}
-                                    onChange={(event) => setPreviewInputUrl(event.target.value)}
-                                    placeholder="http://127.0.0.1:3000"
-                                    spellCheck={false}
-                                />
-                                <button
-                                    className={`btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 ${isPreviewPickerActive ? 'text-success' : 'text-slate-500 dark:text-slate-400'} hover:bg-slate-100 dark:hover:bg-[#30363d]/60`}
-                                    type="button"
-                                    onClick={handleTogglePreviewPicker}
-                                    disabled={!previewUrl || isResolvingElement}
-                                    title={isPreviewPickerActive ? 'Disable picker' : 'Pick element from preview'}
-                                >
-                                    {isResolvingElement ? (
-                                        <span className="loading loading-spinner loading-xs w-3 h-3"></span>
-                                    ) : (
-                                        <MousePointer2 className="h-3 w-3" />
-                                    )}
-                                </button>
-                                <button
-                                    className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
-                                    type="button"
-                                    onClick={handleOpenPreviewInNewTab}
-                                    title="Open preview in new tab"
-                                    aria-label="Open preview in new tab"
-                                >
-                                    <ExternalLink className="h-3.5 w-3.5" />
-                                </button>
-                            </form>
-                            <div className="min-h-0 flex-1 bg-slate-50 dark:bg-[#0d1117]">
-                                {!isPreviewVisible ? (
-                                    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-xs text-slate-500 dark:text-slate-400">
-                                        <p>Preview is hidden. Use the header Preview button to show it.</p>
+                        {isRepoViewActive ? (
+                            <SessionRepoViewer
+                                repoPath={worktree || repo}
+                                branchHint={branch}
+                                baseBranchHint={currentBaseBranch || baseBranch}
+                            />
+                        ) : (
+                            <>
+                                <div className="min-h-0 flex flex-1 flex-col">
+                                    <form
+                                        className="flex h-9 items-center gap-2 border-b border-slate-200 bg-white px-3 dark:border-[#30363d] dark:bg-[#161b22]"
+                                        onSubmit={handlePreviewSubmit}
+                                    >
+                                        <div className="mr-1 flex gap-1.5">
+                                            <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                                            <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+                                            <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
+                                        </div>
                                         <button
+                                            className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
                                             type="button"
-                                            className="btn btn-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                                            onClick={() => setIsPreviewVisible(true)}
+                                            onClick={() => handlePreviewNavigate('back')}
+                                            disabled={!previewUrl}
+                                            title="Go back"
+                                            aria-label="Go back"
                                         >
-                                            Show Preview
+                                            <ArrowLeft className="h-3.5 w-3.5" />
                                         </button>
+                                        <button
+                                            className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
+                                            type="button"
+                                            onClick={() => handlePreviewNavigate('forward')}
+                                            disabled={!previewUrl}
+                                            title="Go forward"
+                                            aria-label="Go forward"
+                                        >
+                                            <ArrowRight className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                            className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
+                                            type="button"
+                                            onClick={() => handlePreviewNavigate('reload')}
+                                            disabled={!previewUrl}
+                                            title="Reload preview"
+                                            aria-label="Reload preview"
+                                        >
+                                            <RotateCw className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                            className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
+                                            type="button"
+                                            onClick={handleUnloadPreview}
+                                            disabled={!previewUrl}
+                                            title="Unload preview"
+                                            aria-label="Unload preview"
+                                        >
+                                            <X className="h-3.5 w-3.5" />
+                                        </button>
+                                        <input
+                                            ref={previewAddressInputRef}
+                                            type="text"
+                                            className="input input-xs h-7 min-h-7 w-full border-slate-200 bg-slate-100 font-mono text-slate-700 dark:border-[#30363d] dark:bg-[#0d1117] dark:text-slate-300 dark:placeholder:text-slate-500"
+                                            value={previewInputUrl}
+                                            onChange={(event) => setPreviewInputUrl(event.target.value)}
+                                            placeholder="http://127.0.0.1:3000"
+                                            spellCheck={false}
+                                        />
+                                        <button
+                                            className={`btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 ${isPreviewPickerActive ? 'text-success' : 'text-slate-500 dark:text-slate-400'} hover:bg-slate-100 dark:hover:bg-[#30363d]/60`}
+                                            type="button"
+                                            onClick={handleTogglePreviewPicker}
+                                            disabled={!previewUrl || isResolvingElement}
+                                            title={isPreviewPickerActive ? 'Disable picker' : 'Pick element from preview'}
+                                        >
+                                            {isResolvingElement ? (
+                                                <span className="loading loading-spinner loading-xs w-3 h-3"></span>
+                                            ) : (
+                                                <MousePointer2 className="h-3 w-3" />
+                                            )}
+                                        </button>
+                                        <button
+                                            className="btn btn-ghost btn-xs h-7 min-h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#30363d]/60"
+                                            type="button"
+                                            onClick={handleOpenPreviewInNewTab}
+                                            title="Open preview in new tab"
+                                            aria-label="Open preview in new tab"
+                                        >
+                                            <ExternalLink className="h-3.5 w-3.5" />
+                                        </button>
+                                    </form>
+                                    <div className="min-h-0 flex-1 bg-slate-50 dark:bg-[#0d1117]">
+                                        {!isPreviewVisible ? (
+                                            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-xs text-slate-500 dark:text-slate-400">
+                                                <p>Preview is hidden. Use the header Preview button to show it.</p>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-xs border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-[#30363d] dark:bg-[#161b22] dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                                    onClick={() => setIsPreviewVisible(true)}
+                                                >
+                                                    Show Preview
+                                                </button>
+                                            </div>
+                                        ) : previewUrl ? (
+                                            <iframe
+                                                ref={previewIframeRef}
+                                                src={previewUrl}
+                                                className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
+                                                title="Dev server preview"
+                                                onLoad={handlePreviewIframeLoad}
+                                                sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-downloads"
+                                            />
+                                        ) : (
+                                            <div className="flex h-full items-center justify-center px-6 text-center text-xs text-slate-500 dark:text-slate-400">
+                                                Run the dev server, or enter a URL above to load a preview.
+                                            </div>
+                                        )}
                                     </div>
-                                ) : previewUrl ? (
-                                    <iframe
-                                        ref={previewIframeRef}
-                                        src={previewUrl}
-                                        className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
-                                        title="Dev server preview"
-                                        onLoad={handlePreviewIframeLoad}
-                                        sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-downloads"
-                                    />
-                                ) : (
-                                    <div className="flex h-full items-center justify-center px-6 text-center text-xs text-slate-500 dark:text-slate-400">
-                                        Run the dev server, or enter a URL above to load a preview.
+                                </div>
+
+                                {!isTerminalMinimized && (
+                                    <div
+                                        className="flex h-2 cursor-row-resize items-center justify-center border-y border-slate-200 bg-slate-100 dark:border-[#30363d] dark:bg-[#0d1117]"
+                                        onMouseDown={startResize}
+                                        role="separator"
+                                        aria-orientation="horizontal"
+                                        aria-label="Resize build output panel"
+                                        title="Drag to resize build output panel"
+                                    >
+                                        <Grip className="h-3 w-3 text-slate-400 dark:text-slate-500" />
                                     </div>
                                 )}
-                            </div>
-                        </div>
 
-                        {!isTerminalMinimized && (
-                            <div
-                                className="flex h-2 cursor-row-resize items-center justify-center border-y border-slate-200 bg-slate-100 dark:border-[#30363d] dark:bg-[#0d1117]"
-                                onMouseDown={startResize}
-                                role="separator"
-                                aria-orientation="horizontal"
-                                aria-label="Resize build output panel"
-                                title="Drag to resize build output panel"
-                            >
-                                <Grip className="h-3 w-3 text-slate-400 dark:text-slate-500" />
-                            </div>
-                        )}
-
-                        <div
-                            className={`${isTerminalMinimized ? 'h-9' : 'min-h-[160px]'} flex shrink-0 flex-col bg-slate-50 dark:bg-[#161b22]`}
-                            style={{ height: isTerminalMinimized ? TERMINAL_HEADER_HEIGHT : terminalSize.height }}
-                        >
-                            <div className="flex h-9 items-center justify-between border-t border-slate-200 px-3 text-xs font-semibold text-slate-700 dark:border-[#30363d] dark:text-slate-300">
-                                <span className="flex items-center gap-2 uppercase tracking-wide">
-                                    <span className="h-2 w-2 rounded-full bg-amber-500"></span>
-                                    Terminal
-                                </span>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                                        onClick={handleStartDevServer}
-                                        disabled={isDevButtonDisabled}
-                                        title={devButtonTitle}
-                                        type="button"
-                                    >
-                                        {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="h-3 w-3" />}
-                                        <span className="hidden min-[1700px]:inline">Dev</span>
-                                    </button>
-                                    <button
-                                        className="btn btn-ghost btn-xs h-6 min-h-6 w-7 border-none p-0 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                                        onClick={() => setIsTerminalMinimized((prev) => !prev)}
-                                        title={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
-                                        aria-label={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
-                                        type="button"
-                                    >
-                                        <ChevronDown className={`h-4 w-4 transition-transform ${isTerminalMinimized ? 'rotate-180' : ''}`} />
-                                    </button>
+                                <div
+                                    className={`${isTerminalMinimized ? 'h-9' : 'min-h-[160px]'} flex shrink-0 flex-col bg-slate-50 dark:bg-[#161b22]`}
+                                    style={{ height: isTerminalMinimized ? TERMINAL_HEADER_HEIGHT : terminalSize.height }}
+                                >
+                                    <div className="flex h-9 items-center justify-between border-t border-slate-200 px-3 text-xs font-semibold text-slate-700 dark:border-[#30363d] dark:text-slate-300">
+                                        <span className="flex items-center gap-2 uppercase tracking-wide">
+                                            <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                                            Terminal
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                className="btn btn-ghost btn-xs h-6 min-h-6 border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                                onClick={handleStartDevServer}
+                                                disabled={isDevButtonDisabled}
+                                                title={devButtonTitle}
+                                                type="button"
+                                            >
+                                                {isStartingDevServer ? <span className="loading loading-spinner loading-xs"></span> : <Play className="h-3 w-3" />}
+                                                <span className="hidden min-[1700px]:inline">Dev</span>
+                                            </button>
+                                            <button
+                                                className="btn btn-ghost btn-xs h-6 min-h-6 w-7 border-none p-0 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
+                                                onClick={() => setIsTerminalMinimized((prev) => !prev)}
+                                                title={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
+                                                aria-label={isTerminalMinimized ? 'Expand terminal' : 'Collapse terminal'}
+                                                type="button"
+                                            >
+                                                <ChevronDown className={`h-4 w-4 transition-transform ${isTerminalMinimized ? 'rotate-180' : ''}`} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className={`${isTerminalMinimized ? 'h-0 overflow-hidden' : 'min-h-0 flex-1 overflow-hidden border-t border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]'}`}>
+                                        <iframe
+                                            ref={terminalRef}
+                                            src={floatingTerminalSrc}
+                                            className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
+                                            allow="clipboard-read; clipboard-write"
+                                            onLoad={handleTerminalLoad}
+                                        />
+                                    </div>
                                 </div>
-                            </div>
-                            <div className={`${isTerminalMinimized ? 'h-0 overflow-hidden' : 'min-h-0 flex-1 overflow-hidden border-t border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]'}`}>
-                                <iframe
-                                    ref={terminalRef}
-                                    src={floatingTerminalSrc}
-                                    className={`h-full w-full border-none ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
-                                    allow="clipboard-read; clipboard-write"
-                                    onLoad={handleTerminalLoad}
-                                />
-                            </div>
-                        </div>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

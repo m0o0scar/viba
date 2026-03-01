@@ -8,6 +8,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const path = searchParams.get('path');
   const limit = searchParams.get('limit');
+  const scope = searchParams.get('scope') === 'current' ? 'current' : 'all';
 
   if (!path) {
     return NextResponse.json({ error: 'Repo path is required' }, { status: 400 });
@@ -20,7 +21,9 @@ export async function GET(request: Request) {
 
   try {
     const git = new GitService(path);
-    const log = await git.getLog(limit ? parseInt(limit) : 50);
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : 50;
+    const normalizedLimit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
+    const log = await git.getLog(normalizedLimit, { includeAll: scope !== 'current' });
     return NextResponse.json(log);
   } catch (error) {
     return handleGitError(error);
