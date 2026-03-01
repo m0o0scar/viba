@@ -1413,10 +1413,10 @@ export default function GitRepoSelector({
           <header className="relative z-10 flex flex-col gap-4 rounded-xl border border-slate-200/80 bg-white/82 px-4 py-4 shadow-[0_14px_36px_-24px_rgba(15,23,42,0.4)] backdrop-blur-md transition-colors md:flex-row md:items-center md:justify-between md:px-7 dark:border-slate-700/75 dark:bg-[#131b2b]/72 dark:shadow-[0_18px_44px_-30px_rgba(0,0,0,0.75)]">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/90 shadow-sm dark:border dark:border-white/5 dark:bg-[#1e2532]">
-                <Image src="/icon.png" alt="Viba" width={22} height={22} className="rounded-sm" />
+                <Image src="/palx-icon.png" alt="Palx" width={22} height={22} className="rounded-sm" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Viba</h2>
+                <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Palx</h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">AI Coding Agent Dashboard</p>
               </div>
             </div>

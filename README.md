@@ -1,6 +1,6 @@
-# Viba
+# Palx
 
-Viba is a local session manager for AI coding agents. It lets you pick a Git repository, start an isolated worktree session, launch an agent CLI in a browser terminal, and manage the session lifecycle from one UI.
+Palx is a local session manager for AI coding agents. It lets you pick a Git repository, start an isolated worktree session, launch an agent CLI in a browser terminal, and manage the session lifecycle from one UI.
 
 ![](./docs/screenshots.jpeg)
 
@@ -35,7 +35,7 @@ Viba is a local session manager for AI coding agents. It lets you pick a Git rep
 ## Prerequisites
 
 - Node.js and npm
-- A system package manager (`viba-cli` auto-installs `ttyd` and `tmux` when missing on macOS/Linux, and runs `npx skills add https://github.com/vercel-labs/agent-browser --skill agent-browser --agent codex cursor gemini-cli -g -y` plus `npx skills add https://github.com/obra/superpowers --skill systematic-debugging --agent codex cursor gemini-cli -g -y` for Codex skill provisioning)
+- A system package manager (`vibe-pal` auto-installs `ttyd` and `tmux` when missing on macOS/Linux, and runs `npx skills add https://github.com/vercel-labs/agent-browser --skill agent-browser --agent codex cursor gemini-cli -g -y` plus `npx skills add https://github.com/obra/superpowers --skill systematic-debugging --agent codex cursor gemini-cli -g -y` for Codex skill provisioning)
 - At least one supported agent CLI installed (for example `codex`, `gemini`, or `agent`)
 
 ## Getting Started
@@ -59,21 +59,21 @@ Open the local URL printed in your terminal, then:
 ## Run with npx
 
 ```bash
-npx viba-cli
+npx vibe-pal
 ```
 
-This starts Viba on an available local port (default `3200`).  
+This starts Palx on an available local port (default `3200`).  
 By default, the non-dev launcher opens `http://localhost:<port>` in your default browser once the server is ready.  
 Set `BROWSER=none` to disable auto-open.
 
 You can also pass options:
 
 ```bash
-npx viba-cli --port 3300
-npx viba-cli --dev
+npx vibe-pal --port 3300
+npx vibe-pal --dev
 ```
 
-Published npm packages are expected to include a prebuilt `.next` output, so `npx viba-cli` does not build on the end user's machine.
+Published npm packages are expected to include a prebuilt `.next` output, so `npx vibe-pal` does not build on the end user's machine.
 
 ## Build and Run
 
