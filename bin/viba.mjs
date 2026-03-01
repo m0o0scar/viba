@@ -50,6 +50,39 @@ function runCommand(command, args) {
   return result.status === 0;
 }
 
+export function getBrowserOpenCommand(url, platform = process.platform) {
+  if (platform === "darwin") {
+    return {
+      command: "open",
+      args: [url],
+    };
+  }
+
+  if (platform === "win32") {
+    return {
+      command: "cmd",
+      args: ["/c", "start", "", url],
+    };
+  }
+
+  if (platform === "linux") {
+    return {
+      command: "xdg-open",
+      args: [url],
+    };
+  }
+
+  return null;
+}
+
+export function shouldAutoOpenBrowser(env = process.env) {
+  const browserSetting = env.BROWSER?.trim().toLowerCase();
+  if (browserSetting === "none" || browserSetting === "false" || browserSetting === "0") {
+    return false;
+  }
+  return true;
+}
+
 export function getInstallStrategies(packageName) {
   if (process.platform === "darwin") {
     return [
@@ -308,6 +341,83 @@ function ensureBuildExists() {
   }
 }
 
+function isPortListening(port, host = "127.0.0.1", connectTimeoutMs = 1000) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ port, host });
+    const onSuccess = () => {
+      socket.destroy();
+      resolve(true);
+    };
+    const onFailure = () => {
+      socket.destroy();
+      resolve(false);
+    };
+
+    socket.setTimeout(connectTimeoutMs, onFailure);
+    socket.once("connect", onSuccess);
+    socket.once("error", onFailure);
+    socket.once("timeout", onFailure);
+  });
+}
+
+async function waitForPortListening(port, { timeoutMs = 30000, intervalMs = 250 } = {}) {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    const listening = await isPortListening(port);
+    if (listening) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return false;
+}
+
+function openInDefaultBrowser(url) {
+  const openCommand = getBrowserOpenCommand(url);
+  if (!openCommand) {
+    return false;
+  }
+  if (!isCommandAvailable(openCommand.command)) {
+    return false;
+  }
+
+  try {
+    const child = spawn(openCommand.command, openCommand.args, {
+      cwd: APP_ROOT,
+      env: process.env,
+      stdio: "ignore",
+      detached: true,
+      windowsHide: true,
+    });
+    child.once("error", (error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.warn(`Failed to auto-open browser: ${detail}`);
+    });
+    child.unref();
+    return true;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.warn(`Failed to auto-open browser: ${detail}`);
+    return false;
+  }
+}
+
+async function autoOpenBrowserWhenReady(url, port) {
+  if (!shouldAutoOpenBrowser()) {
+    return;
+  }
+
+  const ready = await waitForPortListening(port);
+  if (!ready) {
+    return;
+  }
+
+  const opened = openInDefaultBrowser(url);
+  if (opened) {
+    console.log(`Opened ${url} in your default browser.`);
+  }
+}
+
 async function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
@@ -336,13 +446,19 @@ async function main() {
     }
 
     if (options.mode === "dev") {
-      console.log(`Starting viba in development mode on http://localhost:${port}`);
-      process.exit(await runNext(["dev", "--webpack", "-p", String(port)]));
+      const url = `http://localhost:${port}`;
+      console.log(`Starting viba in development mode on ${url}`);
+      const nextPromise = runNext(["dev", "--webpack", "-p", String(port)]);
+      void autoOpenBrowserWhenReady(url, port);
+      process.exit(await nextPromise);
     }
 
     ensureBuildExists();
-    console.log(`Starting viba on http://localhost:${port}`);
-    process.exit(await runNext(["start", "-p", String(port)]));
+    const url = `http://localhost:${port}`;
+    console.log(`Starting viba on ${url}`);
+    const nextPromise = runNext(["start", "-p", String(port)]);
+    void autoOpenBrowserWhenReady(url, port);
+    process.exit(await nextPromise);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`viba failed to start: ${errorMessage}`);

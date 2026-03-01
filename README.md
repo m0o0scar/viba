@@ -62,6 +62,9 @@ npx viba-cli
 ```
 
 This starts Viba on an available local port (default `3200`).  
+By default, the launcher opens `http://localhost:<port>` in your default browser once the server is ready.  
+Set `BROWSER=none` to disable auto-open.
+
 You can also pass options:
 
 ```bash

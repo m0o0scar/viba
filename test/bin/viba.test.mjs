@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { getInstallStrategies } from '../../bin/viba.mjs';
+import { getInstallStrategies, getBrowserOpenCommand, shouldAutoOpenBrowser } from '../../bin/viba.mjs';
 
 describe('getInstallStrategies', () => {
   const originalPlatform = process.platform;
@@ -102,5 +102,47 @@ describe('getInstallStrategies', () => {
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('getBrowserOpenCommand', () => {
+  it('returns macOS open command', () => {
+    assert.deepStrictEqual(getBrowserOpenCommand('http://localhost:3200', 'darwin'), {
+      command: 'open',
+      args: ['http://localhost:3200'],
+    });
+  });
+
+  it('returns Linux xdg-open command', () => {
+    assert.deepStrictEqual(getBrowserOpenCommand('http://localhost:3200', 'linux'), {
+      command: 'xdg-open',
+      args: ['http://localhost:3200'],
+    });
+  });
+
+  it('returns Windows start command via cmd', () => {
+    assert.deepStrictEqual(getBrowserOpenCommand('http://localhost:3200', 'win32'), {
+      command: 'cmd',
+      args: ['/c', 'start', '', 'http://localhost:3200'],
+    });
+  });
+
+  it('returns null for unsupported platform', () => {
+    assert.strictEqual(getBrowserOpenCommand('http://localhost:3200', 'aix'), null);
+  });
+});
+
+describe('shouldAutoOpenBrowser', () => {
+  it('defaults to enabled', () => {
+    assert.strictEqual(shouldAutoOpenBrowser({}), true);
+  });
+
+  it('disables when BROWSER is none', () => {
+    assert.strictEqual(shouldAutoOpenBrowser({ BROWSER: 'none' }), false);
+  });
+
+  it('disables when BROWSER is falsey string', () => {
+    assert.strictEqual(shouldAutoOpenBrowser({ BROWSER: 'false' }), false);
+    assert.strictEqual(shouldAutoOpenBrowser({ BROWSER: '0' }), false);
   });
 });
