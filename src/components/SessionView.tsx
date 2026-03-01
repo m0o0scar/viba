@@ -2316,7 +2316,11 @@ export function SessionView({
                         }}
                     >
                         {isRepoViewActive ? (
-                            <SessionRepoViewer repoPath={worktree || repo} branchHint={branch} />
+                            <SessionRepoViewer
+                                repoPath={worktree || repo}
+                                branchHint={branch}
+                                baseBranchHint={currentBaseBranch || baseBranch}
+                            />
                         ) : (
                             <>
                                 <div className="min-h-0 flex flex-1 flex-col">

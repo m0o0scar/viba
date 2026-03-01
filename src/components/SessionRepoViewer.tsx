@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { useGitBranches, useGitLog } from '@/hooks/use-git';
+import { useGitBranches, useGitLog, useGitMergeBase } from '@/hooks/use-git';
 import { Commit } from '@/lib/types';
 import { CommitChangesView } from './git/commit-changes-view';
 
@@ -19,10 +19,16 @@ function commitLabel(commit: Commit): string {
 type SessionRepoViewerProps = {
   repoPath: string;
   branchHint?: string;
+  baseBranchHint?: string;
 };
 
-export function SessionRepoViewer({ repoPath, branchHint }: SessionRepoViewerProps) {
-  const [manualSelectedCommitHash, setManualSelectedCommitHash] = useState<string | null>(null);
+type CommitSelectionState =
+  | { mode: 'auto'; hash: null }
+  | { mode: 'manual'; hash: string }
+  | { mode: 'unselected'; hash: null };
+
+export function SessionRepoViewer({ repoPath, branchHint, baseBranchHint }: SessionRepoViewerProps) {
+  const [selection, setSelection] = useState<CommitSelectionState>({ mode: 'auto', hash: null });
   const { data: branchData } = useGitBranches(repoPath);
   const {
     data: log,
@@ -32,15 +38,38 @@ export function SessionRepoViewer({ repoPath, branchHint }: SessionRepoViewerPro
     error,
     refetch,
   } = useGitLog(repoPath, 200, { scope: 'current' });
-  const commits = useMemo(() => log?.all ?? [], [log]);
+  const allCommits = useMemo(() => log?.all ?? [], [log]);
   const currentBranch = branchData?.current?.trim() || branchHint?.trim() || 'unknown';
+  const currentBranchRef = branchData?.current?.trim() || branchHint?.trim() || null;
+  const baseBranchRef = baseBranchHint?.trim() || null;
+  const { data: mergeBaseHash } = useGitMergeBase(repoPath, baseBranchRef, currentBranchRef);
+  const commits = useMemo(() => {
+    if (!mergeBaseHash) return allCommits;
+    const normalizedMergeBase = mergeBaseHash.trim();
+    if (!normalizedMergeBase) return allCommits;
+
+    const branchPointIndex = allCommits.findIndex((commit) =>
+      normalizedMergeBase.startsWith(commit.hash) || commit.hash.startsWith(normalizedMergeBase)
+    );
+    if (branchPointIndex < 0) return allCommits;
+    return allCommits.slice(0, branchPointIndex + 1);
+  }, [allCommits, mergeBaseHash]);
   const selectedCommitHash = useMemo(() => {
     if (commits.length === 0) return null;
-    if (manualSelectedCommitHash && commits.some((commit) => commit.hash === manualSelectedCommitHash)) {
-      return manualSelectedCommitHash;
+    if (selection.mode === 'unselected') return null;
+    if (selection.mode === 'manual' && commits.some((commit) => commit.hash === selection.hash)) {
+      return selection.hash;
     }
     return commits[0].hash;
-  }, [commits, manualSelectedCommitHash]);
+  }, [commits, selection]);
+
+  const handleCommitClick = (commitHash: string) => {
+    if (selectedCommitHash === commitHash) {
+      setSelection({ mode: 'unselected', hash: null });
+      return;
+    }
+    setSelection({ mode: 'manual', hash: commitHash });
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50 dark:bg-[#0d1117]">
@@ -58,13 +87,12 @@ export function SessionRepoViewer({ repoPath, branchHint }: SessionRepoViewerPro
           </span>
         </div>
         <div className="min-h-0 flex-1">
-          {selectedCommitHash ? (
-            <CommitChangesView repoPath={repoPath} commitHash={selectedCommitHash} />
-          ) : (
-            <div className="flex h-full items-center justify-center px-6 text-center text-xs text-slate-500 dark:text-slate-400">
-              {isLoading ? 'Loading commit diff...' : 'No commits found on this branch.'}
-            </div>
-          )}
+          <CommitChangesView
+            repoPath={repoPath}
+            commitHash={selectedCommitHash}
+            showWorkingTreeWhenNoCommit
+            fileListWidthClass="w-52"
+          />
         </div>
       </div>
 
@@ -102,7 +130,7 @@ export function SessionRepoViewer({ repoPath, branchHint }: SessionRepoViewerPro
                   <button
                     key={commit.hash}
                     type="button"
-                    onClick={() => setManualSelectedCommitHash(commit.hash)}
+                    onClick={() => handleCommitClick(commit.hash)}
                     className={`w-full px-3 py-2 text-left transition-colors ${isSelected
                       ? 'bg-blue-100/80 dark:bg-[#1f2a3d]'
                       : 'hover:bg-slate-100 dark:hover:bg-[#161b22]'

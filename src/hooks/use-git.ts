@@ -308,6 +308,37 @@ export function useGitBranches(repoPath: string | null) {
   });
 }
 
+export function useGitMergeBase(repoPath: string | null, targetRef: string | null, sourceRef: string | null) {
+  return useQuery<string | null>({
+    queryKey: ['git', repoPath, 'merge-base', targetRef, sourceRef],
+    queryFn: async () => {
+      if (!repoPath || !targetRef || !sourceRef) return null;
+      const res = await fetch(`${API_BASE}/git/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoPath,
+          action: 'get-merge-base',
+          data: { targetRef, sourceRef },
+        }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        const err = new Error(errorData.error || 'Failed to fetch merge-base') as GitError;
+        err.status = res.status;
+        throw err;
+      }
+      const data = await res.json();
+      return typeof data.mergeBase === 'string' && data.mergeBase.trim() ? data.mergeBase.trim() : null;
+    },
+    enabled: !!repoPath && !!targetRef && !!sourceRef,
+    retry: (failureCount, error: GitError) => {
+      if (error.status === 404 || error.status === 400) return false;
+      return failureCount < 2;
+    },
+  });
+}
+
 export function useGitDiff(repoPath: string | null, filePath: string | null) {
   return useQuery<FileDiffPayload>({
     queryKey: ['git', repoPath, 'diff', filePath],

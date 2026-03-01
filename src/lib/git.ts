@@ -1194,6 +1194,20 @@ export class GitService {
     }
   }
 
+  async getMergeBase(targetRef: string, sourceRef: string): Promise<string | null> {
+    const trimmedTargetRef = targetRef.trim();
+    const trimmedSourceRef = sourceRef.trim();
+    if (!trimmedTargetRef || !trimmedSourceRef) return null;
+
+    try {
+      const mergeBase = await this.git.raw(['merge-base', trimmedTargetRef, trimmedSourceRef]);
+      const normalized = mergeBase.trim();
+      return normalized || null;
+    } catch {
+      return null;
+    }
+  }
+
   async willMergeHaveConflicts(sourceBranch: string, targetBranch?: string): Promise<boolean> {
     const branchSummary = await this.git.branchLocal();
     const mergeTargetBranch = targetBranch || branchSummary.current;
