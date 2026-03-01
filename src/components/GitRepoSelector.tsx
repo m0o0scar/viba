@@ -151,11 +151,17 @@ export default function GitRepoSelector({
   const loginTerminalRef = useRef<HTMLIFrameElement>(null);
 
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const sessionNavigationCommittedRef = useRef(false);
 
   const collapsedSessionSetupLabel = 'Show Session Setup';
 
   const notifySessionsChanged = useCallback(() => {
     notifySessionsUpdated();
+  }, []);
+
+  const navigateToSession = useCallback((sessionName: string) => {
+    sessionNavigationCommittedRef.current = true;
+    window.location.assign(`/session/${sessionName}`);
   }, []);
 
   const refreshSessionData = useCallback(async (repo: string | null = selectedRepo) => {
@@ -479,6 +485,7 @@ export default function GitRepoSelector({
 
     const changed = await handleSelectRepo(nextRepo);
     if (!changed) return;
+    if (sessionNavigationCommittedRef.current) return;
 
     const params = new URLSearchParams();
     params.set('repo', nextRepo);
@@ -549,6 +556,9 @@ export default function GitRepoSelector({
       params.set('repo', result.repoPath);
       if (prefillFromSession) {
         params.set('prefillFromSession', prefillFromSession);
+      }
+      if (sessionNavigationCommittedRef.current) {
+        return;
       }
       router.replace(`/new?${params.toString()}`);
     };
@@ -1113,10 +1123,9 @@ export default function GitRepoSelector({
         }
 
         // 4. Navigate to session page by path only
-        const dest = `/session/${wtResult.sessionName}`;
         notifySessionsChanged();
-        router.push(dest);
-        setLoading(false);
+        navigateToSession(wtResult.sessionName);
+        return;
 
         // No need to refresh sessions as we are navigating away
       } else {
@@ -1241,9 +1250,8 @@ export default function GitRepoSelector({
       }
 
       // 2. Navigate — session already has initialized=true so SessionPageClient will resume
-      const dest = `/session/${session.sessionName}`;
-      router.push(dest);
-      setLoading(false);
+      navigateToSession(session.sessionName);
+      return;
 
     } catch (e) {
       console.error(e);
