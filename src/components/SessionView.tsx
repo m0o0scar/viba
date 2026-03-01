@@ -52,7 +52,6 @@ const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'viba-right-panel-collapsed';
 const DEFAULT_AGENT_PANE_RATIO = 0.5;
 const DEFAULT_COLLAPSED_RIGHT_PANEL_WIDTH = 560;
 const TERMINAL_HEADER_HEIGHT = 36;
-const TRIDENT_WORKSPACE_URL = 'http://localhost:3100/git';
 const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
@@ -945,16 +944,6 @@ export function SessionView({
             }
         })();
     }, [applyTerminalInteractionMode, isUpdatingTerminalInteractionMode, terminalInteractionMode, terminalPersistenceMode]);
-
-    const handleShowDiffWithTrident = () => {
-        if (!worktree || !branch) return;
-
-        const params = new URLSearchParams({
-            path: worktree,
-            branch,
-        });
-        window.open(`${TRIDENT_WORKSPACE_URL}?${params.toString()}`, '_blank', 'noopener,noreferrer');
-    };
 
     const handleNewAttempt = () => {
         if (!repo || !sessionName) return;
@@ -2218,18 +2207,6 @@ export function SessionView({
                                 >
                                     <ExternalLink className="h-3 w-3" />
                                     <span className="agent-activity-action-label">Open in IDE</span>
-                                </button>
-                            </div>
-                            <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
-                                <button
-                                    className="btn btn-ghost btn-xs h-6 min-h-6 rounded-none border-none px-2 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#30363d]/60"
-                                    onClick={handleShowDiffWithTrident}
-                                    disabled={!worktree || !branch}
-                                    title="Open this worktree and branch in Trident"
-                                    aria-label="Diff"
-                                >
-                                    <GitBranch className="h-3 w-3" />
-                                    <span className="agent-activity-action-label">Diff</span>
                                 </button>
                             </div>
                             <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]">
