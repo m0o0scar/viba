@@ -293,12 +293,6 @@ function sanitizeSgrParameters(parameterText: string): SanitizedSgrParameters {
       continue;
     }
 
-    // Strip reverse-video toggles to avoid foreground/background swapping.
-    if (parsed === 7) {
-      changed = true;
-      continue;
-    }
-
     // Strip 8/16-color and default background controls.
     if (
       parsed === 49

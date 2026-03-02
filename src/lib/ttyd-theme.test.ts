@@ -162,22 +162,25 @@ describe('applyThemeToTerminalWindow', () => {
     term.write('\x1b[31;47mhello\x1b[0m');
     assert.strictEqual(writes[1], '\x1b[31mhello\x1b[0m');
 
+    term.write('\x1b[7;47mselection\x1b[27m');
+    assert.strictEqual(writes[2], '\x1b[7mselection\x1b[27m');
+
     term.write('\x1b[48;2;10;20;30mBG\x1b[38;2;1;2;3mFG');
-    assert.strictEqual(writes[2], 'BG\x1b[38;2;1;2;3mFG');
+    assert.strictEqual(writes[3], 'BG\x1b[38;2;1;2;3mFG');
 
     term.write('\x1b]11;#ffffff\x07plain');
-    assert.strictEqual(writes[3], 'plain');
+    assert.strictEqual(writes[4], 'plain');
 
     term.write('\x1b[31;47');
     term.write('mX');
-    assert.strictEqual(writes[4], '\x1b[31mX');
+    assert.strictEqual(writes[5], '\x1b[31mX');
 
     term.write(Uint8Array.from([
       0x1b, 0x5b, 0x33, 0x31, 0x3b, 0x34, 0x37, 0x6d, // ESC[31;47m
       0x42, 0x59, 0x54, 0x45, 0x53, // BYTES
       0x1b, 0x5b, 0x30, 0x6d, // ESC[0m
     ]) as unknown as string);
-    assert.strictEqual(writes[5], '\x1b[31mBYTES\x1b[0m');
+    assert.strictEqual(writes[6], '\x1b[31mBYTES\x1b[0m');
   });
 
   it('defers repaint until rows are ready to avoid blank initial render', () => {
