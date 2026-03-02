@@ -63,6 +63,8 @@ const TERMINAL_HEADER_HEIGHT = 36;
 const TERMINAL_BOOTSTRAP_STORAGE_PREFIX = 'viba:terminal-bootstrap:';
 const TERMINAL_BOOTSTRAP_RUNTIME_KEY = '__vibaTerminalBootstrapRegistry';
 const SHELL_PROMPT_PATTERN = /(?:\$|%|#|>) $/;
+const CODEX_PLAIN_THEME_FLAG = '-c tui.theme="ansi"';
+const CODEX_MONOCHROME_ENV_PREFIX = 'NO_COLOR=1 CLICOLOR=0 CLICOLOR_FORCE=0 FORCE_COLOR=0 COLORTERM= TERM=xterm';
 
 const PLAN_MODE_STARTUP_INSTRUCTION =
     'Plan mode: inspect the relevant code first, present a concrete implementation plan, and wait for explicit user approval before any file edits or write commands.';
@@ -1780,12 +1782,15 @@ export function SessionView({
                     if (agent) {
                         const startAgentProcess = async () => {
                             let agentCmd = '';
+                            const withCodexMonochromeEnv = (command: string): string => {
+                                return `${CODEX_MONOCHROME_ENV_PREFIX} ${command}`;
+                            };
                             const withCodexApiKeyLogin = (command: string): string => {
                                 return `if [ -n "$OPENAI_API_KEY" ]; then printenv OPENAI_API_KEY | codex login --with-api-key || exit 1; fi; ${command}`;
                             };
 
                             if (isResume) {
-                                const resumeCmd = `codex resume --last --sandbox danger-full-access --ask-for-approval on-request --search`;
+                                const resumeCmd = withCodexMonochromeEnv(`codex resume --last ${CODEX_PLAIN_THEME_FLAG} --sandbox danger-full-access --ask-for-approval on-request --search`);
                                 agentCmd = withCodexApiKeyLogin(resumeCmd);
                             } else {
                                 const trimmedInitialMessage = initialMessage?.trim() || '';
@@ -1853,7 +1858,7 @@ export function SessionView({
                                     }
                                 }
 
-                                const startCmd = `codex --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`;
+                                const startCmd = withCodexMonochromeEnv(`codex ${CODEX_PLAIN_THEME_FLAG} --sandbox danger-full-access --ask-for-approval on-request --search${safeMessage}`);
                                 agentCmd = withCodexApiKeyLogin(startCmd);
                             }
 

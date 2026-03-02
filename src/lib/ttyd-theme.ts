@@ -4,51 +4,32 @@ export type TerminalTheme = Record<string, string>;
 export const THEME_MODE_STORAGE_KEY = 'viba:theme-mode';
 export const THEME_REFRESH_EVENT = 'viba:theme-refresh';
 
-export const TERMINAL_THEME_LIGHT: TerminalTheme = {
-  background: '#ffffff',
-  foreground: '#0f172a',
-  cursor: '#0f172a',
-  selectionBackground: 'rgba(59, 130, 246, 0.4)',
-  black: '#000000',
-  red: '#cd3131',
-  green: '#00BC00',
-  yellow: '#949800',
-  blue: '#0451a5',
-  magenta: '#bc05bc',
-  cyan: '#0598bc',
-  white: '#555555',
-  brightBlack: '#666666',
-  brightRed: '#cd3131',
-  brightGreen: '#14CE14',
-  brightYellow: '#b5ba00',
-  brightBlue: '#0451a5',
-  brightMagenta: '#bc05bc',
-  brightCyan: '#0598bc',
-  brightWhite: '#a5a5a5',
+export const TERMINAL_THEME_MONOCHROME: TerminalTheme = {
+  background: '#0b0f14',
+  foreground: '#dce3ea',
+  cursor: '#dce3ea',
+  selectionBackground: 'rgba(148, 163, 184, 0.35)',
+  black: '#dce3ea',
+  red: '#dce3ea',
+  green: '#dce3ea',
+  yellow: '#dce3ea',
+  blue: '#dce3ea',
+  magenta: '#dce3ea',
+  cyan: '#dce3ea',
+  white: '#dce3ea',
+  brightBlack: '#dce3ea',
+  brightRed: '#dce3ea',
+  brightGreen: '#dce3ea',
+  brightYellow: '#dce3ea',
+  brightBlue: '#dce3ea',
+  brightMagenta: '#dce3ea',
+  brightCyan: '#dce3ea',
+  brightWhite: '#dce3ea',
 };
 
-export const TERMINAL_THEME_DARK: TerminalTheme = {
-  background: '#0d1117',
-  foreground: '#e6edf3',
-  cursor: '#e6edf3',
-  selectionBackground: 'rgba(59, 130, 246, 0.4)',
-  black: '#484f58',
-  red: '#ff7b72',
-  green: '#3fb950',
-  yellow: '#d29922',
-  blue: '#58a6ff',
-  magenta: '#bc8cff',
-  cyan: '#39c5cf',
-  white: '#b1bac4',
-  brightBlack: '#6e7681',
-  brightRed: '#ffa198',
-  brightGreen: '#56d364',
-  brightYellow: '#e3b341',
-  brightBlue: '#79c0ff',
-  brightMagenta: '#d2a8ff',
-  brightCyan: '#56d4dd',
-  brightWhite: '#ffffff',
-};
+export const TERMINAL_THEME_LIGHT: TerminalTheme = TERMINAL_THEME_MONOCHROME;
+
+export const TERMINAL_THEME_DARK: TerminalTheme = TERMINAL_THEME_MONOCHROME;
 
 type StorageLike = Pick<Storage, 'getItem'>;
 type StyleTarget = {
@@ -65,6 +46,25 @@ type TerminalDocumentLike = {
   hasFocus?: () => boolean;
   querySelector?: (selector: string) => unknown;
   querySelectorAll?: (selector: string) => ArrayLike<StyleTarget>;
+};
+type TerminalDisposable = {
+  dispose?: () => void;
+};
+type TerminalParserLike = {
+  registerCsiHandler?: (
+    id: { final: string; intermediates?: string },
+    callback: (params: unknown[], collect?: string) => boolean,
+  ) => TerminalDisposable | void;
+  registerOscHandler?: (
+    ident: number,
+    callback: (data: string) => boolean,
+  ) => TerminalDisposable | void;
+};
+type TerminalWithMonochromeFilterState = {
+  parser?: TerminalParserLike;
+  write?: (data: string, callback?: () => void) => void;
+  __vibaMonochromeFilterInstalled?: boolean;
+  __vibaMonochromeFilterDisposables?: TerminalDisposable[];
 };
 type TtydWindow = Window & {
   document?: TerminalDocumentLike;
@@ -83,8 +83,14 @@ type TtydWindow = Window & {
       };
     };
     rows?: number;
+    cols?: number;
+    resize?: (cols: number, rows: number) => void;
     refresh?: (start: number, end: number) => void;
     clearTextureAtlas?: () => void;
+    parser?: TerminalParserLike;
+    write?: (data: string, callback?: () => void) => void;
+    __vibaMonochromeFilterInstalled?: boolean;
+    __vibaMonochromeFilterDisposables?: TerminalDisposable[];
   };
 };
 
@@ -95,6 +101,7 @@ const TERMINAL_BACKGROUND_SELECTORS = [
   '.xterm-rows',
 ];
 const TERMINAL_FOCUS_GAINED_SEQUENCE = '\x1b[I';
+const MONOCHROME_OSC_STYLE_IDS = [4, 10, 11, 12, 17, 19, 104, 110, 111, 112, 117, 119];
 
 type FocusableTerminalElement = {
   blur?: () => void;
@@ -173,6 +180,71 @@ function scheduleTerminalRefresh(
   requestAnimationFrame(() => {
     scheduleTerminalRefresh(term, requestAnimationFrame, attempts + 1);
   });
+}
+
+function installMonochromeAnsiFilter(
+  term: NonNullable<TtydWindow['term']>,
+): void {
+  const terminal = term as NonNullable<TtydWindow['term']> & TerminalWithMonochromeFilterState;
+  if (terminal.__vibaMonochromeFilterInstalled) return;
+  terminal.__vibaMonochromeFilterInstalled = true;
+
+  // Clear any active style state so subsequent plain text starts from defaults.
+  try {
+    terminal.write?.('\x1b[0m');
+  } catch {
+    // Ignore write failures from renderer/setup races.
+  }
+
+  const parser = terminal.parser;
+  if (!parser) return;
+
+  const disposables: TerminalDisposable[] = [];
+
+  if (typeof parser.registerCsiHandler === 'function') {
+    try {
+      const disposable = parser.registerCsiHandler({ final: 'm' }, () => true);
+      if (disposable) {
+        disposables.push(disposable);
+      }
+    } catch {
+      // Ignore parser API differences across xterm versions.
+    }
+  }
+
+  if (typeof parser.registerOscHandler === 'function') {
+    for (const oscId of MONOCHROME_OSC_STYLE_IDS) {
+      try {
+        const disposable = parser.registerOscHandler(oscId, () => true);
+        if (disposable) {
+          disposables.push(disposable);
+        }
+      } catch {
+        // Ignore parser API differences across xterm versions.
+      }
+    }
+  }
+
+  if (disposables.length > 0) {
+    terminal.__vibaMonochromeFilterDisposables = disposables;
+
+    // Trigger a repaint from the running TUI so existing colored blocks are redrawn as plain text.
+    if (typeof terminal.resize === 'function') {
+      const cols = typeof terminal.cols === 'number' ? terminal.cols : 0;
+      const rows = typeof terminal.rows === 'number' ? terminal.rows : 0;
+      if (cols > 0 && rows > 0) {
+        const nudgedRows = rows > 2 ? rows - 1 : rows + 1;
+        if (nudgedRows > 0 && nudgedRows !== rows) {
+          try {
+            terminal.resize(cols, nudgedRows);
+            terminal.resize(cols, rows);
+          } catch {
+            // Ignore resize races while ttyd is still syncing dimensions.
+          }
+        }
+      }
+    }
+  }
 }
 
 function notifyFocusReportingTerminalProcess(
@@ -268,6 +340,7 @@ export function applyThemeToTerminalWindow(
     ...(term.options.theme || {}),
     ...theme,
   };
+  installMonochromeAnsiFilter(term);
 
   applyThemeToTerminalDocument(ttydWindow.document, theme);
   scheduleTerminalRefresh(term, ttydWindow.requestAnimationFrame?.bind(ttydWindow));

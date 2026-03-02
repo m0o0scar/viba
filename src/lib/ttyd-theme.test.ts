@@ -123,6 +123,60 @@ describe('applyThemeToTerminalWindow', () => {
     assert.strictEqual(applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_LIGHT), true);
   });
 
+  it('installs monochrome ANSI handlers once to suppress runtime color sequences', () => {
+    const csiHandlers: Array<{ final: string; callback: (params: unknown[], collect?: string) => boolean }> = [];
+    const oscHandlers: Array<{ id: number; callback: (data: string) => boolean }> = [];
+    const writes: string[] = [];
+    const resizeCalls: Array<[number, number]> = [];
+
+    const terminalWindow = {
+      term: {
+        options: {
+          theme: {},
+        },
+        cols: 120,
+        rows: 30,
+        resize: (cols: number, rows: number) => {
+          resizeCalls.push([cols, rows]);
+        },
+        write: (data: string) => {
+          writes.push(data);
+        },
+        parser: {
+          registerCsiHandler: (
+            id: { final: string },
+            callback: (params: unknown[], collect?: string) => boolean,
+          ) => {
+            csiHandlers.push({ final: id.final, callback });
+            return { dispose: () => undefined };
+          },
+          registerOscHandler: (
+            id: number,
+            callback: (data: string) => boolean,
+          ) => {
+            oscHandlers.push({ id, callback });
+            return { dispose: () => undefined };
+          },
+        },
+      },
+    } as unknown as Window;
+
+    assert.strictEqual(applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_DARK), true);
+    assert.strictEqual(applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_LIGHT), true);
+
+    assert.deepStrictEqual(writes, ['\x1b[0m']);
+    assert.deepStrictEqual(resizeCalls, [[120, 29], [120, 30]]);
+    assert.strictEqual(csiHandlers.length, 1);
+    assert.strictEqual(csiHandlers[0].final, 'm');
+    assert.strictEqual(csiHandlers[0].callback([]), true);
+    assert.strictEqual(oscHandlers.length, 12);
+    assert.deepStrictEqual(
+      oscHandlers.map((entry) => entry.id),
+      [4, 10, 11, 12, 17, 19, 104, 110, 111, 112, 117, 119],
+    );
+    assert.strictEqual(oscHandlers[0].callback('ignored'), true);
+  });
+
   it('defers repaint until rows are ready to avoid blank initial render', () => {
     let cleared = 0;
     const refreshCalls: Array<[number, number]> = [];
