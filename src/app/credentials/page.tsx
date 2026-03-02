@@ -287,7 +287,7 @@ export default function CredentialsPage() {
             >
               <ChevronRight className="h-6 w-6 rotate-180" />
             </button>
-            <h1 className="text-3xl font-black tracking-[-0.02em] text-slate-900 md:text-4xl dark:text-white">Credential Management</h1>
+            <h1 className="text-3xl font-black tracking-[-0.02em] text-slate-900 md:text-4xl dark:text-white">Credential</h1>
           </div>
           <p className="ml-14 text-sm text-slate-500 md:text-base dark:text-slate-400">
             Manage your API keys and access tokens for third-party services safely.
