@@ -59,6 +59,16 @@ describe('resolveTerminalTheme', () => {
     assert.strictEqual(resolveTerminalTheme('auto', true), TERMINAL_THEME_DARK);
     assert.strictEqual(resolveTerminalTheme('auto', false), TERMINAL_THEME_LIGHT);
   });
+
+  it('keeps monochrome ANSI mapping while switching only fg/bg between modes', () => {
+    assert.notStrictEqual(TERMINAL_THEME_LIGHT.background, TERMINAL_THEME_DARK.background);
+    assert.notStrictEqual(TERMINAL_THEME_LIGHT.foreground, TERMINAL_THEME_DARK.foreground);
+
+    assert.strictEqual(TERMINAL_THEME_LIGHT.red, TERMINAL_THEME_LIGHT.foreground);
+    assert.strictEqual(TERMINAL_THEME_LIGHT.brightBlue, TERMINAL_THEME_LIGHT.foreground);
+    assert.strictEqual(TERMINAL_THEME_DARK.red, TERMINAL_THEME_DARK.foreground);
+    assert.strictEqual(TERMINAL_THEME_DARK.brightBlue, TERMINAL_THEME_DARK.foreground);
+  });
 });
 
 describe('applyThemeToTerminalWindow', () => {
@@ -121,6 +131,53 @@ describe('applyThemeToTerminalWindow', () => {
     } as unknown as Window;
 
     assert.strictEqual(applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_LIGHT), true);
+  });
+
+  it('installs a one-time ANSI write filter that strips only background styles', () => {
+    const writes: string[] = [];
+    const resizeCalls: Array<[number, number]> = [];
+
+    const terminalWindow = {
+      term: {
+        options: {
+          theme: {},
+        },
+        cols: 120,
+        rows: 30,
+        resize: (cols: number, rows: number) => {
+          resizeCalls.push([cols, rows]);
+        },
+        write: (data: string) => {
+          writes.push(data);
+        },
+      },
+    } as unknown as Window;
+
+    assert.strictEqual(applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_DARK), true);
+    assert.strictEqual(applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_LIGHT), true);
+    assert.deepStrictEqual(writes, ['\x1b[0m']);
+    assert.deepStrictEqual(resizeCalls, [[120, 29], [120, 30]]);
+
+    const term = (terminalWindow as unknown as { term: { write: (data: string) => void } }).term;
+    term.write('\x1b[31;47mhello\x1b[0m');
+    assert.strictEqual(writes[1], '\x1b[31mhello\x1b[0m');
+
+    term.write('\x1b[48;2;10;20;30mBG\x1b[38;2;1;2;3mFG');
+    assert.strictEqual(writes[2], 'BG\x1b[38;2;1;2;3mFG');
+
+    term.write('\x1b]11;#ffffff\x07plain');
+    assert.strictEqual(writes[3], 'plain');
+
+    term.write('\x1b[31;47');
+    term.write('mX');
+    assert.strictEqual(writes[4], '\x1b[31mX');
+
+    term.write(Uint8Array.from([
+      0x1b, 0x5b, 0x33, 0x31, 0x3b, 0x34, 0x37, 0x6d, // ESC[31;47m
+      0x42, 0x59, 0x54, 0x45, 0x53, // BYTES
+      0x1b, 0x5b, 0x30, 0x6d, // ESC[0m
+    ]) as unknown as string);
+    assert.strictEqual(writes[5], '\x1b[31mBYTES\x1b[0m');
   });
 
   it('defers repaint until rows are ready to avoid blank initial render', () => {

@@ -56,6 +56,29 @@ const CODEX_SKILL_DEFINITIONS = [
   },
 ] as const;
 
+const TTYD_MONOCHROME_THEME = {
+  background: '#0b0f14',
+  foreground: '#dce3ea',
+  cursor: '#dce3ea',
+  selectionBackground: 'rgba(148, 163, 184, 0.35)',
+  black: '#dce3ea',
+  red: '#dce3ea',
+  green: '#dce3ea',
+  yellow: '#dce3ea',
+  blue: '#dce3ea',
+  magenta: '#dce3ea',
+  cyan: '#dce3ea',
+  white: '#dce3ea',
+  brightBlack: '#dce3ea',
+  brightRed: '#dce3ea',
+  brightGreen: '#dce3ea',
+  brightYellow: '#dce3ea',
+  brightBlue: '#dce3ea',
+  brightMagenta: '#dce3ea',
+  brightCyan: '#dce3ea',
+  brightWhite: '#dce3ea',
+} as const;
+
 function normalizeAgentCli(agentCli: string): SupportedAgentCli | null {
   if (agentCli === 'codex') {
     return agentCli;
@@ -560,9 +583,13 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
     // Clean up environment variables to prevent conflicts
     // Specifically remove TURBOPACK which causes "Multiple bundler flags set" error
     // when running next dev inside the terminal if the parent process has it set.
-    delete (env as any).TURBOPACK;
-    delete (env as any).PORT;
-    delete (env as any).NODE_ENV;
+    delete env.TURBOPACK;
+    delete env.PORT;
+    delete env.NODE_ENV;
+    delete env.COLORTERM;
+    delete env.FORCE_COLOR;
+    delete env.CLICOLOR;
+    delete env.CLICOLOR_FORCE;
 
     const workingDir = os.homedir();
     const isWindows = os.platform() === 'win32';
@@ -576,7 +603,7 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
 
     const ttydArgs = [
       '-p', '7681',
-      '-t', 'theme={"background": "white", "foreground": "black", "cursor": "black", "selectionBackground": "rgba(59, 130, 246, 0.4)"}',
+      '-t', `theme=${JSON.stringify(TTYD_MONOCHROME_THEME)}`,
       '-t', 'disableResizeOverlay=true',
       '-t', 'fontSize=12',
       '-t', 'fontWeight=300',
@@ -616,8 +643,11 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
       cwd: workingDir,
       env: {
         ...env,
-        TERM: 'xterm-256color',
-        COLORTERM: 'truecolor',
+        TERM: 'xterm',
+        NO_COLOR: '1',
+        CLICOLOR: '0',
+        CLICOLOR_FORCE: '0',
+        FORCE_COLOR: '0',
       },
     });
 
