@@ -90,3 +90,24 @@ Useful package scripts:
 npm run cli          # run the packaged launcher locally
 npm run pack:preview # preview files that will be published
 ```
+
+## Auth0 Email Magic Link (Optional)
+
+Palx supports optional Auth0 email magic-link login.
+
+- If `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, and `AUTH0_CLIENT_SECRET` are set, login is enforced.
+- If any of those are missing, auth is disabled and Palx remains accessible without login.
+
+Optional variables:
+
+- `AUTH0_CALLBACK_URL`: Explicit callback URL. Defaults to `<current-origin>/api/auth/callback`.
+- `AUTH_SESSION_SECRET`: Secret used to sign Palx auth session cookies. Defaults to `AUTH0_CLIENT_SECRET`.
+
+Whitelist behavior:
+
+- Whitelist patterns are stored in a local data file (`email-whitelist.json`) in the Palx app-data directory.
+- Default whitelist content is `["*"]`.
+- Pattern examples:
+  - `*` allow all emails
+  - `*@sea.com` allow all emails at `sea.com`
+  - `alice@example.com` allow one exact email
