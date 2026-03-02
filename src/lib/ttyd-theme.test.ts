@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import {
+  applyThemeToTerminalWindow,
   normalizeThemeMode,
   readThemeModeFromStorage,
   resolveShouldUseDarkTheme,
@@ -57,5 +58,68 @@ describe('resolveTerminalTheme', () => {
   it('returns dark or light palette from resolved mode', () => {
     assert.strictEqual(resolveTerminalTheme('auto', true), TERMINAL_THEME_DARK);
     assert.strictEqual(resolveTerminalTheme('auto', false), TERMINAL_THEME_LIGHT);
+  });
+});
+
+describe('applyThemeToTerminalWindow', () => {
+  it('returns false when window has no terminal instance', () => {
+    assert.strictEqual(applyThemeToTerminalWindow({} as Window, TERMINAL_THEME_DARK), false);
+  });
+
+  it('applies theme, refreshes terminal, and syncs container colors', () => {
+    let cleared = 0;
+    const refreshCalls: Array<[number, number]> = [];
+
+    const root = { style: {} as Record<string, string> };
+    const body = { style: {} as Record<string, string> };
+    const xterm = { style: {} as Record<string, string> };
+    const viewport = { style: {} as Record<string, string> };
+
+    const terminalWindow = {
+      document: {
+        documentElement: root,
+        body,
+        querySelectorAll: (selector: string) => {
+          if (selector === '.xterm') return [xterm];
+          if (selector === '.xterm-viewport') return [viewport];
+          return [];
+        },
+      },
+      term: {
+        options: {
+          theme: { background: '#fff' },
+        },
+        rows: 20,
+        clearTextureAtlas: () => {
+          cleared += 1;
+        },
+        refresh: (start: number, end: number) => {
+          refreshCalls.push([start, end]);
+        },
+      },
+    } as unknown as Window;
+
+    const applied = applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_DARK);
+
+    assert.strictEqual(applied, true);
+    assert.strictEqual(cleared, 1);
+    assert.deepStrictEqual(refreshCalls, [[0, 19]]);
+    assert.strictEqual(root.style.backgroundColor, TERMINAL_THEME_DARK.background);
+    assert.strictEqual(body.style.backgroundColor, TERMINAL_THEME_DARK.background);
+    assert.strictEqual(xterm.style.backgroundColor, TERMINAL_THEME_DARK.background);
+    assert.strictEqual(viewport.style.backgroundColor, TERMINAL_THEME_DARK.background);
+    assert.strictEqual(xterm.style.color, TERMINAL_THEME_DARK.foreground);
+  });
+
+  it('does not throw if refresh helpers are unavailable', () => {
+    const terminalWindow = {
+      term: {
+        options: {
+          theme: {},
+        },
+      },
+    } as unknown as Window;
+
+    assert.strictEqual(applyThemeToTerminalWindow(terminalWindow, TERMINAL_THEME_LIGHT), true);
   });
 });

@@ -51,14 +51,70 @@ export const TERMINAL_THEME_DARK: TerminalTheme = {
 };
 
 type StorageLike = Pick<Storage, 'getItem'>;
+type StyleTarget = {
+  style?: {
+    backgroundColor?: string;
+    color?: string;
+    [key: string]: string | undefined;
+  };
+};
+type TerminalDocumentLike = {
+  documentElement?: StyleTarget | null;
+  body?: StyleTarget | null;
+  querySelectorAll?: (selector: string) => ArrayLike<StyleTarget>;
+};
 type TtydWindow = Window & {
+  document?: TerminalDocumentLike;
   term?: {
     options?: {
       theme?: TerminalTheme;
       [key: string]: unknown;
     };
+    rows?: number;
+    refresh?: (start: number, end: number) => void;
+    clearTextureAtlas?: () => void;
   };
 };
+
+const TERMINAL_SURFACE_SELECTORS = [
+  '.xterm',
+  '.xterm-screen',
+  '.xterm-viewport',
+  '.xterm-rows',
+  '.xterm-helper-textarea',
+  'canvas',
+];
+
+function applyElementThemeColors(
+  element: StyleTarget | null | undefined,
+  theme: TerminalTheme,
+): void {
+  if (!element?.style) return;
+  if (theme.background) {
+    element.style.backgroundColor = theme.background;
+  }
+  if (theme.foreground) {
+    element.style.color = theme.foreground;
+  }
+}
+
+function applyThemeToTerminalDocument(
+  terminalDocument: TerminalDocumentLike | null | undefined,
+  theme: TerminalTheme,
+): void {
+  if (!terminalDocument) return;
+
+  applyElementThemeColors(terminalDocument.documentElement, theme);
+  applyElementThemeColors(terminalDocument.body, theme);
+
+  if (typeof terminalDocument.querySelectorAll !== 'function') return;
+  for (const selector of TERMINAL_SURFACE_SELECTORS) {
+    const elements = terminalDocument.querySelectorAll(selector);
+    for (const element of Array.from(elements)) {
+      applyElementThemeColors(element, theme);
+    }
+  }
+}
 
 export function normalizeThemeMode(value: string | null | undefined): ThemeMode {
   if (value === 'light' || value === 'dark' || value === 'auto') {
@@ -105,6 +161,20 @@ export function applyThemeToTerminalWindow(
     ...(term.options.theme || {}),
     ...theme,
   };
+
+  applyThemeToTerminalDocument(ttydWindow.document, theme);
+  try {
+    term.clearTextureAtlas?.();
+  } catch {
+    // Ignore renderer-specific refresh failures.
+  }
+  try {
+    const rowCount = typeof term.rows === 'number' && term.rows > 0 ? term.rows : 1;
+    term.refresh?.(0, rowCount - 1);
+  } catch {
+    // Ignore renderer-specific refresh failures.
+  }
+
   return true;
 }
 
