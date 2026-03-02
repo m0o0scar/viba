@@ -45,6 +45,10 @@ type TerminalWithOnWriteParsed = NonNullable<TerminalWindow['term']> & {
 type TerminalWithClearLineShortcutState = NonNullable<TerminalWindow['term']> & {
     __vibaClearLineShortcutInstalled?: boolean;
 };
+type TerminalWithRefresh = NonNullable<TerminalWindow['term']> & {
+    rows?: number;
+    refresh?: (start: number, end: number) => void;
+};
 
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
@@ -275,6 +279,8 @@ export function SessionView({
     const agentFrameLinkCleanupRef = useRef<(() => void) | null>(null);
     const terminalFrameLinkCleanupRef = useRef<(() => void) | null>(null);
     const terminalProcessMonitorCleanupRef = useRef<(() => void) | null>(null);
+    const terminalViewportRefreshFrameRef = useRef<number | null>(null);
+    const terminalViewportRefreshTimeoutRef = useRef<number | null>(null);
     const terminalStartupScriptStateRef = useRef<{ injected: boolean; timer: number | null }>({
         injected: false,
         timer: null,
@@ -321,8 +327,67 @@ export function SessionView({
                 window.clearTimeout(terminalStartupScriptStateRef.current.timer);
                 terminalStartupScriptStateRef.current.timer = null;
             }
+            if (terminalViewportRefreshFrameRef.current !== null) {
+                window.cancelAnimationFrame(terminalViewportRefreshFrameRef.current);
+                terminalViewportRefreshFrameRef.current = null;
+            }
+            if (terminalViewportRefreshTimeoutRef.current !== null) {
+                window.clearTimeout(terminalViewportRefreshTimeoutRef.current);
+                terminalViewportRefreshTimeoutRef.current = null;
+            }
         };
     }, []);
+
+    const refreshTerminalViewport = useCallback((iframe: HTMLIFrameElement | null): boolean => {
+        if (!iframe) return false;
+
+        try {
+            const win = iframe.contentWindow as TerminalWindow | null;
+            const term = win?.term as TerminalWithRefresh | undefined;
+            if (!win || !term) return false;
+
+            const rows = typeof term.rows === 'number' ? term.rows : 0;
+            if (typeof term.refresh === 'function' && rows > 0) {
+                term.refresh(0, rows - 1);
+            } else {
+                // ttyd listens for window resize and re-fits xterm; this nudges a repaint when canvas is stale.
+                win.dispatchEvent(new Event('resize'));
+            }
+            return true;
+        } catch {
+            return false;
+        }
+    }, []);
+
+    const scheduleTerminalViewportRefresh = useCallback(() => {
+        if (terminalViewportRefreshFrameRef.current !== null) {
+            window.cancelAnimationFrame(terminalViewportRefreshFrameRef.current);
+            terminalViewportRefreshFrameRef.current = null;
+        }
+        if (terminalViewportRefreshTimeoutRef.current !== null) {
+            window.clearTimeout(terminalViewportRefreshTimeoutRef.current);
+            terminalViewportRefreshTimeoutRef.current = null;
+        }
+
+        const refreshBothTerminals = () => {
+            refreshTerminalViewport(iframeRef.current);
+            refreshTerminalViewport(terminalRef.current);
+        };
+
+        // Wait two frames so flex/iframe layout settles before touching xterm canvas.
+        terminalViewportRefreshFrameRef.current = window.requestAnimationFrame(() => {
+            terminalViewportRefreshFrameRef.current = window.requestAnimationFrame(() => {
+                terminalViewportRefreshFrameRef.current = null;
+                refreshBothTerminals();
+            });
+        });
+
+        // Fallback in case frame callbacks are throttled while tab visibility changes.
+        terminalViewportRefreshTimeoutRef.current = window.setTimeout(() => {
+            terminalViewportRefreshTimeoutRef.current = null;
+            refreshBothTerminals();
+        }, 180);
+    }, [refreshTerminalViewport]);
 
     const getTerminalBootstrapKey = useCallback((slot: TerminalBootstrapSlot) => {
         return `${TERMINAL_BOOTSTRAP_STORAGE_PREFIX}${sessionName}:${slot}`;
@@ -631,7 +696,8 @@ export function SessionView({
 
         applyTheme(iframeRef.current);
         applyTheme(terminalRef.current);
-    }, [isDarkMode]);
+        scheduleTerminalViewportRefresh();
+    }, [isDarkMode, scheduleTerminalViewportRefresh]);
 
     // Terminal resize state
     const [terminalSize, setTerminalSize] = useState({ width: 460, height: 320 });
@@ -709,14 +775,16 @@ export function SessionView({
     useEffect(() => {
         if (isLoaded && !isResizing) {
             localStorage.setItem(TERMINAL_SIZE_STORAGE_KEY, JSON.stringify(terminalSize));
+            scheduleTerminalViewportRefresh();
         }
-    }, [isLoaded, isResizing, terminalSize]);
+    }, [isLoaded, isResizing, scheduleTerminalViewportRefresh, terminalSize]);
 
     useEffect(() => {
         if (isLoaded && !isSplitResizing) {
             localStorage.setItem(SPLIT_RATIO_STORAGE_KEY, String(agentPaneRatio));
+            scheduleTerminalViewportRefresh();
         }
-    }, [agentPaneRatio, isLoaded, isSplitResizing]);
+    }, [agentPaneRatio, isLoaded, isSplitResizing, scheduleTerminalViewportRefresh]);
 
     useEffect(() => {
         if (!isLoaded) return;
@@ -727,6 +795,11 @@ export function SessionView({
         if (!isRightPanelCollapsed) return;
         setIsSplitResizing(false);
     }, [isRightPanelCollapsed]);
+
+    useEffect(() => {
+        if (!isLoaded) return;
+        scheduleTerminalViewportRefresh();
+    }, [isLoaded, isRepoViewActive, isRightPanelCollapsed, scheduleTerminalViewportRefresh]);
 
     const startSplitResize = (e: React.MouseEvent<HTMLDivElement>) => {
         if (isRightPanelCollapsed) return;
@@ -786,6 +859,7 @@ export function SessionView({
                     const win = iframe.contentWindow as TerminalWindow | null;
                     if (win && win.term) {
                         win.term.scrollToBottom?.();
+                        refreshTerminalViewport(iframe);
                         win.focus();
                         const textarea = iframe.contentDocument?.querySelector("textarea.xterm-helper-textarea");
                         if (textarea) (textarea as HTMLElement).focus();
@@ -795,7 +869,7 @@ export function SessionView({
                 }
             }, 100);
         }
-    }, [isTerminalMinimized]);
+    }, [isTerminalMinimized, refreshTerminalViewport]);
 
     // IDE Selection
     const [selectedIde, setSelectedIde] = useState<string>('vscode');
@@ -1599,6 +1673,7 @@ export function SessionView({
                 if (win && win.term) {
                     ensureTmuxStatusBarHidden('agent');
                     const term = win.term;
+                    refreshTerminalViewport(iframe);
                     attachTerminalLinkHandler(iframe, agentFrameLinkCleanupRef, {
                         directOpenBehavior: 'new_tab',
                         modifierOpenBehavior: 'new_tab',
@@ -1864,6 +1939,7 @@ export function SessionView({
                 if (win && win.term) {
                     ensureTmuxStatusBarHidden('terminal');
                     const term = win.term;
+                    refreshTerminalViewport(iframe);
                     attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef, {
                         onLinkActivated: () => setIsTerminalMinimized(true),
                         directOpenBehavior: 'preview',
