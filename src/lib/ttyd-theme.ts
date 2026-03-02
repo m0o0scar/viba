@@ -62,10 +62,10 @@ type TerminalDocumentLike = {
   querySelectorAll?: (selector: string) => ArrayLike<StyleTarget>;
 };
 type TerminalWithMonochromeFilterState = {
-  write?: (data: string, callback?: () => void) => void;
+  write?: (data: unknown, callback?: () => void) => void;
   __vibaMonochromeFilterInstalled?: boolean;
   __vibaMonochromeFilterCarry?: string;
-  __vibaMonochromeFilterOriginalWrite?: (data: string, callback?: () => void) => void;
+  __vibaMonochromeFilterOriginalWrite?: (data: unknown, callback?: () => void) => void;
 };
 type TtydWindow = Window & {
   document?: TerminalDocumentLike;
@@ -88,10 +88,10 @@ type TtydWindow = Window & {
     resize?: (cols: number, rows: number) => void;
     refresh?: (start: number, end: number) => void;
     clearTextureAtlas?: () => void;
-    write?: (data: string, callback?: () => void) => void;
+    write?: (data: unknown, callback?: () => void) => void;
     __vibaMonochromeFilterInstalled?: boolean;
     __vibaMonochromeFilterCarry?: string;
-    __vibaMonochromeFilterOriginalWrite?: (data: string, callback?: () => void) => void;
+    __vibaMonochromeFilterOriginalWrite?: (data: unknown, callback?: () => void) => void;
   };
 };
 
@@ -181,6 +181,46 @@ function scheduleTerminalRefresh(
   requestAnimationFrame(() => {
     scheduleTerminalRefresh(term, requestAnimationFrame, attempts + 1);
   });
+}
+
+const UTF8_DECODER = typeof TextDecoder === 'function'
+  ? new TextDecoder()
+  : null;
+
+function decodeUint8Bytes(bytes: Uint8Array): string {
+  if (bytes.length === 0) return '';
+  if (UTF8_DECODER) {
+    return UTF8_DECODER.decode(bytes);
+  }
+  let output = '';
+  for (const byte of bytes) {
+    output += String.fromCharCode(byte);
+  }
+  return output;
+}
+
+function normalizeTerminalWriteChunk(chunk: unknown): string {
+  if (typeof chunk === 'string') return chunk;
+  if (chunk === null || chunk === undefined) return '';
+
+  if (chunk instanceof Uint8Array) {
+    return decodeUint8Bytes(chunk);
+  }
+
+  if (typeof ArrayBuffer !== 'undefined' && chunk instanceof ArrayBuffer) {
+    return decodeUint8Bytes(new Uint8Array(chunk));
+  }
+
+  if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(chunk)) {
+    const typedView = chunk as ArrayBufferView;
+    return decodeUint8Bytes(new Uint8Array(typedView.buffer, typedView.byteOffset, typedView.byteLength));
+  }
+
+  if (Array.isArray(chunk) && chunk.every((entry) => typeof entry === 'number')) {
+    return decodeUint8Bytes(Uint8Array.from(chunk));
+  }
+
+  return String(chunk);
 }
 
 function isCsiFinalByte(character: string): boolean {
@@ -389,8 +429,8 @@ function installMonochromeAnsiFilter(
     // Ignore write failures from renderer/setup races.
   }
 
-  terminal.write = (chunk: string, callback?: () => void): void => {
-    const normalizedChunk = typeof chunk === 'string' ? chunk : String(chunk ?? '');
+  terminal.write = (chunk: unknown, callback?: () => void): void => {
+    const normalizedChunk = normalizeTerminalWriteChunk(chunk);
     const nextChunk = terminal.__vibaMonochromeFilterCarry
       ? `${terminal.__vibaMonochromeFilterCarry}${normalizedChunk}`
       : normalizedChunk;

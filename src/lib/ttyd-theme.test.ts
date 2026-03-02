@@ -171,6 +171,13 @@ describe('applyThemeToTerminalWindow', () => {
     term.write('\x1b[31;47');
     term.write('mX');
     assert.strictEqual(writes[4], '\x1b[31mX');
+
+    term.write(Uint8Array.from([
+      0x1b, 0x5b, 0x33, 0x31, 0x3b, 0x34, 0x37, 0x6d, // ESC[31;47m
+      0x42, 0x59, 0x54, 0x45, 0x53, // BYTES
+      0x1b, 0x5b, 0x30, 0x6d, // ESC[0m
+    ]) as unknown as string);
+    assert.strictEqual(writes[5], '\x1b[31mBYTES\x1b[0m');
   });
 
   it('defers repaint until rows are ready to avoid blank initial render', () => {
