@@ -77,7 +77,7 @@ const SYSTEMATIC_DEBUGGING_SKILL_INSTRUCTION =
 const VISUAL_EVIDENCE_INSTRUCTION =
     'When working on a visual-related feature or bugfix in a web project, after coding is complete, use `agent-browser` or equivalent Chrome MCP tooling to load the relevant page, take screenshot(s), and include them as evidence in the pull/merge request.';
 const NOTIFICATION_INSTRUCTION =
-    'When your task is completed or you need user attention (for plan approval, permissions, or blockers), send a notification to the matching Viba session.';
+    'When your task is completed or you need user attention (for plan approval, permissions, or blockers), send a notification to the matching Palx session.';
 
 const clampAgentPaneRatio = (value: number): number => Math.max(0.2, Math.min(0.8, value));
 
@@ -816,13 +816,13 @@ export function SessionView({
     useEffect(() => {
         const trimmedTitle = title?.trim();
         if (trimmedTitle) {
-            document.title = `${trimmedTitle} | Viba`;
+            document.title = `${trimmedTitle} | Palx`;
             return () => {
-                document.title = 'Viba';
+                document.title = 'Palx';
             };
         }
 
-        document.title = 'Viba';
+        document.title = 'Palx';
         return undefined;
     }, [title]);
 

@@ -284,7 +284,7 @@ function ensureCodexSkillsInstalled() {
 }
 
 function printHelp() {
-  console.log(`Usage: viba-cli [options]
+  console.log(`Usage: vibe-pal [options]
 
 Options:
   -p, --port <port>  Port to run on (default: 3200)
@@ -451,7 +451,7 @@ async function main() {
 
     if (options.mode === "dev") {
       const url = `http://localhost:${port}`;
-      console.log(`Starting viba in development mode on ${url}`);
+      console.log(`Starting Palx in development mode on ${url}`);
       const nextPromise = runNext(["dev", "--webpack", "-p", String(port)]);
       void autoOpenBrowserWhenReady(url, port, options.mode);
       process.exit(await nextPromise);
@@ -459,13 +459,13 @@ async function main() {
 
     ensureBuildExists();
     const url = `http://localhost:${port}`;
-    console.log(`Starting viba on ${url}`);
+    console.log(`Starting Palx on ${url}`);
     const nextPromise = runNext(["start", "-p", String(port)]);
     void autoOpenBrowserWhenReady(url, port, options.mode);
     process.exit(await nextPromise);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`viba failed to start: ${errorMessage}`);
+    console.error(`Palx failed to start: ${errorMessage}`);
     process.exit(1);
   }
 }

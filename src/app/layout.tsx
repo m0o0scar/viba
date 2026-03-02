@@ -71,11 +71,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Viba",
-    template: "%s | Viba",
+    default: "Palx",
+    template: "%s | Palx",
   },
   icons: {
-    icon: "/icon.png",
+    icon: "/palx-icon.png",
   },
 };
 

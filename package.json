@@ -1,5 +1,5 @@
 {
-  "name": "viba-cli",
+  "name": "vibe-pal",
   "version": "0.41.0",
   "private": false,
   "description": "Local session manager for AI coding agents.",
@@ -8,7 +8,7 @@
     "url": "https://github.com/m0o0scar/viba"
   },
   "bin": {
-    "viba-cli": "bin/viba.mjs"
+    "vibe-pal": "bin/viba.mjs"
   },
   "files": [
     "bin",

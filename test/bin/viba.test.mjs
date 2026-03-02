@@ -88,8 +88,8 @@ describe('getInstallStrategies', () => {
     const thisFile = fileURLToPath(import.meta.url);
     const repoRoot = path.resolve(path.dirname(thisFile), '../..');
     const sourceBin = path.join(repoRoot, 'bin', 'viba.mjs');
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'viba-cli-bin-'));
-    const symlinkBin = path.join(tempDir, 'viba-cli');
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-pal-bin-'));
+    const symlinkBin = path.join(tempDir, 'vibe-pal');
 
     try {
       fs.symlinkSync(sourceBin, symlinkBin);
@@ -98,7 +98,7 @@ describe('getInstallStrategies', () => {
       });
 
       assert.strictEqual(result.status, 0);
-      assert.match(result.stdout, /Usage: viba-cli \[options\]/);
+      assert.match(result.stdout, /Usage: vibe-pal \[options\]/);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
