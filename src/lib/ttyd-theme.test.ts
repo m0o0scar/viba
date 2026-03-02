@@ -59,6 +59,16 @@ describe('resolveTerminalTheme', () => {
     assert.strictEqual(resolveTerminalTheme('auto', true), TERMINAL_THEME_DARK);
     assert.strictEqual(resolveTerminalTheme('auto', false), TERMINAL_THEME_LIGHT);
   });
+
+  it('keeps monochrome ANSI mapping while switching only fg/bg between modes', () => {
+    assert.notStrictEqual(TERMINAL_THEME_LIGHT.background, TERMINAL_THEME_DARK.background);
+    assert.notStrictEqual(TERMINAL_THEME_LIGHT.foreground, TERMINAL_THEME_DARK.foreground);
+
+    assert.strictEqual(TERMINAL_THEME_LIGHT.red, TERMINAL_THEME_LIGHT.foreground);
+    assert.strictEqual(TERMINAL_THEME_LIGHT.brightBlue, TERMINAL_THEME_LIGHT.foreground);
+    assert.strictEqual(TERMINAL_THEME_DARK.red, TERMINAL_THEME_DARK.foreground);
+    assert.strictEqual(TERMINAL_THEME_DARK.brightBlue, TERMINAL_THEME_DARK.foreground);
+  });
 });
 
 describe('applyThemeToTerminalWindow', () => {

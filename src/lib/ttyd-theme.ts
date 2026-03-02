@@ -4,32 +4,46 @@ export type TerminalTheme = Record<string, string>;
 export const THEME_MODE_STORAGE_KEY = 'viba:theme-mode';
 export const THEME_REFRESH_EVENT = 'viba:theme-refresh';
 
-export const TERMINAL_THEME_MONOCHROME: TerminalTheme = {
-  background: '#0b0f14',
-  foreground: '#dce3ea',
-  cursor: '#dce3ea',
-  selectionBackground: 'rgba(148, 163, 184, 0.35)',
-  black: '#dce3ea',
-  red: '#dce3ea',
-  green: '#dce3ea',
-  yellow: '#dce3ea',
-  blue: '#dce3ea',
-  magenta: '#dce3ea',
-  cyan: '#dce3ea',
-  white: '#dce3ea',
-  brightBlack: '#dce3ea',
-  brightRed: '#dce3ea',
-  brightGreen: '#dce3ea',
-  brightYellow: '#dce3ea',
-  brightBlue: '#dce3ea',
-  brightMagenta: '#dce3ea',
-  brightCyan: '#dce3ea',
-  brightWhite: '#dce3ea',
-};
+function buildMonochromeTheme(
+  background: string,
+  foreground: string,
+  selectionBackground: string,
+): TerminalTheme {
+  return {
+    background,
+    foreground,
+    cursor: foreground,
+    selectionBackground,
+    black: foreground,
+    red: foreground,
+    green: foreground,
+    yellow: foreground,
+    blue: foreground,
+    magenta: foreground,
+    cyan: foreground,
+    white: foreground,
+    brightBlack: foreground,
+    brightRed: foreground,
+    brightGreen: foreground,
+    brightYellow: foreground,
+    brightBlue: foreground,
+    brightMagenta: foreground,
+    brightCyan: foreground,
+    brightWhite: foreground,
+  };
+}
 
-export const TERMINAL_THEME_LIGHT: TerminalTheme = TERMINAL_THEME_MONOCHROME;
+export const TERMINAL_THEME_LIGHT: TerminalTheme = buildMonochromeTheme(
+  '#ffffff',
+  '#0f172a',
+  'rgba(15, 23, 42, 0.2)',
+);
 
-export const TERMINAL_THEME_DARK: TerminalTheme = TERMINAL_THEME_MONOCHROME;
+export const TERMINAL_THEME_DARK: TerminalTheme = buildMonochromeTheme(
+  '#0b0f14',
+  '#dce3ea',
+  'rgba(148, 163, 184, 0.35)',
+);
 
 type StorageLike = Pick<Storage, 'getItem'>;
 type StyleTarget = {
