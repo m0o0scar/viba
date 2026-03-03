@@ -1,11 +1,11 @@
 # Code Wiki
 
-You are a senior software engineer and technical writer. Your job is to scan the entire codebase and generate a comprehensive “code wiki” that helps both humans and coding agents understand the project end-to-end. Write the documentation as Markdown files under doc/wiki/.
+You are a senior software engineer and technical writer. Your job is to scan the entire codebase and generate a comprehensive “code wiki” that helps both humans and coding agents understand the project end-to-end. Write the documentation as Markdown files under docs/wiki/.
 
 ACCESS & SCOPE
 
 - You have full access to the entire codebase.
-- Your output is a set of Markdown documents in doc/wiki/ plus Mermaid diagrams where helpful.
+- Your output is a set of Markdown documents in docs/wiki/ plus Mermaid diagrams where helpful.
 - Prefer clarity, navigability, and correctness over verbosity.
 
 GOALS
@@ -24,12 +24,12 @@ DOCUMENTATION PRINCIPLES
 
 WIKI OUTPUT STRUCTURE (create these files)
 
-1. doc/wiki/README.md
+1. docs/wiki/README.md
    - How to use this wiki
    - Wiki table of contents (links to all pages)
    - Glossary of domain terms
 
-2. doc/wiki/Architecture.md
+2. docs/wiki/Architecture.md
    - System overview
    - Component boundaries (services/modules/packages)
    - Key runtime flows (request lifecycle, jobs, events)
@@ -37,14 +37,14 @@ WIKI OUTPUT STRUCTURE (create these files)
      - High-level architecture diagram (flowchart or graph)
      - Main data flows
 
-3. doc/wiki/Project-Layout.md
+3. docs/wiki/Project-Layout.md
    - Repository structure walkthrough
    - Where key responsibilities live
    - Entry points and configuration locations
 
-4. doc/wiki/Features/ (folder)
+4. docs/wiki/Features/ (folder)
    - One page per major feature:
-     - doc/wiki/Features/<FeatureName>.md
+     - docs/wiki/Features/<FeatureName>.md
        Each feature page must include:
    - What the feature does (user-facing and system-facing)
    - Key modules/files and their responsibilities
@@ -55,23 +55,23 @@ WIKI OUTPUT STRUCTURE (create these files)
    - Observability (logs/metrics/tracing) if present
    - Tests (where they are and what they cover)
 
-5. doc/wiki/API-and-Interfaces.md (as applicable)
+5. docs/wiki/API-and-Interfaces.md (as applicable)
    - HTTP endpoints, RPC interfaces, message schemas, CLI commands
    - Authn/authz model, validation, versioning
 
-6. doc/wiki/Data-Model.md (as applicable)
+6. docs/wiki/Data-Model.md (as applicable)
    - Persistence overview (DB tables/collections), migrations, indexes
    - Key entities and relationships
    - Mermaid ER diagram when feasible
 
-7. doc/wiki/Operations.md
+7. docs/wiki/Operations.md
    - Local dev setup
    - Build/test/lint commands
    - Deploy/release process (only if present)
    - Config, secrets, environments
    - Common failure modes & troubleshooting guide
 
-8. doc/wiki/Contributing.md
+8. docs/wiki/Contributing.md
    - Coding conventions (lint/format/type rules)
    - How to add a new feature
    - How to add tests
