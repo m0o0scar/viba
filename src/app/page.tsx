@@ -30,7 +30,7 @@ export default function Home() {
             {authWarning}
           </div>
         )}
-        <GitRepoSelector mode="home" />
+        <GitRepoSelector mode="home" showLogout logoutEnabled={isAuth0Configured} />
       </main>
     </>
   );
