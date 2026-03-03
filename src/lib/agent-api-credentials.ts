@@ -4,7 +4,7 @@ import { getLocalDb } from './local-db';
 const SERVICE_NAME = 'viba-agent-api-credentials';
 const SUPPORTED_AGENT_APIS = ['codex'] as const;
 
-export type AgentApiCredentialAgent = typeof SUPPORTED_AGENT_APIS[number];
+export type AgentApiCredentialAgent = (typeof SUPPORTED_AGENT_APIS)[number];
 
 export interface AgentApiCredential {
   agent: AgentApiCredentialAgent;
@@ -27,7 +27,9 @@ type AgentApiCredentialMetadata = {
   keytarAccount?: string;
 };
 
-const { loadKeytar, requireKeytar } = createKeytarLoader({ logLabel: 'agent-api-credentials' });
+const { loadKeytar, requireKeytar } = createKeytarLoader({
+  logLabel: 'agent-api-credentials',
+});
 
 function isSupportedAgentApi(value: string): value is AgentApiCredentialAgent {
   return SUPPORTED_AGENT_APIS.includes(value as AgentApiCredentialAgent);
@@ -37,7 +39,9 @@ function getDefaultKeytarAccount(agent: AgentApiCredentialAgent): string {
   return `agent-api-${agent}`;
 }
 
-function getKeytarAccountForMetadata(metadata: AgentApiCredentialMetadata): string {
+function getKeytarAccountForMetadata(
+  metadata: AgentApiCredentialMetadata,
+): string {
   return metadata.keytarAccount || getDefaultKeytarAccount(metadata.agent);
 }
 
@@ -55,7 +59,9 @@ function normalizeApiProxy(apiProxy: string): string | undefined {
   return trimmed;
 }
 
-function toAgentApiCredential(metadata: AgentApiCredentialMetadata): AgentApiCredential {
+function toAgentApiCredential(
+  metadata: AgentApiCredentialMetadata,
+): AgentApiCredential {
   return {
     agent: metadata.agent,
     apiProxy: metadata.apiProxy,
@@ -64,7 +70,9 @@ function toAgentApiCredential(metadata: AgentApiCredentialMetadata): AgentApiCre
   };
 }
 
-async function writeAgentApiCredentialMetadata(metadata: AgentApiCredentialMetadata[]): Promise<void> {
+async function writeAgentApiCredentialMetadata(
+  metadata: AgentApiCredentialMetadata[],
+): Promise<void> {
   const db = getLocalDb();
   const tx = db.transaction((rows: AgentApiCredentialMetadata[]) => {
     db.prepare('DELETE FROM agent_api_credentials_metadata').run();
@@ -88,13 +96,19 @@ async function writeAgentApiCredentialMetadata(metadata: AgentApiCredentialMetad
   tx(metadata);
 }
 
-async function readAgentApiCredentialMetadata(): Promise<AgentApiCredentialMetadata[]> {
+async function readAgentApiCredentialMetadata(): Promise<
+  AgentApiCredentialMetadata[]
+> {
   try {
     const db = getLocalDb();
-    const rows = db.prepare(`
+    const rows = db
+      .prepare(
+        `
       SELECT agent, api_proxy, created_at, updated_at, keytar_account
       FROM agent_api_credentials_metadata
-    `).all() as Array<{
+    `,
+      )
+      .all() as Array<{
       agent: string;
       api_proxy: string | null;
       created_at: string;
@@ -103,7 +117,9 @@ async function readAgentApiCredentialMetadata(): Promise<AgentApiCredentialMetad
     }>;
 
     return rows
-      .filter((row): row is typeof row & { agent: AgentApiCredentialAgent } => isSupportedAgentApi(row.agent))
+      .filter((row): row is typeof row & { agent: AgentApiCredentialAgent } =>
+        isSupportedAgentApi(row.agent),
+      )
       .map((row) => ({
         agent: row.agent,
         apiProxy: row.api_proxy ?? undefined,
@@ -117,7 +133,9 @@ async function readAgentApiCredentialMetadata(): Promise<AgentApiCredentialMetad
   }
 }
 
-export async function getAllAgentApiCredentials(): Promise<AgentApiCredential[]> {
+export async function getAllAgentApiCredentials(): Promise<
+  AgentApiCredential[]
+> {
   const metadata = await readAgentApiCredentialMetadata();
   return metadata
     .map(toAgentApiCredential)
@@ -128,7 +146,11 @@ export async function createOrUpdateAgentApiCredential(
   agent: AgentApiCredentialAgent,
   apiKey: string,
   apiProxy: string,
-): Promise<{ success: boolean; credential?: AgentApiCredential; error?: string }> {
+): Promise<{
+  success: boolean;
+  credential?: AgentApiCredential;
+  error?: string;
+}> {
   if (!isSupportedAgentApi(agent)) {
     return { success: false, error: `Unsupported agent: ${agent}` };
   }
@@ -155,9 +177,10 @@ export async function createOrUpdateAgentApiCredential(
   const metadata = await readAgentApiCredentialMetadata();
   const now = new Date().toISOString();
   const index = metadata.findIndex((credential) => credential.agent === agent);
-  const keytarAccount = index >= 0
-    ? getKeytarAccountForMetadata(metadata[index])
-    : getDefaultKeytarAccount(agent);
+  const keytarAccount =
+    index >= 0
+      ? getKeytarAccountForMetadata(metadata[index])
+      : getDefaultKeytarAccount(agent);
 
   await keytar.setPassword(SERVICE_NAME, keytarAccount, trimmedApiKey);
 
@@ -207,7 +230,10 @@ export async function deleteAgentApiCredential(
 
   const keytar = await loadKeytar();
   if (keytar) {
-    await keytar.deletePassword(SERVICE_NAME, getKeytarAccountForMetadata(removed));
+    await keytar.deletePassword(
+      SERVICE_NAME,
+      getKeytarAccountForMetadata(removed),
+    );
   }
 
   return { success: true };
@@ -231,7 +257,10 @@ export async function getAgentApiCredentialSecret(
     return null;
   }
 
-  const apiKey = await keytar.getPassword(SERVICE_NAME, getKeytarAccountForMetadata(found));
+  const apiKey = await keytar.getPassword(
+    SERVICE_NAME,
+    getKeytarAccountForMetadata(found),
+  );
   if (!apiKey) {
     return null;
   }

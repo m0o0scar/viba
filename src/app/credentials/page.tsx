@@ -13,7 +13,11 @@ import type {
   AgentApiCredential,
   AgentApiCredentialAgent,
 } from '@/lib/agent-api-credentials';
-import type { Credential, CredentialType, GitLabCredential } from '@/lib/credentials';
+import type {
+  Credential,
+  CredentialType,
+  GitLabCredential,
+} from '@/lib/credentials';
 import { ChevronRight, KeyRound, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -68,23 +72,33 @@ export default function CredentialsPage() {
   const router = useRouter();
 
   const [credentials, setCredentials] = useState<Credential[]>([]);
-  const [agentApiCredentials, setAgentApiCredentials] = useState<AgentApiCredential[]>([]);
+  const [agentApiCredentials, setAgentApiCredentials] = useState<
+    AgentApiCredential[]
+  >([]);
   const [loading, setLoading] = useState(true);
 
   const [githubToken, setGitHubToken] = useState('');
   const [gitlabToken, setGitLabToken] = useState('');
-  const [gitlabServerUrl, setGitLabServerUrl] = useState(DEFAULT_GITLAB_SERVER_URL);
-  const [agentApiKeyInputs, setAgentApiKeyInputs] = useState<Record<AgentApiCredentialAgent, string>>({
+  const [gitlabServerUrl, setGitLabServerUrl] = useState(
+    DEFAULT_GITLAB_SERVER_URL,
+  );
+  const [agentApiKeyInputs, setAgentApiKeyInputs] = useState<
+    Record<AgentApiCredentialAgent, string>
+  >({
     codex: '',
   });
-  const [agentApiProxyInputs, setAgentApiProxyInputs] = useState<Record<AgentApiCredentialAgent, string>>({
+  const [agentApiProxyInputs, setAgentApiProxyInputs] = useState<
+    Record<AgentApiCredentialAgent, string>
+  >({
     codex: '',
   });
 
   const [savingType, setSavingType] = useState<CredentialType | null>(null);
-  const [savingAgent, setSavingAgent] = useState<AgentApiCredentialAgent | null>(null);
+  const [savingAgent, setSavingAgent] =
+    useState<AgentApiCredentialAgent | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deletingAgent, setDeletingAgent] = useState<AgentApiCredentialAgent | null>(null);
+  const [deletingAgent, setDeletingAgent] =
+    useState<AgentApiCredentialAgent | null>(null);
   const [flashMessage, setFlashMessage] = useState<FlashMessage>(null);
 
   const githubCredentials = useMemo(
@@ -93,12 +107,17 @@ export default function CredentialsPage() {
   );
 
   const gitlabCredentials = useMemo(
-    () => credentials.filter((credential) => credential.type === 'gitlab') as GitLabCredential[],
+    () =>
+      credentials.filter(
+        (credential) => credential.type === 'gitlab',
+      ) as GitLabCredential[],
     [credentials],
   );
 
   const agentApiCredentialMap = useMemo(() => {
-    return new Map(agentApiCredentials.map((credential) => [credential.agent, credential]));
+    return new Map(
+      agentApiCredentials.map((credential) => [credential.agent, credential]),
+    );
   }, [agentApiCredentials]);
 
   const reloadCredentials = async () => {
@@ -124,7 +143,10 @@ export default function CredentialsPage() {
     setAgentApiProxyInputs((previous) => {
       const next = { ...previous };
       for (const agent of AGENT_API_ORDER) {
-        next[agent] = agentResult.credentials.find((credential) => credential.agent === agent)?.apiProxy || '';
+        next[agent] =
+          agentResult.credentials.find(
+            (credential) => credential.agent === agent,
+          )?.apiProxy || '';
       }
       return next;
     });
@@ -158,7 +180,10 @@ export default function CredentialsPage() {
       setAgentApiProxyInputs((previous) => {
         const next = { ...previous };
         for (const agent of AGENT_API_ORDER) {
-          next[agent] = agentResult.credentials.find((credential) => credential.agent === agent)?.apiProxy || '';
+          next[agent] =
+            agentResult.credentials.find(
+              (credential) => credential.agent === agent,
+            )?.apiProxy || '';
         }
         return next;
       });
@@ -220,15 +245,23 @@ export default function CredentialsPage() {
     }
 
     setAgentApiKeyInputs((previous) => ({ ...previous, [agent]: '' }));
-    setAgentApiProxyInputs((previous) => ({ ...previous, [agent]: result.credential.apiProxy || '' }));
-    setFlashMessage({ tone: 'success', text: `${AGENT_API_LABELS[agent]} credential saved.` });
+    setAgentApiProxyInputs((previous) => ({
+      ...previous,
+      [agent]: result.credential.apiProxy || '',
+    }));
+    setFlashMessage({
+      tone: 'success',
+      text: `${AGENT_API_LABELS[agent]} credential saved.`,
+    });
     await reloadCredentials();
     setSavingAgent(null);
   };
 
   const handleDelete = async (credential: Credential) => {
     const providerLabel = formatProviderLabel(credential.type);
-    const confirmed = confirm(`Delete this ${providerLabel} credential for ${formatCredentialSubtitle(credential)}?`);
+    const confirmed = confirm(
+      `Delete this ${providerLabel} credential for ${formatCredentialSubtitle(credential)}?`,
+    );
     if (!confirmed) return;
 
     setFlashMessage(null);
@@ -241,13 +274,18 @@ export default function CredentialsPage() {
       return;
     }
 
-    setFlashMessage({ tone: 'success', text: `${providerLabel} credential deleted.` });
+    setFlashMessage({
+      tone: 'success',
+      text: `${providerLabel} credential deleted.`,
+    });
     await reloadCredentials();
     setDeletingId(null);
   };
 
   const handleDeleteAgentApi = async (agent: AgentApiCredentialAgent) => {
-    const confirmed = confirm(`Delete the saved ${AGENT_API_LABELS[agent]} API credential?`);
+    const confirmed = confirm(
+      `Delete the saved ${AGENT_API_LABELS[agent]} API credential?`,
+    );
     if (!confirmed) return;
 
     setFlashMessage(null);
@@ -262,17 +300,26 @@ export default function CredentialsPage() {
 
     setAgentApiKeyInputs((previous) => ({ ...previous, [agent]: '' }));
     setAgentApiProxyInputs((previous) => ({ ...previous, [agent]: '' }));
-    setFlashMessage({ tone: 'success', text: `${AGENT_API_LABELS[agent]} credential deleted.` });
+    setFlashMessage({
+      tone: 'success',
+      text: `${AGENT_API_LABELS[agent]} credential deleted.`,
+    });
     await reloadCredentials();
     setDeletingAgent(null);
   };
 
-  const panelClass = 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700/50 dark:bg-slate-800 dark:shadow-[0_12px_30px_-18px_rgba(2,6,23,0.9)]';
-  const sectionHeaderClass = 'flex flex-col gap-3 border-b border-slate-200 bg-white px-6 py-5 md:flex-row md:items-center md:justify-between dark:border-slate-700/50 dark:bg-slate-800';
-  const inputClass = 'block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/50 dark:text-white dark:placeholder-slate-500 dark:focus:border-primary/50 dark:focus:bg-slate-900';
-  const primaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-lg shadow-blue-900/20 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60';
-  const secondaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700';
-  const rowActionButtonClass = 'inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-all hover:bg-red-50 hover:text-red-500 dark:text-slate-400 dark:hover:bg-red-900/30 dark:hover:text-red-400';
+  const panelClass =
+    'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700/50 dark:bg-slate-800 dark:shadow-[0_12px_30px_-18px_rgba(2,6,23,0.9)]';
+  const sectionHeaderClass =
+    'flex flex-col gap-3 border-b border-slate-200 bg-white px-6 py-5 md:flex-row md:items-center md:justify-between dark:border-slate-700/50 dark:bg-slate-800';
+  const inputClass =
+    'block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/50 dark:text-white dark:placeholder-slate-500 dark:focus:border-primary/50 dark:focus:bg-slate-900';
+  const secondaryButtonClass =
+    'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700';
+  const warningButtonClass =
+    'inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25';
+  const rowActionButtonClass =
+    'inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-all hover:bg-red-50 hover:text-red-500 dark:text-slate-400 dark:hover:bg-red-900/30 dark:hover:text-red-400';
 
   return (
     <main className="min-h-screen bg-[#f6f6f8] px-4 py-8 md:px-8 md:py-12 dark:bg-[#0f1117]">
@@ -287,10 +334,13 @@ export default function CredentialsPage() {
             >
               <ChevronRight className="h-6 w-6 rotate-180" />
             </button>
-            <h1 className="text-3xl font-black tracking-[-0.02em] text-slate-900 md:text-4xl dark:text-white">Credential Management</h1>
+            <h1 className="text-3xl font-black tracking-[-0.02em] text-slate-900 md:text-4xl dark:text-white">
+              Credentials
+            </h1>
           </div>
           <p className="ml-14 text-sm text-slate-500 md:text-base dark:text-slate-400">
-            Manage your API keys and access tokens for third-party services safely.
+            Manage your API keys and access tokens for third-party services
+            safely.
           </p>
         </div>
 
@@ -310,7 +360,9 @@ export default function CredentialsPage() {
           <div className={`${panelClass} p-10`}>
             <div className="flex flex-col items-center gap-3">
               <span className="loading loading-spinner loading-md text-primary"></span>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Loading credentials...</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Loading credentials...
+              </p>
             </div>
           </div>
         ) : (
@@ -318,15 +370,23 @@ export default function CredentialsPage() {
             <section className={panelClass}>
               <div className={sectionHeaderClass}>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">GitHub Credentials</h2>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Access private repositories and Gists.</p>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                    GitHub Credentials
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Access private repositories and Gists.
+                  </p>
                 </div>
                 <button
-                  className={primaryButtonClass}
+                  className={secondaryButtonClass}
                   onClick={() => void handleSaveGitHub()}
                   disabled={savingType === 'github'}
                 >
-                  {savingType === 'github' ? <span className="loading loading-spinner loading-xs"></span> : <KeyRound className="h-4 w-4" />}
+                  {savingType === 'github' ? (
+                    <span className="loading loading-spinner loading-xs"></span>
+                  ) : (
+                    <KeyRound className="h-4 w-4" />
+                  )}
                   Add Token
                 </button>
               </div>
@@ -346,7 +406,9 @@ export default function CredentialsPage() {
               </div>
 
               {githubCredentials.length === 0 ? (
-                <div className="px-6 py-6 text-sm text-slate-500 dark:text-slate-400">No GitHub credentials saved.</div>
+                <div className="px-6 py-6 text-sm text-slate-500 dark:text-slate-400">
+                  No GitHub credentials saved.
+                </div>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
                   {githubCredentials.map((credential) => (
@@ -359,9 +421,12 @@ export default function CredentialsPage() {
                           <ProviderIcon type="github" />
                         </div>
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-slate-900 dark:text-white">{credential.username}</div>
+                          <div className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                            {credential.username}
+                          </div>
                           <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                            Updated {new Date(credential.updatedAt).toLocaleString()}
+                            Updated{' '}
+                            {new Date(credential.updatedAt).toLocaleString()}
                           </div>
                         </div>
                       </div>
@@ -371,7 +436,11 @@ export default function CredentialsPage() {
                         disabled={deletingId === credential.id}
                         title="Delete"
                       >
-                        {deletingId === credential.id ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="h-4 w-4" />}
+                        {deletingId === credential.id ? (
+                          <span className="loading loading-spinner loading-xs"></span>
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </button>
                     </div>
                   ))}
@@ -382,15 +451,23 @@ export default function CredentialsPage() {
             <section className={panelClass}>
               <div className={sectionHeaderClass}>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">GitLab Credentials</h2>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Connect to self-hosted or cloud GitLab instances.</p>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                    GitLab Credentials
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Connect to self-hosted or cloud GitLab instances.
+                  </p>
                 </div>
                 <button
                   className={secondaryButtonClass}
                   onClick={() => void handleSaveGitLab()}
                   disabled={savingType === 'gitlab'}
                 >
-                  {savingType === 'gitlab' ? <span className="loading loading-spinner loading-xs"></span> : <KeyRound className="h-4 w-4" />}
+                  {savingType === 'gitlab' ? (
+                    <span className="loading loading-spinner loading-xs"></span>
+                  ) : (
+                    <KeyRound className="h-4 w-4" />
+                  )}
                   Add Instance
                 </button>
               </div>
@@ -425,7 +502,9 @@ export default function CredentialsPage() {
               </div>
 
               {gitlabCredentials.length === 0 ? (
-                <div className="px-6 py-6 text-sm text-slate-500 dark:text-slate-400">No GitLab credentials saved.</div>
+                <div className="px-6 py-6 text-sm text-slate-500 dark:text-slate-400">
+                  No GitLab credentials saved.
+                </div>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
                   {gitlabCredentials.map((credential) => (
@@ -438,10 +517,15 @@ export default function CredentialsPage() {
                           <ProviderIcon type="gitlab" />
                         </div>
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-slate-900 dark:text-white">{credential.username}</div>
-                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">{credential.serverUrl}</div>
+                          <div className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                            {credential.username}
+                          </div>
+                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {credential.serverUrl}
+                          </div>
                           <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                            Updated {new Date(credential.updatedAt).toLocaleString()}
+                            Updated{' '}
+                            {new Date(credential.updatedAt).toLocaleString()}
                           </div>
                         </div>
                       </div>
@@ -451,7 +535,11 @@ export default function CredentialsPage() {
                         disabled={deletingId === credential.id}
                         title="Delete"
                       >
-                        {deletingId === credential.id ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="h-4 w-4" />}
+                        {deletingId === credential.id ? (
+                          <span className="loading loading-spinner loading-xs"></span>
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </button>
                     </div>
                   ))}
@@ -472,43 +560,60 @@ export default function CredentialsPage() {
                         <KeyRound className="h-5 w-5" />
                       </div>
                       <div>
-                        <h2 className="text-lg font-bold text-slate-900 dark:text-white">{AGENT_API_LABELS[agent]} Configuration</h2>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Configure access for LLM capabilities.</p>
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                          {AGENT_API_LABELS[agent]} Configuration
+                        </h2>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
+                          Configure access for LLM capabilities.
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       {configuredCredential && (
                         <button
-                          className={secondaryButtonClass}
+                          className={warningButtonClass}
                           onClick={() => void handleDeleteAgentApi(agent)}
                           disabled={isSaving || isDeleting}
                         >
-                          {isDeleting ? <span className="loading loading-spinner loading-xs"></span> : <Trash2 className="h-4 w-4" />}
+                          {isDeleting ? (
+                            <span className="loading loading-spinner loading-xs"></span>
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
                           Remove
                         </button>
                       )}
                       <button
-                        className={primaryButtonClass}
+                        className={secondaryButtonClass}
                         onClick={() => void handleSaveAgentApi(agent)}
                         disabled={isSaving || isDeleting}
                       >
-                        {isSaving ? <span className="loading loading-spinner loading-xs"></span> : <KeyRound className="h-4 w-4" />}
+                        {isSaving ? (
+                          <span className="loading loading-spinner loading-xs"></span>
+                        ) : (
+                          <KeyRound className="h-4 w-4" />
+                        )}
                         {configuredCredential ? 'Save Changes' : 'Save'}
                       </button>
                     </div>
                   </div>
 
                   <div className="space-y-6 p-6">
-                    <div className="max-w-2xl space-y-4">
+                    <div className="w-full space-y-4">
                       <div>
-                        <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">API Key</label>
+                        <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          API Key
+                        </label>
                         <input
                           type="password"
                           className={inputClass}
                           placeholder={AGENT_API_KEY_PLACEHOLDERS[agent]}
                           value={agentApiKeyInputs[agent]}
                           onChange={(event) =>
-                            setAgentApiKeyInputs((previous) => ({ ...previous, [agent]: event.target.value }))
+                            setAgentApiKeyInputs((previous) => ({
+                              ...previous,
+                              [agent]: event.target.value,
+                            }))
                           }
                           disabled={isSaving || isDeleting}
                         />
@@ -519,7 +624,10 @@ export default function CredentialsPage() {
 
                       <div>
                         <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                          API Proxy <span className="font-normal text-slate-400 dark:text-slate-500">(Optional)</span>
+                          API Proxy{' '}
+                          <span className="font-normal text-slate-400 dark:text-slate-500">
+                            (Optional)
+                          </span>
                         </label>
                         <input
                           type="url"
@@ -527,12 +635,16 @@ export default function CredentialsPage() {
                           placeholder={AGENT_API_PROXY_PLACEHOLDERS[agent]}
                           value={agentApiProxyInputs[agent]}
                           onChange={(event) =>
-                            setAgentApiProxyInputs((previous) => ({ ...previous, [agent]: event.target.value }))
+                            setAgentApiProxyInputs((previous) => ({
+                              ...previous,
+                              [agent]: event.target.value,
+                            }))
                           }
                           disabled={isSaving || isDeleting}
                         />
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          Override this when using a proxy or a compatible endpoint.
+                          Override this when using a proxy or a compatible
+                          endpoint.
                         </p>
                       </div>
                     </div>
@@ -541,8 +653,18 @@ export default function CredentialsPage() {
                       {configuredCredential ? (
                         <div className="space-y-1">
                           <div>API key configured.</div>
-                          <div>Updated {new Date(configuredCredential.updatedAt).toLocaleString()}</div>
-                          <div>Proxy {configuredCredential.apiProxy ? configuredCredential.apiProxy : 'not set'}</div>
+                          <div>
+                            Updated{' '}
+                            {new Date(
+                              configuredCredential.updatedAt,
+                            ).toLocaleString()}
+                          </div>
+                          <div>
+                            Proxy{' '}
+                            {configuredCredential.apiProxy
+                              ? configuredCredential.apiProxy
+                              : 'not set'}
+                          </div>
                         </div>
                       ) : (
                         <div>No API credential saved.</div>
