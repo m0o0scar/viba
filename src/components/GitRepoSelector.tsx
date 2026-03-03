@@ -1519,10 +1519,6 @@ export default function GitRepoSelector({
                   </button>
                 )
               )}
-              <button className="btn btn-primary btn-sm gap-2" onClick={openCloneRemoteDialog}>
-                <CloudDownload className="h-4 w-4" />
-                New Repository
-              </button>
               <button
                 className="btn btn-ghost btn-sm btn-square text-slate-700 dark:border dark:border-slate-700/60 dark:bg-[#1e2532] dark:text-slate-300 dark:hover:bg-[#252d3d] dark:hover:text-white"
                 onClick={handleCycleThemeMode}
