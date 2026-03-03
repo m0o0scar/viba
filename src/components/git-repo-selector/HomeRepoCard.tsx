@@ -61,14 +61,14 @@ export function HomeRepoCard({
       className="repo-card-tilt-wrapper group relative h-[248px] cursor-pointer text-left transition-transform duration-200"
     >
       <div
-        className="repo-card-tilt relative h-full overflow-hidden rounded-2xl border border-white/70 bg-white/55 dark:border-slate-700/40 dark:bg-[#141a25]/64 dark:hover:border-slate-600/55"
+        className="repo-card-tilt relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/30 backdrop-blur-xl backdrop-saturate-150 dark:border-white/10 dark:bg-white/5 dark:backdrop-saturate-125 dark:hover:border-white/20"
         style={isDarkThemeActive ? undefined : cardGradient}
       >
-        <div className="absolute inset-0 bg-white/38 dark:bg-[#141a25]/58" />
+        <div className="absolute inset-0 bg-white/20 dark:bg-slate-900/20" />
         <div className="repo-card-tilt-content relative flex h-full flex-col justify-between p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="relative flex items-center">
-              <div className="repo-card-tilt-icon flex h-10 w-10 items-center justify-center rounded-xl bg-white/90 text-slate-700 shadow-sm dark:border dark:border-white/10 dark:bg-[#1e2532] dark:text-slate-200">
+              <div className="repo-card-tilt-icon flex h-10 w-10 items-center justify-center rounded-xl bg-white/60 text-slate-700 shadow-sm backdrop-blur-sm dark:border dark:border-white/15 dark:bg-white/10 dark:text-slate-200">
                 {showRepoIcon && repoIconUrl ? (
                   <Image
                     src={repoIconUrl}
@@ -109,7 +109,7 @@ export function HomeRepoCard({
                   event.stopPropagation();
                   onOpenGitWorkspace(repo);
                 }}
-                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-600 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-slate-900 group-hover:opacity-100 dark:bg-[#1e2532]/90 dark:text-slate-300 dark:hover:bg-[#252d3d] dark:hover:text-white"
+                className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-600 opacity-0 shadow-none backdrop-blur-sm transition-opacity hover:bg-white/80 hover:text-slate-900 group-hover:opacity-100 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20 dark:hover:text-white"
                 title="Open Git Workspace"
               >
                 <GitBranchIcon className="h-3.5 w-3.5" />
@@ -118,14 +118,14 @@ export function HomeRepoCard({
                 onClick={(event) => {
                   void onOpenRepoSettings(event, repo);
                 }}
-                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-600 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-slate-900 group-hover:opacity-100 dark:bg-[#1e2532]/90 dark:text-slate-300 dark:hover:bg-[#252d3d] dark:hover:text-white"
+                className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-600 opacity-0 shadow-none backdrop-blur-sm transition-opacity hover:bg-white/80 hover:text-slate-900 group-hover:opacity-100 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20 dark:hover:text-white"
                 title="Repository settings"
               >
                 <Settings className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={(event) => onRemoveRecent(event, repo)}
-                className="btn btn-circle btn-xs border-0 bg-white/70 text-slate-500 opacity-0 shadow-none transition-opacity hover:bg-white hover:text-rose-600 group-hover:opacity-100 dark:bg-[#1e2532]/90 dark:text-slate-400 dark:hover:bg-[#252d3d] dark:hover:text-rose-300"
+                className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-500 opacity-0 shadow-none backdrop-blur-sm transition-opacity hover:bg-white/80 hover:text-rose-600 group-hover:opacity-100 dark:bg-white/10 dark:text-slate-400 dark:hover:bg-white/20 dark:hover:text-rose-300"
                 title="Remove from history"
               >
                 <X className="h-3.5 w-3.5" />

@@ -64,9 +64,9 @@ export function HomeDashboard({
 }: HomeDashboardProps) {
   return (
     <div className="w-full max-w-7xl">
-      <header className="relative z-10 flex flex-col gap-4 rounded-xl border border-slate-200/80 bg-white/82 px-4 py-4 shadow-[0_14px_36px_-24px_rgba(15,23,42,0.4)] backdrop-blur-md transition-colors md:flex-row md:items-center md:justify-between md:px-7 dark:border-slate-700/75 dark:bg-[#131b2b]/72 dark:shadow-[0_18px_44px_-30px_rgba(0,0,0,0.75)]">
+      <header className="relative z-10 flex flex-col gap-4 rounded-xl border border-white/50 bg-white/40 px-4 py-4 shadow-[0_8px_32px_-8px_rgba(15,23,42,0.15)] backdrop-blur-xl backdrop-saturate-150 transition-colors md:flex-row md:items-center md:justify-between md:px-7 dark:border-white/10 dark:bg-slate-900/30 dark:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.5)]">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/90 shadow-sm dark:border dark:border-white/5 dark:bg-[#1e2532]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/60 shadow-sm backdrop-blur-sm dark:border dark:border-white/10 dark:bg-white/10">
             <Image src="/palx-icon.png" alt="Palx" width={22} height={22} className="rounded-sm" />
           </div>
           <div>
@@ -76,7 +76,7 @@ export function HomeDashboard({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <label className="input input-sm flex w-full items-center gap-2 border-slate-200 bg-slate-100/90 text-slate-700 shadow-none transition-colors md:w-72 dark:border-slate-700/70 dark:bg-[#1e2532] dark:text-slate-200">
+          <label className="input input-sm flex w-full items-center gap-2 border-white/40 bg-white/50 text-slate-700 shadow-none backdrop-blur-sm transition-colors md:w-72 dark:border-white/10 dark:bg-white/10 dark:text-slate-200">
             <Search className="h-4 w-4 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
@@ -117,7 +117,7 @@ export function HomeDashboard({
             )
           )}
           <button
-            className="btn btn-ghost btn-sm btn-square text-slate-700 dark:border dark:border-slate-700/60 dark:bg-[#1e2532] dark:text-slate-300 dark:hover:bg-[#252d3d] dark:hover:text-white"
+            className="btn btn-ghost btn-sm btn-square text-slate-700 dark:border dark:border-white/10 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20 dark:hover:text-white"
             onClick={onCycleThemeMode}
             title={`Theme mode: ${themeModeLabel}. Click to switch to ${nextThemeModeLabel}.`}
             aria-label={`Theme mode: ${themeModeLabel}. Click to switch to ${nextThemeModeLabel}.`}
@@ -135,11 +135,11 @@ export function HomeDashboard({
         )}
 
         {!isLoaded ? (
-          <div className="flex h-56 items-center justify-center rounded-2xl border border-slate-200 bg-white/70 dark:border-slate-700/55 dark:bg-[#141d2e]/70">
+          <div className="flex h-56 items-center justify-center rounded-2xl border border-white/40 bg-white/25 backdrop-blur-lg dark:border-white/10 dark:bg-white/5">
             <span className="loading loading-spinner loading-md text-primary"></span>
           </div>
         ) : filteredRecentRepos.length === 0 ? (
-          <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white/70 text-center dark:border-slate-700/55 dark:bg-[#141d2e]/70">
+          <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-white/40 bg-white/25 text-center backdrop-blur-lg dark:border-white/10 dark:bg-white/5">
             <p className="text-sm text-slate-500 dark:text-slate-400">
               {homeSearchQuery.trim() ? 'No repositories match your search.' : 'No recent repositories found.'}
             </p>
@@ -175,9 +175,9 @@ export function HomeDashboard({
 
             <button
               onClick={onAddRepository}
-              className="group flex h-[248px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 text-slate-600 transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:bg-white dark:border-slate-700/35 dark:bg-[#131b2a] dark:text-slate-400 dark:hover:border-slate-600/50 dark:hover:bg-[#1d2638]"
+              className="group flex h-[248px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/50 bg-white/25 text-slate-600 backdrop-blur-lg backdrop-saturate-150 transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:bg-white/45 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:border-white/20 dark:hover:bg-white/10"
             >
-              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm transition-transform group-hover:scale-105 dark:border dark:border-slate-700/40 dark:bg-[#1e2532]">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/70 shadow-sm backdrop-blur-sm transition-transform group-hover:scale-105 dark:border dark:border-white/10 dark:bg-white/10">
                 <Plus className="h-7 w-7 text-slate-400 transition-colors group-hover:text-primary" />
               </span>
               <span className="text-lg font-semibold transition-colors group-hover:text-primary">

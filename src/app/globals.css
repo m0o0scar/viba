@@ -53,12 +53,14 @@ button {
   transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s ease;
   will-change: transform;
   box-shadow:
-    0 24px 48px -28px rgba(15, 23, 42, 0.55),
-    0 0 14px rgba(255, 255, 255, 0.32);
+    0 8px 32px -8px rgba(15, 23, 42, 0.15),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.3);
 }
 
 :root.dark .repo-card-tilt {
-  box-shadow: none;
+  box-shadow:
+    0 8px 32px -8px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
 }
 
 .repo-card-tilt::before {

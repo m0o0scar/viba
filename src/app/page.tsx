@@ -28,7 +28,7 @@ export default function Home() {
           />
         </span>
       </a>
-      <main className="flex min-h-screen flex-col items-center justify-start bg-[#f6f6f8] p-4 transition-colors md:p-6 dark:bg-[#0d1117]">
+      <main className="relative z-10 flex min-h-screen flex-col items-center justify-start p-4 transition-colors md:p-6">
         {authWarning && (
           <div
             className="mb-4 w-full max-w-5xl rounded-xl border border-amber-300 bg-amber-100/90 px-4 py-3 text-sm text-amber-900 shadow-sm dark:border-amber-500/50 dark:bg-amber-500/15 dark:text-amber-100"
