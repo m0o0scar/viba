@@ -9,10 +9,10 @@ Palx is a local session manager for AI coding agents. It lets you pick a Git rep
 - **Isolated Sessions**: Uses `git worktree` to create clean, isolated environments for every task, with automatic per-session branch naming (`palx/<session>`).
 - **New Attempt Flow**: Start new sessions pre-filled with context (title, model, prompt, attachments) from any previous session to iterate quickly.
 - **Enhanced File Browser**:
-    - **Grid & List Views**: Browse files with rich thumbnails or a compact list.
-    - **Pinned Shortcuts**: Pin frequently used directories for quick navigation across session restarts.
-    - **Clipboard Paste**: Quickly add attachments by pasting files or images directly into the browser.
-    - **@ Mention Suggestions**: Intelligent file path suggestions from your tracked repository files.
+  - **Grid & List Views**: Browse files with rich thumbnails or a compact list.
+  - **Pinned Shortcuts**: Pin frequently used directories for quick navigation across session restarts.
+  - **Clipboard Paste**: Quickly add attachments by pasting files or images directly into the browser.
+  - **@ Mention Suggestions**: Intelligent file path suggestions from your tracked repository files.
 - **Dual Terminal Workspace**:
   - Left terminal for agent execution.
   - Right terminal for startup/dev scripts.
@@ -57,7 +57,7 @@ Add these variables to your `.env`:
 AUTH0_DOMAIN=your-tenant.us.auth0.com
 AUTH0_CLIENT_ID=your_client_id
 AUTH0_CLIENT_SECRET=your_client_secret
-AUTH0_SECRET=hex_32_byte_secret
+AUTH0_SECRET=<openssl rand -hex 32>
 APP_BASE_URL=http://localhost:3200
 ```
 
