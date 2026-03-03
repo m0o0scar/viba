@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { SessionView } from '@/components/SessionView';
 import { consumeSessionLaunchContext, getSessionMetadata, SessionMetadata, markSessionInitialized } from '@/app/actions/session';
 import { getSessionTerminalSources, startTtydProcess } from '@/app/actions/git';
+import { clearPendingSessionNavigation } from '@/lib/session-navigation';
 
 type SessionNotificationPayload = {
     type: 'session-notification';
@@ -56,6 +57,11 @@ export default function SessionPage() {
             document.documentElement.classList.remove('session-page');
         };
     }, []);
+
+    useEffect(() => {
+        if (!sessionId) return;
+        clearPendingSessionNavigation(sessionId);
+    }, [sessionId]);
 
     useEffect(() => {
         if (!sessionId) return;

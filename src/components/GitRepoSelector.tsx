@@ -27,6 +27,7 @@ import { useRouter } from 'next/navigation';
 import { getBaseName } from '@/lib/path';
 import { getStableRepoCardGradient } from '@/lib/repo-card-gradient';
 import { notifySessionsUpdated, SESSIONS_UPDATED_EVENT, SESSIONS_UPDATED_STORAGE_KEY } from '@/lib/session-updates';
+import { consumePendingSessionNavigationRetry, recordPendingSessionNavigation } from '@/lib/session-navigation';
 import {
   applyThemeToTerminalIframe,
   applyThemeToTerminalWindow,
@@ -185,7 +186,8 @@ export default function GitRepoSelector({
 
   const navigateToSession = useCallback((sessionName: string) => {
     sessionNavigationCommittedRef.current = true;
-    window.location.assign(`/session/${sessionName}`);
+    recordPendingSessionNavigation(sessionName);
+    window.location.assign(`/session/${encodeURIComponent(sessionName)}`);
   }, []);
 
   const refreshSessionData = useCallback(async (repo: string | null = selectedRepo) => {
@@ -521,6 +523,17 @@ export default function GitRepoSelector({
 
     router.replace(`/new?${params.toString()}`);
   };
+
+  useEffect(() => {
+    if (mode !== 'new') return;
+
+    const retrySessionName = consumePendingSessionNavigationRetry();
+    if (!retrySessionName) return;
+    if (sessionNavigationCommittedRef.current) return;
+
+    sessionNavigationCommittedRef.current = true;
+    window.location.replace(`/session/${encodeURIComponent(retrySessionName)}`);
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== 'new') return;
