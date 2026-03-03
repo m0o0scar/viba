@@ -33,11 +33,11 @@ function createSplat(width: number, height: number): SplatState {
   return {
     x: Math.random() * width,
     y: Math.random() * height,
-    radius: Math.random() * 250 + 250,
+    radius: Math.random() * 450 + 450,
     color: COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)],
-    vx: (Math.random() - 0.5) * 1.2,
-    vy: (Math.random() - 0.5) * 1.2,
-    pulseSpeed: Math.random() * 0.008,
+    vx: (Math.random() - 0.5) * 2.2,
+    vy: (Math.random() - 0.5) * 2.2,
+    pulseSpeed: Math.random() * 0.016,
     pulseAmount: Math.random() * Math.PI * 2,
   };
 }
@@ -51,7 +51,7 @@ function updateSplat(s: SplatState, width: number, height: number) {
 }
 
 function drawSplat(ctx: CanvasRenderingContext2D, s: SplatState, gradientEnd: string) {
-  const currentRadius = s.radius + Math.sin(s.pulseAmount) * 40;
+  const currentRadius = s.radius + Math.sin(s.pulseAmount) * 80;
   const gradient = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, currentRadius);
   gradient.addColorStop(0, s.color);
   gradient.addColorStop(1, gradientEnd);
@@ -136,7 +136,7 @@ export default function SplatBackground() {
       ref={canvasRef}
       className="pointer-events-none fixed inset-0 z-0"
       style={{
-        filter: 'blur(70px)',
+        filter: 'blur(140px)',
         transform: 'scale(1.1)',
         opacity: visible ? 1 : 0,
         transition: 'opacity 600ms ease-in-out',
