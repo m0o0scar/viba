@@ -40,9 +40,9 @@ export const TERMINAL_THEME_LIGHT: TerminalTheme = buildMonochromeTheme(
 );
 
 export const TERMINAL_THEME_DARK: TerminalTheme = buildMonochromeTheme(
-  '#0d1117',
-  '#c9d1d9',
-  'rgba(56, 139, 253, 0.3)',
+  '#22272e',
+  '#adbac7',
+  'rgba(49, 109, 202, 0.35)',
 );
 
 type StorageLike = Pick<Storage, 'getItem'>;

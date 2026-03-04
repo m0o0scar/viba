@@ -2643,7 +2643,7 @@ export function SessionView({
 
                                     {!isTerminalMinimized && (
                                         <div
-                                            className="flex h-2 cursor-row-resize items-center justify-center border-y border-slate-200 bg-slate-100 dark:border-[#30363d] dark:bg-[#0d1117]"
+                                            className="flex h-2 cursor-row-resize items-center justify-center border-y border-slate-200 bg-slate-100 dark:border-[#30363d] dark:bg-[#22272e]"
                                             onMouseDown={startResize}
                                             role="separator"
                                             aria-orientation="horizontal"
@@ -2685,7 +2685,7 @@ export function SessionView({
                                                 </button>
                                             </div>
                                         </div>
-                                        <div className={`${isTerminalMinimized ? 'h-0 overflow-hidden' : 'relative min-h-0 flex-1 overflow-hidden border-t border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#0d1117]'}`}>
+                                        <div className={`${isTerminalMinimized ? 'h-0 overflow-hidden' : 'relative min-h-0 flex-1 overflow-hidden border-t border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#22272e]'}`}>
                                             {!isFloatingTerminalThemeReady && (
                                                 <div className={TERMINAL_LOADING_OVERLAY_CLASS}>
                                                     <span className="loading loading-spinner loading-md text-slate-400 dark:text-slate-500" />
