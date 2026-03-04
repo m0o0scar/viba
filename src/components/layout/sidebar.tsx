@@ -91,7 +91,7 @@ export function Sidebar({ className, initialCollapsed = false }: SidebarPropsWit
         width: sidebarWidth
       }}
       className={cn(
-        "pb-12 border-r border-gray-200 dark:border-[#30363d] min-h-screen bg-gray-50 dark:bg-[#22272e] relative",
+        "pb-12 border-r border-gray-200 dark:border-[#30363d] min-h-screen bg-gray-50 dark:bg-[#161b22] relative",
         enableTransition && "transition-all duration-300",
         className
       )}
