@@ -11,12 +11,12 @@ export default function WorkspaceLayout({
     const sidebarCollapsed = getSettings().sidebarCollapsed ?? false;
 
     return (
-        <div className="flex h-screen gap-2 bg-slate-100/80 p-2 dark:bg-[#1b2026] sm:p-3">
+        <div className="flex h-screen gap-2 bg-slate-100/80 p-2 dark:bg-[#0d1117] sm:p-3">
             <Suspense fallback={null}>
                 <WorkspaceRepoOpenTracker />
             </Suspense>
-            <Suspense fallback={<div className={`${sidebarCollapsed ? 'w-16' : 'w-64'} overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#22272e] flex items-center justify-center`}><span className="loading loading-spinner"></span></div>}>
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#22272e]">
+            <Suspense fallback={<div className={`${sidebarCollapsed ? 'w-16' : 'w-64'} overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#161b22] flex items-center justify-center`}><span className="loading loading-spinner"></span></div>}>
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-[#30363d] dark:bg-[#161b22]">
                     <Sidebar initialCollapsed={sidebarCollapsed} className="border-r-0 bg-transparent min-h-full" />
                 </div>
             </Suspense>
