@@ -450,7 +450,7 @@ export const GitGraph = forwardRef<GitGraphHandle, {
                                                         >
                                                             <HighlightedText text={tag.displayName} searchQuery={searchQuery} />
                                                         </span>
-                                                        {hasAssociatedSession && <SessionAssociationDot className="top-0.5 right-0.5 z-10" />}
+                                                        {hasAssociatedSession && <SessionAssociationDot className="top-0 right-0.5 z-10" />}
                                                     </span>
                                                 );
 
