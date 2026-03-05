@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { SessionView } from '@/components/SessionView';
 import { consumeSessionLaunchContext, getSessionMetadata, SessionMetadata, markSessionInitialized } from '@/app/actions/session';
 import { getSessionTerminalSources, resolveRepoCardIcon, startTtydProcess } from '@/app/actions/git';
-import { getRepoAlias } from '@/app/actions/config';
+import { getProjectAlias } from '@/app/actions/config';
 import { clearPendingSessionNavigation } from '@/lib/session-navigation';
 
 type SessionNotificationPayload = {
@@ -268,7 +268,7 @@ export default function SessionPage() {
                 }
 
                 try {
-                    const iconResult = await resolveRepoCardIcon(data.repoPath);
+                    const iconResult = await resolveRepoCardIcon(data.projectPath);
                     if (!cancelled && iconResult.success && iconResult.iconPath) {
                         setSessionFaviconHref(`/api/file-thumbnail?path=${encodeURIComponent(iconResult.iconPath)}`);
                     }
@@ -280,14 +280,14 @@ export default function SessionPage() {
 
                 if (cancelled) return;
                 setMetadata(data);
-                const alias = await getRepoAlias(data.repoPath);
+                const alias = await getProjectAlias(data.projectPath);
                 if (cancelled) return;
                 if (alias) {
                     setRepoDisplayName(alias);
                 }
                 const resolvedTerminalSources = await getSessionTerminalSources(
                     data.sessionName,
-                    data.repoPath,
+                    data.activeRepoPath || data.projectPath,
                     data.agent,
                 );
                 if (cancelled) return;
@@ -320,7 +320,7 @@ export default function SessionPage() {
                                     (ctx.attachmentNames || [])
                                         .map((name) => name.trim())
                                         .filter(Boolean)
-                                        .map((name) => `${data.worktreePath}-attachments/${name}`)
+                                        .map((name) => `${data.workspacePath}-attachments/${name}`)
                                 )
                             );
                         setContextAttachmentPaths(resolvedAttachmentPaths);
@@ -404,11 +404,14 @@ export default function SessionPage() {
 
     return (
         <SessionView
-            repo={metadata.repoPath}
+            repo={metadata.projectPath}
             repoDisplayName={repoDisplayName}
-            worktree={metadata.worktreePath}
-            branch={metadata.branchName}
+            worktree={metadata.workspacePath}
+            branch={metadata.branchName || ''}
             baseBranch={metadata.baseBranch}
+            workspaceMode={metadata.workspaceMode}
+            activeRepoPath={metadata.activeRepoPath}
+            gitRepos={metadata.gitRepos}
             sessionName={metadata.sessionName}
             agent={contextAgentProvider || metadata.agent}
             startupScript={startupScript}
