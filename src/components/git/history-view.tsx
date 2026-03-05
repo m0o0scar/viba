@@ -4537,7 +4537,9 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
         <div className="flex min-h-[57px] shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 dark:border-[#30363d] dark:bg-[#161b22]">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <h1 className="font-bold text-lg text-slate-900 dark:text-slate-100">History</h1>
-            <div className="relative" ref={branchPopoverRef}>
+          </div>
+          <div className="shrink-0 flex flex-wrap items-center gap-2">
+            <div className="relative shrink-0" ref={branchPopoverRef}>
               <button
                 className={branchSelectButtonClass}
                 onClick={() => setIsBranchPopoverOpen(prev => !prev)}
@@ -4552,7 +4554,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                 </div>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 className={headerActionButtonClass}
                 onClick={() => void handleFetchFromAllRemotes()}
@@ -4606,34 +4608,35 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                 <span className={headerActionLabelClass}>Push</span>
               </button>
             </div>
-          </div>
-          <div className="shrink-0 flex flex-wrap items-center gap-2">
-            <button
-              className={headerActionButtonClass}
-              onClick={() => void handleOpenRepoTerminal()}
-              disabled={isOpeningRepoTerminal}
-              title="Open terminal in repository folder"
-            >
-              {isOpeningRepoTerminal ? (
-                <span className="loading loading-spinner loading-xs"></span>
-              ) : (
-                <i className="iconoir-terminal text-[16px]" aria-hidden="true" />
-              )}
-              <span className={headerActionLabelClass}>Open Terminal</span>
-            </button>
-            <button
-              className={headerActionButtonClass}
-              onClick={() => void handleOpenRepoFolder()}
-              disabled={isOpeningRepoFolder}
-              title="Open repository folder in Finder"
-            >
-              {isOpeningRepoFolder ? (
-                <span className="loading loading-spinner loading-xs"></span>
-              ) : (
-                <i className="iconoir-folder text-[16px]" aria-hidden="true" />
-              )}
-              <span className={headerActionLabelClass}>Open Repo Folder</span>
-            </button>
+            <div className="h-5 w-px bg-slate-200 dark:bg-[#30363d]" aria-hidden="true" />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className={headerActionButtonClass}
+                onClick={() => void handleOpenRepoTerminal()}
+                disabled={isOpeningRepoTerminal}
+                title="Open terminal in repository folder"
+              >
+                {isOpeningRepoTerminal ? (
+                  <span className="loading loading-spinner loading-xs"></span>
+                ) : (
+                  <i className="iconoir-terminal text-[16px]" aria-hidden="true" />
+                )}
+                <span className={headerActionLabelClass}>Open Terminal</span>
+              </button>
+              <button
+                className={headerActionButtonClass}
+                onClick={() => void handleOpenRepoFolder()}
+                disabled={isOpeningRepoFolder}
+                title="Open repository folder in Finder"
+              >
+                {isOpeningRepoFolder ? (
+                  <span className="loading loading-spinner loading-xs"></span>
+                ) : (
+                  <i className="iconoir-folder text-[16px]" aria-hidden="true" />
+                )}
+                <span className={headerActionLabelClass}>Open Repo Folder</span>
+              </button>
+            </div>
           </div>
         </div>
 
