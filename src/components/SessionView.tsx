@@ -1249,7 +1249,7 @@ export function SessionView({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const handleRebaseSelect = async (targetBranch: string) => {
+    const handleRebaseSelect = useCallback(async (targetBranch: string) => {
         setIsRebaseDropdownOpen(false);
         if (!sessionName) return;
 
@@ -1283,7 +1283,7 @@ export function SessionView({
         } finally {
             setIsRebasing(false);
         }
-    };
+    }, [currentBaseBranch, loadBaseBranchOptions, loadSessionDivergence, sessionName]);
 
     const handleRebase = () => {
         setIsRebaseDropdownOpen(!isRebaseDropdownOpen);
@@ -1332,11 +1332,11 @@ export function SessionView({
         try {
             const result = await createSessionBaseBranch(sessionName, targetBranchName, sourceBranchName);
             if (result.success && result.branchName && result.fromBranch) {
-                setFeedback(`Created branch ${result.branchName} from ${result.fromBranch}`);
+                setFeedback(`Created branch ${result.branchName} from ${result.fromBranch}. Setting as base and rebasing...`);
                 setIsCreateBaseBranchDialogOpen(false);
                 setNewBaseBranchName('');
                 setNewBaseBranchFrom('');
-                await loadBaseBranchOptions();
+                await handleRebaseSelect(result.branchName);
             } else {
                 setFeedback(`Failed to create branch: ${result.error}`);
             }
@@ -1346,7 +1346,7 @@ export function SessionView({
         } finally {
             setIsCreatingBaseBranch(false);
         }
-    }, [loadBaseBranchOptions, newBaseBranchFrom, newBaseBranchName, sessionName]);
+    }, [handleRebaseSelect, newBaseBranchFrom, newBaseBranchName, sessionName]);
 
     const loadPreviewViaProxy = useCallback(async (rawUrl: string, openPreview: boolean): Promise<boolean> => {
         const normalized = normalizePreviewUrl(rawUrl);
@@ -2320,7 +2320,7 @@ export function SessionView({
                     <div className="modal-box max-w-lg">
                         <h3 className="font-bold text-lg">Create New Branch</h3>
                         <p className="py-2 text-sm opacity-70">
-                            Create a new branch and refresh the branch list for merge/rebase actions.
+                            Create a new branch, set it as the base branch, and rebase this session branch onto it automatically.
                         </p>
 
                         <div className="space-y-4 pt-2">
