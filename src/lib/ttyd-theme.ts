@@ -459,6 +459,10 @@ function installMonochromeAnsiFilter(
 
   terminal.write = (chunk: unknown, callback?: () => void): void => {
     const normalizedChunk = normalizeTerminalWriteChunk(chunk, utf8DecodeState);
+    if (!terminal.__vibaMonochromeFilterCarry && !normalizedChunk.includes('\x1b')) {
+      originalWrite(normalizedChunk, callback);
+      return;
+    }
     const nextChunk = terminal.__vibaMonochromeFilterCarry
       ? `${terminal.__vibaMonochromeFilterCarry}${normalizedChunk}`
       : normalizedChunk;

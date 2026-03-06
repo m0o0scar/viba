@@ -64,6 +64,7 @@ type TerminalWithOnWriteParsed = NonNullable<TerminalWindow['term']> & {
 type TerminalWithClearLineShortcutState = NonNullable<TerminalWindow['term']> & {
     __vibaClearLineShortcutInstalled?: boolean;
 };
+type CleanupRef = { current: (() => void) | null };
 
 const TERMINAL_SIZE_STORAGE_KEY = 'viba-terminal-size';
 const SPLIT_RATIO_STORAGE_KEY = 'viba-agent-preview-split-ratio';
@@ -348,8 +349,10 @@ export function SessionView({
     const splitResizeRef = useRef({ startX: 0, startRatio: DEFAULT_AGENT_PANE_RATIO });
     const recentTerminalBlurRef = useRef<{ slot: TerminalBootstrapSlot; at: number } | null>(null);
     const agentFrameLinkCleanupRef = useRef<(() => void) | null>(null);
-    const terminalFrameLinkCleanupRef = useRef<(() => void) | null>(null);
+    const terminalFrameLinkCleanupRefs = useRef<Record<string, CleanupRef>>({});
     const terminalProcessMonitorCleanupRef = useRef<(() => void) | null>(null);
+    const terminalAutoScrollCleanupRef = useRef<Record<string, (() => void) | null>>({});
+    const iframeBeforeUnloadCleanupRef = useRef<Record<string, (() => void) | null>>({});
     const terminalStartupScriptStateRef = useRef<Record<string, TerminalStartupScriptState>>({});
     const agentTerminalSrc = useMemo(
         () => agentTerminalSrcOverride || buildTtydTerminalSrc(sessionName, 'agent', null, {
@@ -410,6 +413,131 @@ export function SessionView({
         terminalStartupScriptStateRef.current = {};
     }, []);
 
+    const getTerminalLinkCleanupRef = useCallback((slot: TerminalBootstrapSlot): CleanupRef => {
+        const existing = terminalFrameLinkCleanupRefs.current[slot];
+        if (existing) return existing;
+        const created: CleanupRef = { current: null };
+        terminalFrameLinkCleanupRefs.current[slot] = created;
+        return created;
+    }, []);
+
+    const cleanupTerminalLinkHandler = useCallback((slot: TerminalBootstrapSlot): void => {
+        if (slot === 'agent') {
+            agentFrameLinkCleanupRef.current?.();
+            agentFrameLinkCleanupRef.current = null;
+            return;
+        }
+
+        const cleanupRef = terminalFrameLinkCleanupRefs.current[slot];
+        cleanupRef?.current?.();
+        if (cleanupRef) {
+            cleanupRef.current = null;
+            delete terminalFrameLinkCleanupRefs.current[slot];
+        }
+    }, []);
+
+    const cleanupTerminalAutoScroll = useCallback((slot: TerminalBootstrapSlot): void => {
+        const cleanup = terminalAutoScrollCleanupRef.current[slot];
+        if (cleanup) {
+            cleanup();
+            delete terminalAutoScrollCleanupRef.current[slot];
+        }
+    }, []);
+
+    const cleanupBeforeUnloadGuard = useCallback((slot: TerminalBootstrapSlot): void => {
+        const cleanup = iframeBeforeUnloadCleanupRef.current[slot];
+        if (cleanup) {
+            cleanup();
+            delete iframeBeforeUnloadCleanupRef.current[slot];
+        }
+    }, []);
+
+    const installBeforeUnloadGuard = useCallback((slot: TerminalBootstrapSlot, iframe: HTMLIFrameElement): void => {
+        cleanupBeforeUnloadGuard(slot);
+
+        const frameWindow = iframe.contentWindow;
+        if (!frameWindow) return;
+
+        try {
+            frameWindow.onbeforeunload = null;
+        } catch {
+            // Ignore cross-context edge cases.
+        }
+
+        const handleBeforeUnload = (event: Event) => {
+            event.stopImmediatePropagation();
+        };
+
+        frameWindow.addEventListener('beforeunload', handleBeforeUnload, true);
+        iframeBeforeUnloadCleanupRef.current[slot] = () => {
+            try {
+                frameWindow.removeEventListener('beforeunload', handleBeforeUnload, true);
+            } catch {
+                // Ignore detached frame cleanup failures.
+            }
+        };
+    }, [cleanupBeforeUnloadGuard]);
+
+    const installTerminalAutoScroll = useCallback((
+        slot: TerminalBootstrapSlot,
+        iframe: HTMLIFrameElement,
+        term: NonNullable<TerminalWindow['term']>
+    ): void => {
+        cleanupTerminalAutoScroll(slot);
+
+        try {
+            const xterm = term as TerminalWithOnWriteParsed;
+            const scrollHandler = () => {
+                const activeBuffer = xterm.buffer?.active as ({ baseY?: number; viewportY?: number } | undefined);
+                const baseY = typeof activeBuffer?.baseY === 'number' ? activeBuffer.baseY : 0;
+                const viewportY = typeof activeBuffer?.viewportY === 'number' ? activeBuffer.viewportY : baseY;
+
+                if (activeBuffer && (baseY - viewportY < 10)) {
+                    xterm.scrollToBottom?.();
+                } else {
+                    xterm.scrollToBottom?.();
+                }
+            };
+
+            let writeDisposable: TerminalOnWriteParsedDisposable | null = null;
+            let mutationObserver: MutationObserver | null = null;
+
+            if (typeof xterm.onWriteParsed === 'function') {
+                writeDisposable = xterm.onWriteParsed(scrollHandler) || null;
+            } else {
+                const screen = iframe.contentDocument?.querySelector('.xterm-screen') || iframe.contentDocument?.body;
+                if (screen) {
+                    mutationObserver = new MutationObserver(scrollHandler);
+                    mutationObserver.observe(screen, { childList: true, subtree: true, characterData: true });
+                }
+            }
+
+            terminalAutoScrollCleanupRef.current[slot] = () => {
+                if (writeDisposable && typeof writeDisposable.dispose === 'function') {
+                    writeDisposable.dispose();
+                }
+                mutationObserver?.disconnect();
+            };
+        } catch (error) {
+            console.error('Failed to setup auto-scroll:', error);
+        }
+    }, [cleanupTerminalAutoScroll]);
+
+    const cleanupAllIframeResources = useCallback((): void => {
+        cleanupTerminalLinkHandler('agent');
+        cleanupBeforeUnloadGuard('agent');
+
+        for (const slot of Object.keys(terminalFrameLinkCleanupRefs.current)) {
+            cleanupTerminalLinkHandler(slot);
+        }
+        for (const slot of Object.keys(terminalAutoScrollCleanupRef.current)) {
+            cleanupTerminalAutoScroll(slot);
+        }
+        for (const slot of Object.keys(iframeBeforeUnloadCleanupRef.current)) {
+            cleanupBeforeUnloadGuard(slot);
+        }
+    }, [cleanupBeforeUnloadGuard, cleanupTerminalAutoScroll, cleanupTerminalLinkHandler]);
+
     useEffect(() => {
         terminalBootstrapStateRef.current = {
             agent: 'idle',
@@ -437,6 +565,13 @@ export function SessionView({
             resetAllTerminalStartupScriptStates();
         };
     }, [resetAllTerminalStartupScriptStates]);
+
+    useEffect(() => {
+        cleanupAllIframeResources();
+        return () => {
+            cleanupAllIframeResources();
+        };
+    }, [cleanupAllIframeResources, sessionName]);
 
     const getTerminalBootstrapKey = useCallback((slot: TerminalBootstrapSlot) => {
         return `${TERMINAL_BOOTSTRAP_STORAGE_PREFIX}${sessionName}:${slot}`;
@@ -679,6 +814,7 @@ export function SessionView({
     const [isPreviewVisible, setIsPreviewVisible] = useState(true);
     const [previewInputUrl, setPreviewInputUrl] = useState('');
     const [previewUrl, setPreviewUrl] = useState('');
+    const [loadedPreviewTargetUrl, setLoadedPreviewTargetUrl] = useState('');
     const [isPreviewPickerActive, setIsPreviewPickerActive] = useState(false);
     const [isResolvingElement, setIsResolvingElement] = useState(false);
     const [isRepoViewActive, setIsRepoViewActive] = useState(false);
@@ -937,6 +1073,9 @@ export function SessionView({
         });
         delete terminalFramesRef.current[tabId];
         delete tmuxStatusAppliedRef.current[tabId];
+        cleanupTerminalLinkHandler(bootstrapSlot);
+        cleanupBeforeUnloadGuard(bootstrapSlot);
+        cleanupTerminalAutoScroll(bootstrapSlot);
         clearTerminalBootstrapState(bootstrapSlot);
         clearTerminalStartupScriptState(bootstrapSlot);
         void (async () => {
@@ -945,7 +1084,15 @@ export function SessionView({
                 console.error(`Failed to terminate closed terminal tab session "${tabId}":`, result.error);
             }
         })();
-    }, [clearTerminalBootstrapState, clearTerminalStartupScriptState, sessionName, terminalTabIds]);
+    }, [
+        cleanupBeforeUnloadGuard,
+        cleanupTerminalAutoScroll,
+        cleanupTerminalLinkHandler,
+        clearTerminalBootstrapState,
+        clearTerminalStartupScriptState,
+        sessionName,
+        terminalTabIds,
+    ]);
 
     useEffect(() => {
         if (!isResizing) return;
@@ -1580,7 +1727,7 @@ export function SessionView({
         } finally {
             setIsRebasing(false);
         }
-    }, [currentBaseBranch, loadBaseBranchOptions, loadSessionDivergence, sessionName]);
+    }, [currentBaseBranch, loadBaseBranchOptions, loadSessionDivergence, repo, sessionName]);
 
     const handleRebase = () => {
         setIsRebaseDropdownOpen(!isRebaseDropdownOpen);
@@ -1643,7 +1790,25 @@ export function SessionView({
         } finally {
             setIsCreatingBaseBranch(false);
         }
-    }, [handleRebaseSelect, newBaseBranchFrom, newBaseBranchName, sessionName]);
+    }, [handleRebaseSelect, newBaseBranchFrom, newBaseBranchName, repo, sessionName]);
+
+    const stopPreviewProxy = useCallback(async (target: string): Promise<void> => {
+        const normalized = normalizePreviewUrl(target);
+        if (!normalized) return;
+
+        try {
+            await fetch('/api/preview-proxy/stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ target: normalized }),
+                keepalive: true,
+            });
+        } catch (error) {
+            console.error('Failed to stop preview proxy:', error);
+        }
+    }, []);
 
     const loadPreviewViaProxy = useCallback(async (rawUrl: string, openPreview: boolean): Promise<boolean> => {
         const normalized = normalizePreviewUrl(rawUrl);
@@ -1657,6 +1822,8 @@ export function SessionView({
         setFeedback(`Loading preview: ${normalized}`);
 
         try {
+            const previousTargetUrl = loadedPreviewTargetUrl;
+
             const response = await fetch('/api/preview-proxy/start', {
                 method: 'POST',
                 headers: {
@@ -1673,6 +1840,10 @@ export function SessionView({
             }
 
             setPreviewUrl(payload.proxyUrl);
+            setLoadedPreviewTargetUrl(normalized);
+            if (previousTargetUrl && previousTargetUrl !== normalized) {
+                void stopPreviewProxy(previousTargetUrl);
+            }
             if (openPreview) {
                 setIsPreviewVisible(true);
             }
@@ -1684,7 +1855,7 @@ export function SessionView({
             setFeedback(`Failed to load preview: ${message}`);
             return false;
         }
-    }, []);
+    }, [loadedPreviewTargetUrl, stopPreviewProxy]);
 
     const handleTogglePreviewPicker = useCallback(() => {
         if (!previewUrl) {
@@ -1740,10 +1911,14 @@ export function SessionView({
             return;
         }
 
+        if (loadedPreviewTargetUrl) {
+            void stopPreviewProxy(loadedPreviewTargetUrl);
+        }
         setPreviewUrl('');
+        setLoadedPreviewTargetUrl('');
         setIsPreviewPickerActive(false);
         setFeedback('Preview unloaded');
-    }, [previewUrl]);
+    }, [loadedPreviewTargetUrl, previewUrl, stopPreviewProxy]);
 
     const handlePreviewIframeLoad = useCallback(() => {
         postPreviewControlMessage({ type: 'viba:preview-location-request' });
@@ -1765,6 +1940,14 @@ export function SessionView({
             window.clearTimeout(timer);
         };
     }, [isPreviewVisible, previewInputUrl]);
+
+    useEffect(() => {
+        return () => {
+            if (loadedPreviewTargetUrl) {
+                void stopPreviewProxy(loadedPreviewTargetUrl);
+            }
+        };
+    }, [loadedPreviewTargetUrl, stopPreviewProxy]);
 
     useEffect(() => {
         const handlePreviewMessage = (event: MessageEvent) => {
@@ -1801,6 +1984,7 @@ export function SessionView({
             if (payload.type === 'viba:preview-location-change') {
                 if (typeof payload.url === 'string' && payload.url.trim().length > 0) {
                     setPreviewInputUrl(payload.url);
+                    setLoadedPreviewTargetUrl(payload.url);
                 }
                 return;
             }
@@ -1993,15 +2177,7 @@ export function SessionView({
             return;
         }
 
-        if (iframe.contentWindow) {
-            // Attempt to nullify the internal ttyd handler
-            iframe.contentWindow.onbeforeunload = null;
-
-            // Or add a high-priority listener that stops the popup
-            iframe.contentWindow.addEventListener('beforeunload', (event) => {
-                event.stopImmediatePropagation();
-            }, true);
-        }
+        installBeforeUnloadGuard('agent', iframe);
 
         setFeedback('Connecting to terminal...');
 
@@ -2242,14 +2418,15 @@ export function SessionView({
             return;
         }
 
-        if (iframe.contentWindow) {
-            // Attempt to nullify the internal ttyd handler
-            iframe.contentWindow.onbeforeunload = null;
+        const isBootstrapOnlyFrame = iframe === terminalBootstrapRef.current;
+        const linkCleanupRef = getTerminalLinkCleanupRef(bootstrapSlot);
 
-            // Or add a high-priority listener that stops the popup
-            iframe.contentWindow.addEventListener('beforeunload', (event) => {
-                event.stopImmediatePropagation();
-            }, true);
+        if (!isBootstrapOnlyFrame) {
+            installBeforeUnloadGuard(bootstrapSlot, iframe);
+        } else {
+            cleanupBeforeUnloadGuard(bootstrapSlot);
+            cleanupTerminalLinkHandler(bootstrapSlot);
+            cleanupTerminalAutoScroll(bootstrapSlot);
         }
 
         const checkAndInject = (attempts = 0) => {
@@ -2262,11 +2439,13 @@ export function SessionView({
                 if (win && win.term) {
                     ensureTmuxStatusBarHidden(tabId);
                     const term = win.term;
-                    attachTerminalLinkHandler(iframe, terminalFrameLinkCleanupRef, {
-                        onLinkActivated: () => setIsTerminalMinimized(true),
-                        directOpenBehavior: 'preview',
-                        modifierOpenBehavior: 'new_tab',
-                    });
+                    if (!isBootstrapOnlyFrame) {
+                        attachTerminalLinkHandler(iframe, linkCleanupRef, {
+                            onLinkActivated: () => setIsTerminalMinimized(true),
+                            directOpenBehavior: 'preview',
+                            modifierOpenBehavior: 'new_tab',
+                        });
+                    }
 
                     // Ensure terminal palette stays in sync with app/OS theme.
                     const themeApplied = applyThemeToTerminalWindow(win);
@@ -2278,35 +2457,8 @@ export function SessionView({
                         startTerminalProcessMonitor(iframe, term);
                     }
 
-                    // Enable auto-scroll to bottom on output
-                    try {
-                        const xterm = term as TerminalWithOnWriteParsed;
-                        const scrollHandler = () => {
-                            const activeBuffer = xterm.buffer?.active as ({ baseY?: number; viewportY?: number } | undefined);
-                            const baseY = typeof activeBuffer?.baseY === 'number' ? activeBuffer.baseY : 0;
-                            const viewportY = typeof activeBuffer?.viewportY === 'number' ? activeBuffer.viewportY : baseY;
-
-                            // Only scroll if we are close to the bottom to allow reviewing history
-                            if (activeBuffer && (baseY - viewportY < 10)) {
-                                xterm.scrollToBottom?.();
-                            } else {
-                                // Fallback if buffer access fails or simple mode
-                                xterm.scrollToBottom?.();
-                            }
-                        };
-
-                        if (typeof xterm.onWriteParsed === 'function') {
-                            xterm.onWriteParsed(scrollHandler);
-                        } else {
-                            // Fallback for older xterm or different setups
-                            const screen = iframe.contentDocument?.querySelector('.xterm-screen') || iframe.contentDocument?.body;
-                            if (screen) {
-                                const observer = new MutationObserver(scrollHandler);
-                                observer.observe(screen, { childList: true, subtree: true, characterData: true });
-                            }
-                        }
-                    } catch (e) {
-                        console.error('Failed to setup auto-scroll:', e);
+                    if (!isBootstrapOnlyFrame) {
+                        installTerminalAutoScroll(bootstrapSlot, iframe, term);
                     }
 
                     const alreadyBootstrapped = hasTerminalBootstrapped(bootstrapSlot);
@@ -2429,6 +2581,9 @@ export function SessionView({
             : 'Run dev server script in terminal';
     const isMobileRightPanelOverlay = isMobileViewport;
     const isMobileOverlayExpanded = isMobileRightPanelOverlay && !isRightPanelCollapsed;
+    const renderedTerminalTabIds = terminalPersistenceMode === 'tmux'
+        ? [activeTerminalTabId]
+        : terminalTabIds;
     const showDesktopSplitHandle = !isRightPanelCollapsed && !isMobileRightPanelOverlay;
     const showInlineRightPanelToggle = !isMobileRightPanelOverlay || !isRightPanelCollapsed;
     const rightPanelWrapperClass = isMobileRightPanelOverlay
@@ -2770,7 +2925,13 @@ export function SessionView({
                             </div>
                         )}
                         <iframe
-                            ref={iframeRef}
+                            ref={(node) => {
+                                iframeRef.current = node;
+                                if (!node) {
+                                    cleanupTerminalLinkHandler('agent');
+                                    cleanupBeforeUnloadGuard('agent');
+                                }
+                            }}
                             src={agentTerminalSrc}
                             className={`h-full w-full border-none transition-opacity duration-200 ${isAgentTerminalThemeReady ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${(isResizing || isSplitResizing) ? 'pointer-events-none' : ''}`}
                             allow="clipboard-read; clipboard-write"
@@ -2988,6 +3149,7 @@ export function SessionView({
                                                                 className="truncate text-[10px]"
                                                                 onClick={() => {
                                                                     if (tabId === activeTerminalTabId) return;
+                                                                    setFloatingTerminalThemeReadyForTab(tabId, false);
                                                                     setActiveTerminalTabId(tabId);
                                                                 }}
                                                                 title={tabId}
@@ -3049,10 +3211,11 @@ export function SessionView({
                                                     <span className="loading loading-spinner loading-md text-slate-400 dark:text-slate-500" />
                                                 </div>
                                             )}
-                                            {terminalTabIds.map((tabId) => {
+                                            {renderedTerminalTabIds.map((tabId) => {
                                                 const isActiveTab = tabId === activeTerminalTabId;
                                                 const isTabThemeReady = Boolean(floatingTerminalThemeReadyByTab[tabId]);
                                                 const tabSrc = terminalTabSources[tabId] || floatingTerminalSrc;
+                                                const bootstrapSlot = getFloatingTerminalBootstrapSlot(tabId);
                                                 return (
                                                     <iframe
                                                         key={tabId}
@@ -3060,6 +3223,9 @@ export function SessionView({
                                                             if (node) {
                                                                 terminalFramesRef.current[tabId] = node;
                                                             } else {
+                                                                cleanupTerminalLinkHandler(bootstrapSlot);
+                                                                cleanupBeforeUnloadGuard(bootstrapSlot);
+                                                                cleanupTerminalAutoScroll(bootstrapSlot);
                                                                 delete terminalFramesRef.current[tabId];
                                                             }
                                                         }}

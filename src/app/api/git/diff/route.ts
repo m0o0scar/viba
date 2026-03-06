@@ -20,6 +20,7 @@ export async function GET(request: Request) {
   const commitHash = searchParams.get('commit');
   const fromCommitHash = searchParams.get('from');
   const toCommitHash = searchParams.get('to');
+  const summaryOnly = searchParams.get('summary') === '1';
   const hasSingleCommit = !!commitHash;
   const hasCommitRange = !!fromCommitHash && !!toCommitHash;
 
@@ -82,6 +83,13 @@ export async function GET(request: Request) {
         return NextResponse.json({ left: before, right: after, diff });
       }
       
+      if (summaryOnly) {
+        const files = hasSingleCommit
+          ? await git.getCommitDiffFiles(commitHash!)
+          : await git.getCommitRangeDiffFiles(fromCommitHash!, toCommitHash!);
+        return NextResponse.json({ files });
+      }
+
       // Otherwise, get the list of files changed in the commit / range
       const { files, diff } = hasSingleCommit
         ? await git.getCommitDiff(commitHash!)

@@ -8,6 +8,25 @@ import { useEscapeDismiss } from '@/hooks/use-escape-dismiss';
 import { CommitFileTreeItem, buildCommitFileTree, collectCommitFolderPaths, getParentPaths } from './commit-file-tree';
 import { DiffView } from './diff-view';
 
+const MAX_SELECTION_STATE_ENTRIES = 40;
+
+function pruneSelectionStateMap<T>(state: Record<string, T>, currentKey: string): Record<string, T> {
+  const entries = Object.entries(state);
+  if (entries.length <= MAX_SELECTION_STATE_ENTRIES) {
+    return state;
+  }
+
+  const nextEntries = entries
+    .filter(([key]) => key !== currentKey)
+    .slice(-(MAX_SELECTION_STATE_ENTRIES - 1));
+
+  if (currentKey in state) {
+    nextEntries.push([currentKey, state[currentKey]]);
+  }
+
+  return Object.fromEntries(nextEntries);
+}
+
 // Component to show commit file diff
 export function CommitFileDiffView({
   repoPath,
@@ -191,10 +210,10 @@ export function CommitChangesView({
         return previous;
       }
 
-      return {
+      return pruneSelectionStateMap({
         ...previous,
         [selectionKey]: path,
-      };
+      }, selectionKey);
     });
   }, [selectionKey]);
 
@@ -255,10 +274,10 @@ export function CommitChangesView({
       } else {
         next.add(path);
       }
-      return {
+      return pruneSelectionStateMap({
         ...prev,
         [selectionKey]: next,
-      };
+      }, selectionKey);
     });
   }, [selectionKey]);
 

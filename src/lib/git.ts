@@ -1101,14 +1101,17 @@ export class GitService {
     return { fromRef: oldest, toRef: latest };
   }
 
-  async getCommitDiff(commitHash: string): Promise<{ files: { path: string; additions: number; deletions: number; status: string }[]; diff: string }> {
+  async getCommitDiffFiles(commitHash: string): Promise<{ path: string; additions: number; deletions: number; status: string }[]> {
     // Get the list of files changed in this commit with stats
     // Use -m --first-parent to handle merge commits properly:
     // - For regular commits: compares against the single parent (same behavior as before)
     // - For merge commits: compares against the first parent (the branch being merged INTO)
     const diffStat = await this.git.raw(['diff-tree', '-m', '--first-parent', '--no-commit-id', '--name-status', '-r', commitHash]);
-    const files = this.parseNameStatusDiff(diffStat);
+    return this.parseNameStatusDiff(diffStat);
+  }
 
+  async getCommitDiff(commitHash: string): Promise<{ files: { path: string; additions: number; deletions: number; status: string }[]; diff: string }> {
+    const files = await this.getCommitDiffFiles(commitHash);
     // Get the full diff for this commit
     // Use -m --first-parent for merge commits to show the diff against first parent
     const diff = await this.git.raw(['show', '-m', '--first-parent', '--format=', commitHash]);
@@ -1116,10 +1119,15 @@ export class GitService {
     return { files, diff };
   }
 
-  async getCommitRangeDiff(oldestCommitHash: string, latestCommitHash: string): Promise<{ files: { path: string; additions: number; deletions: number; status: string }[]; diff: string }> {
+  async getCommitRangeDiffFiles(oldestCommitHash: string, latestCommitHash: string): Promise<{ path: string; additions: number; deletions: number; status: string }[]> {
     const { fromRef, toRef } = await this.getCommitRangeRefs(oldestCommitHash, latestCommitHash);
     const diffStat = await this.git.raw(['diff', '--name-status', fromRef, toRef]);
-    const files = this.parseNameStatusDiff(diffStat);
+    return this.parseNameStatusDiff(diffStat);
+  }
+
+  async getCommitRangeDiff(oldestCommitHash: string, latestCommitHash: string): Promise<{ files: { path: string; additions: number; deletions: number; status: string }[]; diff: string }> {
+    const files = await this.getCommitRangeDiffFiles(oldestCommitHash, latestCommitHash);
+    const { fromRef, toRef } = await this.getCommitRangeRefs(oldestCommitHash, latestCommitHash);
     const diff = await this.git.raw(['diff', fromRef, toRef]);
     return { files, diff };
   }

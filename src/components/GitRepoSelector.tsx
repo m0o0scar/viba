@@ -51,6 +51,8 @@ type ThemeMode = 'auto' | 'light' | 'dark';
 const DEFAULT_PROJECT_STARTUP_COMMAND = '';
 const DEFAULT_PROJECT_DEV_SERVER_COMMAND = '';
 const THEME_MODE_SEQUENCE: ThemeMode[] = ['auto', 'light', 'dark'];
+const HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS = 1500;
+const HOME_REPO_DISCOVERY_MAX_AUTOSTART = 6;
 
 const SESSION_MODE_STORAGE_KEY = 'viba:new-session-mode';
 const SESSION_TITLE_MAX_LENGTH = 120;
@@ -1698,19 +1700,58 @@ export default function GitRepoSelector({
 
   useEffect(() => {
     if (mode !== 'home' || recentProjects.length === 0) return;
+    const runtimeWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
     const projectsToDiscover = recentProjects.filter((projectPath) => !(projectPath in projectGitReposByPath));
     if (projectsToDiscover.length === 0) return;
 
     let cancelled = false;
-    void (async () => {
-      for (const projectPath of projectsToDiscover.slice(0, 24)) {
-        if (cancelled) return;
-        await discoverHomeProjectRepos(projectPath);
+    let fallbackTimer: number | null = null;
+    let idleHandle: number | null = null;
+    const queuedProjects = projectsToDiscover.slice(0, HOME_REPO_DISCOVERY_MAX_AUTOSTART);
+
+    const clearScheduledWork = () => {
+      if (fallbackTimer !== null) {
+        window.clearTimeout(fallbackTimer);
+        fallbackTimer = null;
       }
-    })();
+      if (idleHandle !== null && typeof runtimeWindow.cancelIdleCallback === 'function') {
+        runtimeWindow.cancelIdleCallback(idleHandle);
+        idleHandle = null;
+      }
+    };
+
+    const scheduleNext = (index: number) => {
+      if (cancelled || index >= queuedProjects.length) return;
+
+      const run = () => {
+        if (cancelled) return;
+        void discoverHomeProjectRepos(queuedProjects[index]).finally(() => {
+          scheduleNext(index + 1);
+        });
+      };
+
+      if (typeof runtimeWindow.requestIdleCallback === 'function') {
+        idleHandle = runtimeWindow.requestIdleCallback(() => {
+          idleHandle = null;
+          run();
+        }, { timeout: HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS });
+        return;
+      }
+
+      fallbackTimer = window.setTimeout(() => {
+        fallbackTimer = null;
+        run();
+      }, HOME_REPO_DISCOVERY_IDLE_TIMEOUT_MS);
+    };
+
+    scheduleNext(0);
 
     return () => {
       cancelled = true;
+      clearScheduledWork();
     };
   }, [discoverHomeProjectRepos, mode, projectGitReposByPath, recentProjects]);
 

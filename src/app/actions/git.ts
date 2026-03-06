@@ -88,6 +88,11 @@ const TTYD_MONOCHROME_THEME = {
   brightCyan: '#adbac7',
   brightWhite: '#adbac7',
 } as const;
+const DEFAULT_TMUX_HISTORY_LIMIT = 50000;
+const TMUX_HISTORY_LIMIT = (() => {
+  const raw = Number.parseInt(process.env.VIBA_TMUX_HISTORY_LIMIT ?? '', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TMUX_HISTORY_LIMIT;
+})();
 
 const REPO_CARD_ICON_EXTENSIONS = new Set([
   '.avif',
@@ -938,7 +943,7 @@ export async function startTtydProcess(): Promise<{ success: boolean; persistenc
         stdio: 'ignore',
         env: process.env,
       });
-      spawnSync('tmux', ['set-option', '-g', 'history-limit', '200000'], {
+      spawnSync('tmux', ['set-option', '-g', 'history-limit', String(TMUX_HISTORY_LIMIT)], {
         stdio: 'ignore',
         env: process.env,
       });
@@ -1166,9 +1171,10 @@ export async function prepareSessionWorktree(
       worktreePath,
       branchName
     };
-  } catch (e: any) {
-    console.error("Failed to create worktree:", e);
-    return { success: false, error: e.message || String(e) };
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Failed to create worktree:", error);
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -1178,8 +1184,8 @@ export async function removeWorktree(repoPath: string, worktreePath: string, bra
 
     try {
       await git.raw(['worktree', 'remove', '--force', worktreePath]);
-    } catch (e: any) {
-      const errorMsg = e.message || String(e);
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       if (errorMsg.includes('is not a working tree') || errorMsg.includes('not a valid path')) {
         console.warn(`Path ${worktreePath} is not a valid working tree according to git, continuing cleanup...`);
       } else {
@@ -1196,8 +1202,9 @@ export async function removeWorktree(repoPath: string, worktreePath: string, bra
 
     try {
       await git.deleteLocalBranch(branchName, true);
-    } catch (e: any) {
-      console.warn(`Failed to delete branch ${branchName}: ${e.message || e}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn(`Failed to delete branch ${branchName}: ${errorMessage}`);
     }
 
     try {
@@ -1214,8 +1221,8 @@ export async function removeWorktree(repoPath: string, worktreePath: string, bra
     }
 
     return { success: true };
-  } catch (e: any) {
-    console.error("Failed to cleanup worktree (critical error):", e);
+  } catch (error: unknown) {
+    console.error("Failed to cleanup worktree (critical error):", error);
     // Even on critical error, return success: true if we want the session to be considered "deleted"
     // so the metadata can be removed.
     return { success: true };

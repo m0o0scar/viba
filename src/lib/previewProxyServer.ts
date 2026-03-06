@@ -5,6 +5,8 @@ import { createProxyMiddleware, responseInterceptor } from 'http-proxy-middlewar
 const PROXY_HOST = '127.0.0.1';
 const PICKER_SCRIPT_PATH = '/__viba_preview_picker.js';
 const PICKER_SCRIPT_VERSION = '4';
+const PREVIEW_PROXY_IDLE_TTL_MS = 5 * 60 * 1000;
+const PREVIEW_PROXY_SWEEP_INTERVAL_MS = 60 * 1000;
 
 const PICKER_CLIENT_SCRIPT_TEMPLATE = String.raw`(() => {
   if (window.__vibaPreviewPickerInstalled) {
@@ -500,12 +502,14 @@ type PreviewProxyState = {
   port: number;
   server: http.Server;
   targetOrigin: string;
+  lastAccessedAt: number;
 };
 
 declare global {
   var __vibaPreviewProxyState: PreviewProxyState | undefined;
   var __vibaPreviewProxyStates: Map<string, PreviewProxyState> | undefined;
   var __vibaPreviewProxyPromises: Map<string, Promise<PreviewProxyState>> | undefined;
+  var __vibaPreviewProxySweepTimer: ReturnType<typeof setInterval> | undefined;
 }
 
 const injectPickerScript = (html: string): string => {
@@ -551,6 +555,50 @@ const getPreviewProxyPromiseMap = (): Map<string, Promise<PreviewProxyState>> =>
   }
 
   return globalThis.__vibaPreviewProxyPromises;
+};
+
+const markPreviewProxyStateUsed = (state: PreviewProxyState): void => {
+  state.lastAccessedAt = Date.now();
+};
+
+const closePreviewProxyState = async (state: PreviewProxyState): Promise<void> => {
+  const states = getPreviewProxyStateMap();
+  const existing = states.get(state.targetOrigin);
+  if (existing === state) {
+    states.delete(state.targetOrigin);
+  }
+
+  if (!state.server.listening) return;
+
+  await new Promise<void>((resolve) => {
+    state.server.close(() => resolve());
+  });
+};
+
+const sweepInactivePreviewProxyStates = async (now: number = Date.now()): Promise<void> => {
+  const states = getPreviewProxyStateMap();
+  const staleStates = Array.from(states.values()).filter((state) => (
+    !state.server.listening || now - state.lastAccessedAt >= PREVIEW_PROXY_IDLE_TTL_MS
+  ));
+
+  await Promise.all(staleStates.map(async (state) => {
+    try {
+      await closePreviewProxyState(state);
+    } catch (error) {
+      console.warn(`Failed to close preview proxy for ${state.targetOrigin}:`, error);
+    }
+  }));
+};
+
+const ensurePreviewProxySweeperStarted = (): void => {
+  if (globalThis.__vibaPreviewProxySweepTimer) return;
+
+  const timer = setInterval(() => {
+    void sweepInactivePreviewProxyStates();
+  }, PREVIEW_PROXY_SWEEP_INTERVAL_MS);
+
+  timer.unref?.();
+  globalThis.__vibaPreviewProxySweepTimer = timer;
 };
 
 const createPreviewProxyServer = async (targetOrigin: string): Promise<PreviewProxyState> => {
@@ -602,6 +650,11 @@ const createPreviewProxyServer = async (targetOrigin: string): Promise<PreviewPr
   });
 
   const server = http.createServer((request, response) => {
+    const activeState = getPreviewProxyStateMap().get(targetOrigin);
+    if (activeState) {
+      markPreviewProxyStateUsed(activeState);
+    }
+
     if (request.url === PICKER_SCRIPT_PATH || request.url?.startsWith(`${PICKER_SCRIPT_PATH}?`)) {
       response.writeHead(200, {
         'cache-control': 'no-store',
@@ -628,6 +681,11 @@ const createPreviewProxyServer = async (targetOrigin: string): Promise<PreviewPr
   });
 
   server.on('upgrade', (request: IncomingMessage, socket: Socket, head: Buffer) => {
+    const activeState = getPreviewProxyStateMap().get(targetOrigin);
+    if (activeState) {
+      markPreviewProxyStateUsed(activeState);
+    }
+
     const upgrade = (middleware as { upgrade?: (req: IncomingMessage, socket: Socket, head: Buffer) => void }).upgrade;
 
     if (!upgrade) {
@@ -656,6 +714,7 @@ const createPreviewProxyServer = async (targetOrigin: string): Promise<PreviewPr
     port,
     server,
     targetOrigin,
+    lastAccessedAt: Date.now(),
   };
 };
 
@@ -665,8 +724,12 @@ export const ensurePreviewProxyServer = async (target: string): Promise<{ proxyB
   const states = getPreviewProxyStateMap();
   const pendingCreates = getPreviewProxyPromiseMap();
 
+  ensurePreviewProxySweeperStarted();
+  await sweepInactivePreviewProxyStates();
+
   const activeState = states.get(targetOrigin);
   if (activeState && activeState.server.listening) {
+    markPreviewProxyStateUsed(activeState);
     return { proxyBaseUrl: `http://${PROXY_HOST}:${activeState.port}` };
   }
 
@@ -680,8 +743,7 @@ export const ensurePreviewProxyServer = async (target: string): Promise<{ proxyB
     return { proxyBaseUrl: `http://${PROXY_HOST}:${state.port}` };
   }
 
-  let createPromise: Promise<PreviewProxyState>;
-  createPromise = createPreviewProxyServer(targetOrigin)
+  const createPromise: Promise<PreviewProxyState> = createPreviewProxyServer(targetOrigin)
     .then((state) => {
       states.set(targetOrigin, state);
       state.server.once('close', () => {
@@ -702,6 +764,28 @@ export const ensurePreviewProxyServer = async (target: string): Promise<{ proxyB
   pendingCreates.set(targetOrigin, createPromise);
   const nextState = await createPromise;
   return { proxyBaseUrl: `http://${PROXY_HOST}:${nextState.port}` };
+};
+
+export const stopPreviewProxyServer = async (target: string): Promise<boolean> => {
+  const normalizedTarget = normalizeTargetUrl(target);
+  const targetOrigin = normalizedTarget.origin;
+  const states = getPreviewProxyStateMap();
+  const pendingCreates = getPreviewProxyPromiseMap();
+
+  const pending = pendingCreates.get(targetOrigin);
+  if (pending) {
+    const state = await pending;
+    await closePreviewProxyState(state);
+    return true;
+  }
+
+  const activeState = states.get(targetOrigin);
+  if (!activeState) {
+    return false;
+  }
+
+  await closePreviewProxyState(activeState);
+  return true;
 };
 
 export const buildPreviewProxyUrl = (proxyBaseUrl: string, target: string): string => {

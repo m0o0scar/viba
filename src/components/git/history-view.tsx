@@ -1,6 +1,7 @@
 'use client';
 
 import { useGitLog, useGitBranches, useGitStatus, useGitAction, useCommitDiff, useCommitFileDiff, CommitFile, useRepository, useUpdateRepository, useSettings, useUpdateSettings } from '@/hooks/use-git';
+import { useQueryClient } from '@tanstack/react-query';
 import { Repository, BranchTrackingInfo } from '@/lib/types';
 import { GitGraph, GitGraphHandle } from './git-graph';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
@@ -211,6 +212,7 @@ function FileStatusIcon({ status }: { status: string }) {
 
 
 export function HistoryView({ repoPath }: { repoPath: string }) {
+  const queryClient = useQueryClient();
   const { data: settings } = useSettings();
   const updateSettings = useUpdateSettings();
   const router = useRouter();
@@ -236,6 +238,19 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     lastVisibilityRefreshAtRef.current = now;
     void Promise.all([refetchBranches(), refetchLog()]);
   }, [refetchBranches, refetchLog]);
+
+  useEffect(() => {
+    queryClient.removeQueries({
+      type: 'inactive',
+      predicate: (query) => (
+        Array.isArray(query.queryKey)
+        && query.queryKey[0] === 'git'
+        && query.queryKey[1] === repoPath
+        && query.queryKey[2] === 'log'
+        && query.queryKey[3] !== limit
+      ),
+    });
+  }, [limit, queryClient, repoPath]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -1501,7 +1516,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
 
   // Auto-fetch more commits when filtered results are too few
   const MIN_FILTERED_COMMITS = 50;
-  const MAX_AUTO_FETCH_LIMIT = 5000;
+  const MAX_AUTO_FETCH_LIMIT = 1000;
 
   useEffect(() => {
     if (
@@ -1534,16 +1549,15 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
       });
     } else {
       // Need to load more commits - increase limit
-      // Set a reasonable max limit to avoid infinite loading
-      if (limit < 5000) {
+      // Set a reasonable max limit to avoid runaway client-side graph work.
+      if (limit < MAX_AUTO_FETCH_LIMIT) {
         setLimit(l => l + 100);
       } else {
-        // Give up after 5000 commits
-        console.warn('Could not find commit after loading 5000 commits');
+        console.warn(`Could not find commit after loading ${MAX_AUTO_FETCH_LIMIT} commits`);
         setPendingScrollCommit(null);
       }
     }
-  }, [pendingScrollCommit, log?.all, isFetching, limit, selectSingleCommit]);
+  }, [MAX_AUTO_FETCH_LIMIT, pendingScrollCommit, log?.all, isFetching, limit, selectSingleCommit]);
 
   const scrollToBranchHeadCommit = useCallback((branch: string) => {
     if (!branchData?.branchCommits) return;

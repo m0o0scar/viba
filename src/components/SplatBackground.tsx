@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const LIGHT_COLOR_PALETTE = [
   '#f8c4d9', '#f2c3af', '#ffeab7',
@@ -77,6 +77,9 @@ export default function SplatBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pathname = usePathname();
   const visible = VISIBLE_ROUTES.has(pathname);
+  const [pageVisible, setPageVisible] = useState(() => (
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible'
+  ));
 
   const darkRef = useRef(false);
   const splatsRef = useRef<SplatState[]>([]);
@@ -95,6 +98,19 @@ export default function SplatBackground() {
   }, []);
 
   useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const handleVisibilityChange = () => {
+      setPageVisible(document.visibilityState === 'visible');
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -110,7 +126,7 @@ export default function SplatBackground() {
       attributeFilter: ['class'],
     });
 
-    function animate() {
+    const paintFrame = () => {
       const w = canvas!.width;
       const h = canvas!.height;
       const t = darkRef.current ? THEME.dark : THEME.light;
@@ -125,20 +141,33 @@ export default function SplatBackground() {
         const color = darkRef.current ? splat.darkColor : splat.lightColor;
         drawSplat(ctx!, splat, color, t.gradientEnd);
       }
+    };
 
+    function animate() {
+      if (!visible || !pageVisible) {
+        animIdRef.current = 0;
+        return;
+      }
+
+      paintFrame();
       animIdRef.current = requestAnimationFrame(animate);
     }
 
     resize();
-    animate();
+    if (visible && pageVisible) {
+      animate();
+    }
     window.addEventListener('resize', resize);
 
     return () => {
       observer.disconnect();
       window.removeEventListener('resize', resize);
-      cancelAnimationFrame(animIdRef.current);
+      if (animIdRef.current !== 0) {
+        cancelAnimationFrame(animIdRef.current);
+        animIdRef.current = 0;
+      }
     };
-  }, [resize]);
+  }, [pageVisible, resize, visible]);
 
   return (
     <canvas

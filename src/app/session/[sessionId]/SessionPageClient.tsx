@@ -18,6 +18,7 @@ type SessionNotificationPayload = {
 const SESSION_FALLBACK_FAVICON_PATH = '/repo-generic-icon.svg';
 const APP_DEFAULT_FAVICON_PATH = '/palx-icon.png';
 const SESSION_FAVICON_DATA_ATTR = 'data-viba-session-favicon';
+const MAX_SESSION_BOOTSTRAP_CACHE_SIZE = 20;
 const sessionBootstrapResultCache = new Map<string, Extract<SessionPageBootstrapResult, { success: true }>>();
 const sessionBootstrapPromiseCache = new Map<string, Promise<SessionPageBootstrapResult>>();
 
@@ -61,9 +62,27 @@ function restoreAppFavicon(): void {
     }
 }
 
+function upsertSessionBootstrapResultCache(
+    sessionId: string,
+    result: Extract<SessionPageBootstrapResult, { success: true }>
+): void {
+    if (sessionBootstrapResultCache.has(sessionId)) {
+        sessionBootstrapResultCache.delete(sessionId);
+    }
+
+    sessionBootstrapResultCache.set(sessionId, result);
+
+    while (sessionBootstrapResultCache.size > MAX_SESSION_BOOTSTRAP_CACHE_SIZE) {
+        const oldestKey = sessionBootstrapResultCache.keys().next().value;
+        if (!oldestKey) break;
+        sessionBootstrapResultCache.delete(oldestKey);
+    }
+}
+
 function loadSessionPageBootstrapCached(sessionId: string): Promise<SessionPageBootstrapResult> {
     const cached = sessionBootstrapResultCache.get(sessionId);
     if (cached) {
+        upsertSessionBootstrapResultCache(sessionId, cached);
         return Promise.resolve(cached);
     }
 
@@ -75,7 +94,7 @@ function loadSessionPageBootstrapCached(sessionId: string): Promise<SessionPageB
     const request = getSessionPageBootstrap(sessionId)
         .then((result) => {
             if (result.success) {
-                sessionBootstrapResultCache.set(sessionId, result);
+                upsertSessionBootstrapResultCache(sessionId, result);
             }
             return result;
         })

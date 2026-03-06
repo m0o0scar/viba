@@ -286,6 +286,9 @@ export function useGitLog(
     },
     enabled: !!repoPath,
     placeholderData: (previousData) => previousData,
+    gcTime: 60_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: false,
     retry: (failureCount, error: GitError) => {
       if (error.status === 404 || error.status === 400) return false;
       return failureCount < 3;
@@ -362,6 +365,9 @@ export function useGitDiff(repoPath: string | null, filePath: string | null) {
       return res.json();
     },
     enabled: !!repoPath && !!filePath,
+    gcTime: 30_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: false,
     retry: (failureCount, error: GitError) => {
       if (error.status === 404 || error.status === 400) return false;
       return failureCount < 3;
@@ -389,13 +395,13 @@ export function useCommitDiff(repoPath: string | null, query: CommitDiffQuery) {
   const hasRange = !!fromCommitHash && !!toCommitHash;
   const hasSingleCommit = !!commitHash;
 
-  return useQuery<{ files: CommitFile[]; diff: string }>({
-    queryKey: ['git', repoPath, 'commit-diff', commitHash, fromCommitHash, toCommitHash],
+  return useQuery<{ files: CommitFile[] }>({
+    queryKey: ['git', repoPath, 'commit-diff', 'summary', commitHash, fromCommitHash, toCommitHash],
     queryFn: async () => {
       if (!repoPath) return null;
       if (!hasSingleCommit && !hasRange) return null;
 
-      const params = new URLSearchParams({ path: repoPath });
+      const params = new URLSearchParams({ path: repoPath, summary: '1' });
       if (hasSingleCommit) {
         params.set('commit', commitHash);
       } else if (hasRange) {
@@ -413,6 +419,9 @@ export function useCommitDiff(repoPath: string | null, query: CommitDiffQuery) {
       return res.json();
     },
     enabled: !!repoPath && (hasSingleCommit || hasRange),
+    gcTime: 30_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: false,
     retry: (failureCount, error: GitError) => {
       if (error.status === 404 || error.status === 400) return false;
       return failureCount < 3;
@@ -454,6 +463,9 @@ export function useCommitFileDiff(repoPath: string | null, filePath: string | nu
       return res.json();
     },
     enabled: !!repoPath && !!filePath && (hasSingleCommit || hasRange),
+    gcTime: 30_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: false,
     retry: (failureCount, error: GitError) => {
       if (error.status === 404 || error.status === 400) return false;
       return failureCount < 3;
@@ -604,7 +616,7 @@ const READ_ONLY_ACTIONS: readonly GitActionType[] = [
 interface GitActionPayload {
   repoPath: string;
   action: GitActionType;
-  data?: any;
+  data?: unknown;
   suppressErrorToast?: boolean;
 }
 
