@@ -206,7 +206,6 @@ export default function GitRepoSelector({
 
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const sessionNavigationCommittedRef = useRef(false);
-  const sessionNavigationFallbackTimerRef = useRef<number | null>(null);
 
   const collapsedSessionSetupLabel = 'Show Session Setup';
 
@@ -243,27 +242,10 @@ export default function GitRepoSelector({
     const targetPath = `/session/${encodeURIComponent(sessionName)}`;
     sessionNavigationCommittedRef.current = true;
     recordPendingSessionNavigation(sessionName);
-    router.replace(targetPath);
-
-    if (sessionNavigationFallbackTimerRef.current !== null) {
-      window.clearTimeout(sessionNavigationFallbackTimerRef.current);
-      sessionNavigationFallbackTimerRef.current = null;
-    }
-    sessionNavigationFallbackTimerRef.current = window.setTimeout(() => {
-      if (window.location.pathname !== targetPath) {
-        window.location.assign(targetPath);
-      }
-      sessionNavigationFallbackTimerRef.current = null;
-    }, 350);
-  }, [router]);
-
-  useEffect(() => {
-    return () => {
-      if (sessionNavigationFallbackTimerRef.current !== null) {
-        window.clearTimeout(sessionNavigationFallbackTimerRef.current);
-        sessionNavigationFallbackTimerRef.current = null;
-      }
-    };
+    // Use a hard navigation here. App Router transitions out of /new can be interrupted
+    // by pending server actions and iframe teardown, which can briefly land on /session
+    // and then snap back to /new. A full replace avoids that rollback path.
+    window.location.replace(targetPath);
   }, []);
 
   const refreshSessionData = useCallback(async (
