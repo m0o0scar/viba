@@ -3,8 +3,10 @@ import assert from 'node:assert';
 import {
   buildTtydTerminalSrc,
   detectGitRemoteProvider,
-  parseTerminalSessionEnvironmentsFromSrc,
+  mergeGitTerminalSessionEnvironments,
   parseGitRemoteHost,
+  parseTerminalSessionEnvironmentsFromSrc,
+  type ResolvedGitTerminalSessionEnvironment,
 } from './terminal-session.ts';
 
 describe('parseGitRemoteHost', () => {
@@ -113,5 +115,60 @@ describe('parseTerminalSessionEnvironmentsFromSrc', () => {
     assert.deepStrictEqual(parseTerminalSessionEnvironmentsFromSrc(src), [
       { name: 'GITHUB_TOKEN', value: 'new' },
     ]);
+  });
+});
+
+describe('mergeGitTerminalSessionEnvironments', () => {
+  const createCandidate = (
+    repoPath: string,
+    name: string,
+    value: string,
+    credentialId: string,
+    explicit: boolean,
+  ): ResolvedGitTerminalSessionEnvironment => ({
+    sourceRepoPath: repoPath,
+    environment: { name, value },
+    credentialId,
+    explicit,
+  });
+
+  it('keeps both GitHub and GitLab env vars for mixed-provider sessions', () => {
+    const environments = mergeGitTerminalSessionEnvironments([
+      createCandidate('/repos/a', 'GITHUB_TOKEN', 'gh-token', 'github-1', false),
+      createCandidate('/repos/b', 'GITLAB_TOKEN', 'gl-token', 'gitlab-1', false),
+    ]);
+
+    assert.deepStrictEqual(environments, [
+      { name: 'GITHUB_TOKEN', value: 'gh-token' },
+      { name: 'GITLAB_TOKEN', value: 'gl-token' },
+    ]);
+  });
+
+  it('prefers explicit repo mappings over auto-selected credentials', () => {
+    const environments = mergeGitTerminalSessionEnvironments([
+      createCandidate('/repos/a', 'GITHUB_TOKEN', 'auto-token', 'github-auto', false),
+      createCandidate('/repos/b', 'GITHUB_TOKEN', 'explicit-token', 'github-explicit', true),
+    ]);
+
+    assert.deepStrictEqual(environments, [
+      { name: 'GITHUB_TOKEN', value: 'explicit-token' },
+    ]);
+  });
+
+  it('omits a provider env when same-priority credentials conflict', () => {
+    const conflicts: string[] = [];
+    const environments = mergeGitTerminalSessionEnvironments([
+      createCandidate('/repos/a', 'GITHUB_TOKEN', 'token-a', 'github-a', false),
+      createCandidate('/repos/b', 'GITHUB_TOKEN', 'token-b', 'github-b', false),
+      createCandidate('/repos/c', 'GITLAB_TOKEN', 'gitlab-token', 'gitlab-a', false),
+    ], {
+      onConflict: (message) => conflicts.push(message),
+    });
+
+    assert.deepStrictEqual(environments, [
+      { name: 'GITLAB_TOKEN', value: 'gitlab-token' },
+    ]);
+    assert.strictEqual(conflicts.length, 1);
+    assert.match(conflicts[0], /Conflicting GITHUB_TOKEN credentials/);
   });
 });

@@ -4,6 +4,12 @@ export type TerminalSessionEnvironment = {
   name: string;
   value: string;
 };
+export type ResolvedGitTerminalSessionEnvironment = {
+  sourceRepoPath: string;
+  environment: TerminalSessionEnvironment;
+  credentialId: string;
+  explicit: boolean;
+};
 export type BuildTtydTerminalSrcOptions = {
   workingDirectory?: string | null;
 };
@@ -120,6 +126,49 @@ export function buildTtydTerminalSrc(
   params.append('arg', '-s');
   params.append('arg', tmuxSession);
   return `/terminal?${params.toString()}`;
+}
+
+export function mergeGitTerminalSessionEnvironments(
+  candidates: ResolvedGitTerminalSessionEnvironment[],
+  options?: { onConflict?: (message: string) => void },
+): TerminalSessionEnvironment[] {
+  const merged = new Map<string, ResolvedGitTerminalSessionEnvironment>();
+  const conflictedNames = new Set<string>();
+
+  for (const candidate of candidates) {
+    const envName = candidate.environment.name;
+    if (conflictedNames.has(envName)) continue;
+
+    const existing = merged.get(envName);
+    if (!existing) {
+      merged.set(envName, candidate);
+      continue;
+    }
+
+    if (
+      existing.credentialId === candidate.credentialId
+      || existing.environment.value === candidate.environment.value
+    ) {
+      continue;
+    }
+
+    if (existing.explicit && !candidate.explicit) {
+      continue;
+    }
+
+    if (!existing.explicit && candidate.explicit) {
+      merged.set(envName, candidate);
+      continue;
+    }
+
+    conflictedNames.add(envName);
+    merged.delete(envName);
+    options?.onConflict?.(
+      `Conflicting ${envName} credentials for repos ${existing.sourceRepoPath} and ${candidate.sourceRepoPath}; omitting ${envName}.`,
+    );
+  }
+
+  return Array.from(merged.values()).map((entry) => entry.environment);
 }
 
 export function parseTerminalSessionEnvironmentsFromSrc(src: string): TerminalSessionEnvironment[] {

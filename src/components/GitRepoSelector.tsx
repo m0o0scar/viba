@@ -26,6 +26,7 @@ import { listAgentApiCredentials, listCredentials } from '@/app/actions/credenti
 import type { Credential } from '@/lib/credentials';
 import { useRouter } from 'next/navigation';
 import { getBaseName } from '@/lib/path';
+import { doesSessionPrefillMatchProject } from '@/lib/session-prefill';
 import { notifySessionsUpdated, subscribeToSessionsUpdated } from '@/lib/session-updates';
 import { consumePendingSessionNavigationRetry, recordPendingSessionNavigation } from '@/lib/session-navigation';
 import { hasStartupTaskDescription } from '@/lib/agent-startup-prompt';
@@ -833,7 +834,7 @@ export default function GitRepoSelector({
       }
 
       const context = prefillResult.context;
-      if (context.repoPath !== selectedRepo) {
+      if (!doesSessionPrefillMatchProject(context, selectedRepo)) {
         setHasAppliedPrefill(true);
         return;
       }
