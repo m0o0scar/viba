@@ -121,6 +121,22 @@ function firstLinePreview(value: string | null | undefined) {
   return firstLine || '';
 }
 
+function stripMarkdownSyntax(value: string) {
+  return value
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/`{1,3}([^`]+)`{1,3}/g, '$1')
+    .replace(/(\*\*|__|\*|_|~~)/g, '')
+    .replace(/^\s{0,3}(#{1,6}|\d+\.\s|[-+*]\s|>\s)/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function plainTextPreview(value: string | null | undefined) {
+  const preview = firstLinePreview(value);
+  return preview ? stripMarkdownSyntax(preview) : '';
+}
+
 function MarkdownMessage({ value }: { value: string | null | undefined }) {
   const text = trimEmpty(value);
   if (!text) return null;
@@ -255,7 +271,7 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
     case 'reasoning':
       return renderCollapsibleHistoryItem({
         label: 'Reasoning',
-        title: firstLinePreview(item.summary) || firstLinePreview(item.text) || undefined,
+        title: plainTextPreview(item.summary) || plainTextPreview(item.text) || undefined,
         className: 'rounded-2xl border border-violet-200 bg-violet-50/60 px-4 py-3 text-sm text-violet-950 shadow-sm dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-100',
         summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
         labelClassName: 'shrink-0 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-200',
@@ -265,10 +281,14 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
         children: (
           <>
             {trimEmpty(item.summary) ? (
-              <div className="whitespace-pre-wrap break-words text-sm font-medium">{item.summary}</div>
+              <div className="font-medium">
+                <MarkdownMessage value={item.summary} />
+              </div>
             ) : null}
             {trimEmpty(item.text) ? (
-              <div className="whitespace-pre-wrap break-words text-sm opacity-90">{item.text}</div>
+              <div className="opacity-90">
+                <MarkdownMessage value={item.text} />
+              </div>
             ) : null}
           </>
         ),

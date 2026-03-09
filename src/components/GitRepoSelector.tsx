@@ -1698,8 +1698,6 @@ export default function GitRepoSelector({
           taskDescription: launchInitialMessage || undefined,
           attachmentPaths: allAttachmentPaths,
           sessionMode,
-          sessionName: wtResult.sessionName,
-          notificationApiUrl: `${window.location.origin}/api/notifications`,
           workspaceMode: wtResult.workspaceMode || 'folder',
           gitRepos: wtResult.gitRepos,
           discoveredRepoRelativePaths: projectGitRepos.map((repoPath) => toProjectRelativeRepoPath(selectedRepo, repoPath)),

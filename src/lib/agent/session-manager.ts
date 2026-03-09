@@ -12,7 +12,13 @@ import {
   updateSessionRuntime,
   upsertSessionHistoryEntries,
 } from '@/lib/agent/store';
-import { publishSessionAgentEvent, publishSessionListUpdated } from '@/lib/sessionNotificationServer';
+import { resolveSessionRuntimeUpdate } from '@/lib/agent/session-runtime-updates';
+import { deriveSessionNotificationFromRuntime } from '@/lib/session-agent-notifications';
+import {
+  publishSessionAgentEvent,
+  publishSessionListUpdated,
+  publishSessionNotification,
+} from '@/lib/sessionNotificationServer';
 import type {
   AgentProvider,
   ChatStreamEvent,
@@ -20,7 +26,6 @@ import type {
   HistoryEntry,
   SessionAgentHistoryInput,
   SessionAgentHistoryItem,
-  SessionAgentRunState,
   SessionAgentRuntimeState,
 } from '@/lib/types';
 
@@ -92,21 +97,6 @@ function normalizeFileChanges(value: unknown): FileChange[] {
     .filter((entry) => Boolean(entry.path));
 }
 
-function runtimeStateForCompletion(event: Extract<ChatStreamEvent, { type: 'turn_completed' }>): SessionAgentRunState {
-  if (event.error) {
-    return event.error === 'Request cancelled.' ? 'cancelled' : 'error';
-  }
-
-  if (event.status === 'cancelled') {
-    return 'cancelled';
-  }
-
-  if (event.status === 'failed' || event.status === 'error') {
-    return 'error';
-  }
-
-  return 'completed';
-}
 
 class HistoryProjector {
   private readonly entries = new Map<string, SessionAgentHistoryItem>();
@@ -356,6 +346,22 @@ class HistoryProjector {
     });
   }
 
+  getLatestAssistantText() {
+    let latestAssistant: SessionAgentHistoryItem | null = null;
+
+    for (const entry of this.entries.values()) {
+      if (entry.kind !== 'assistant') {
+        continue;
+      }
+
+      if (!latestAssistant || entry.ordinal >= latestAssistant.ordinal) {
+        latestAssistant = entry;
+      }
+    }
+
+    return latestAssistant?.text ?? null;
+  }
+
   private persist(entry: SessionAgentHistoryInput) {
     const existing = this.entries.get(entry.id);
     const createdAt = existing?.createdAt ?? new Date().toISOString();
@@ -393,6 +399,29 @@ async function publishRuntimeEvent(sessionId: string, event: ChatStreamEvent) {
     snapshot,
     event,
   });
+}
+
+async function publishDerivedNotification(
+  sessionId: string,
+  event: ChatStreamEvent,
+  latestAssistantText?: string | null,
+) {
+  const snapshot = readSessionRuntime(sessionId);
+  if (!snapshot) {
+    return;
+  }
+
+  const notification = deriveSessionNotificationFromRuntime({
+    sessionId,
+    snapshot,
+    event,
+    latestAssistantText,
+  });
+  if (!notification) {
+    return;
+  }
+
+  await publishSessionNotification(notification);
 }
 
 export function isSessionTurnRunning(sessionId: string) {
@@ -462,65 +491,42 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
         projector.applyEvent(event as ChatStreamEvent);
 
         const now = new Date().toISOString();
-        switch (event.type) {
-          case 'thread_ready':
-            updateSessionRuntime(sessionId, {
-              threadId: event.threadId,
-              lastActivityAt: now,
-            });
-            break;
-          case 'turn_started':
-            updateSessionRuntime(sessionId, {
-              activeTurnId: event.turnId,
-              runState: 'running',
-              lastError: null,
-              lastActivityAt: now,
-            });
-            break;
-          case 'turn_completed':
-            updateSessionRuntime(sessionId, {
-              threadId: event.threadId,
-              activeTurnId: null,
-              runState: runtimeStateForCompletion(event),
-              lastError: event.error,
-              lastActivityAt: now,
-            });
-            break;
-          case 'error':
-            updateSessionRuntime(sessionId, {
-              runState: 'error',
-              activeTurnId: null,
-              lastError: event.message,
-              lastActivityAt: now,
-            });
-            break;
-          default:
-            updateSessionRuntime(sessionId, {
-              lastActivityAt: now,
-            });
-            break;
-        }
+        updateSessionRuntime(sessionId, await resolveSessionRuntimeUpdate({
+          outcome: {
+            kind: 'event',
+            event: event as ChatStreamEvent,
+          },
+          timestamp: now,
+          loadStatus: async (providerId) => await getAgentAdapter(providerId).getStatus(),
+        }));
 
         await publishRuntimeEvent(sessionId, event as ChatStreamEvent);
+        await publishDerivedNotification(sessionId, event as ChatStreamEvent, projector.getLatestAssistantText());
       }, abortController.signal);
     } catch (error) {
       const messageText = error instanceof Error ? error.message : 'Agent turn failed.';
-      const runtime = updateSessionRuntime(sessionId, {
-        activeTurnId: null,
-        runState: abortController.signal.aborted ? 'cancelled' : 'error',
-        lastError: abortController.signal.aborted ? 'Request cancelled.' : messageText,
-        lastActivityAt: new Date().toISOString(),
-      });
+      const failureEvent: ChatStreamEvent = {
+        type: 'error',
+        message: abortController.signal.aborted ? 'Request cancelled.' : messageText,
+      };
+      const runtime = updateSessionRuntime(sessionId, await resolveSessionRuntimeUpdate({
+        outcome: {
+          kind: 'failure',
+          provider,
+          aborted: abortController.signal.aborted,
+          message: messageText,
+        },
+        timestamp: new Date().toISOString(),
+        loadStatus: async (providerId) => await getAgentAdapter(providerId).getStatus(),
+      }));
 
       if (runtime) {
         await publishSessionAgentEvent({
           sessionId,
           snapshot: runtime,
-          event: {
-            type: 'error',
-            message: abortController.signal.aborted ? 'Request cancelled.' : messageText,
-          },
+          event: failureEvent,
         });
+        await publishDerivedNotification(sessionId, failureEvent, projector.getLatestAssistantText());
       }
     } finally {
       state.runs.delete(sessionId);

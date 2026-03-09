@@ -17,8 +17,6 @@ export type BuildAgentStartupPromptOptions = {
   taskDescription?: string | null;
   attachmentPaths?: string[];
   sessionMode?: 'fast' | 'plan';
-  sessionName: string;
-  notificationApiUrl: string;
   workspaceMode: SessionWorkspaceMode;
   gitRepos?: SessionGitRepoContext[];
   discoveredRepoRelativePaths?: string[];
@@ -106,8 +104,6 @@ export function buildAgentStartupPrompt({
   taskDescription,
   attachmentPaths = [],
   sessionMode = 'fast',
-  sessionName,
-  notificationApiUrl,
   workspaceMode,
   gitRepos = [],
   discoveredRepoRelativePaths = [],
@@ -131,9 +127,6 @@ export function buildAgentStartupPrompt({
   instructionLines.push(SYSTEMATIC_DEBUGGING_SKILL_INSTRUCTION);
   instructionLines.push(OPTIONAL_SKILL_DISCOVERY_INSTRUCTION);
   instructionLines.push(VISUAL_EVIDENCE_INSTRUCTION);
-  instructionLines.push(
-    `When your task is completed or you need user attention (for plan approval, permissions, or blockers), send a notification to the matching Palx session by POSTing JSON to ${notificationApiUrl} with sessionId, title, and description. Payload template: {"sessionId":"${sessionName}","title":"<short title>","description":"<clear detail about completion or required attention>"}.`,
-  );
 
   const taskSections: string[] = [trimmedTaskDescription];
   if (normalizedAttachmentPaths.length > 0) {
