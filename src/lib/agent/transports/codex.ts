@@ -22,6 +22,7 @@ import {
   readCommandOutput,
   stringifyCompact,
 } from "@/lib/agent/common";
+import { buildCodexAppServerEnv } from "@/lib/agent/spawn-env";
 
 type JsonRpcMessage = {
   id?: number;
@@ -333,9 +334,10 @@ class CodexAppServerConnection {
     options: {
       model?: string | null;
       reasoningEffort?: AgentReasoningEffort | null;
+      extraEnv?: Record<string, string> | null;
     } = {},
   ) {
-    const env = defaultSpawnEnv();
+    const env = buildCodexAppServerEnv(options.extraEnv);
     const effectiveReasoningEffort = normalizeProviderReasoningEffort(
       "codex",
       options.reasoningEffort,
@@ -877,6 +879,7 @@ export async function streamChat(
     message: string;
     model?: string | null;
     reasoningEffort?: AgentReasoningEffort | null;
+    extraEnv?: Record<string, string> | null;
   },
   onEvent: (event: ChatStreamEvent) => void,
   signal?: AbortSignal,
@@ -884,6 +887,7 @@ export async function streamChat(
   const connection = new CodexAppServerConnection(input.workspacePath, {
     model: input.model,
     reasoningEffort: input.reasoningEffort,
+    extraEnv: input.extraEnv,
   });
   const turnDone = createDeferred<void>();
   const rawToolCalls = new Map<string, { source: ToolTraceSource; tool: string }>();

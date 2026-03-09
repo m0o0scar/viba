@@ -4,20 +4,14 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import simpleGit from 'simple-git';
-import { getGitRepoCredential } from '@/app/actions/config';
 import { getAgentApiCredentialSecret } from '@/lib/agent-api-credentials';
-import { getAllCredentials, getCredentialById, getCredentialToken } from '@/lib/credentials';
-import type { Credential } from '@/lib/credentials';
 import {
   buildTtydTerminalSrc,
-  detectGitRemoteProvider,
   getTmuxSessionName,
-  mergeGitTerminalSessionEnvironments,
-  parseGitRemoteHost,
-  ResolvedGitTerminalSessionEnvironment,
   TerminalSessionEnvironment,
   TerminalSessionRole,
 } from '@/lib/terminal-session';
+import { resolveGitSessionEnvironments } from '@/lib/git-session-auth';
 import { listRepoEntries } from '@/lib/repo-entry-list';
 import { getProjects } from '@/lib/store';
 
@@ -671,71 +665,6 @@ type TerminalSessionSources = {
   floatingTerminalSrc: string;
 };
 
-function toTerminalSessionEnvironment(
-  credential: Credential,
-  token: string,
-): TerminalSessionEnvironment {
-  return credential.type === 'github'
-    ? { name: 'GITHUB_TOKEN', value: token }
-    : { name: 'GITLAB_TOKEN', value: token };
-}
-
-function getGitLabCredentialHost(credential: Credential): string | null {
-  if (credential.type !== 'gitlab') return null;
-
-  try {
-    return new URL(credential.serverUrl).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-function pickCandidateCredential(
-  credentials: Credential[],
-  provider: 'github' | 'gitlab',
-  remoteHost: string | null,
-): Credential | null {
-  if (provider === 'github') {
-    return credentials.find((credential) => credential.type === 'github') || null;
-  }
-
-  if (remoteHost) {
-    const hostMatch = credentials.find((credential) => (
-      credential.type === 'gitlab'
-      && getGitLabCredentialHost(credential) === remoteHost
-    ));
-    if (hostMatch) return hostMatch;
-  }
-
-  return credentials.find((credential) => credential.type === 'gitlab') || null;
-}
-
-async function getPrimaryRemoteUrl(repoPath: string): Promise<string | null> {
-  const git = simpleGit(repoPath);
-
-  try {
-    const originUrl = (await git.raw(['remote', 'get-url', 'origin'])).trim();
-    if (originUrl) return originUrl;
-  } catch {
-    // Fallback to first available remote below.
-  }
-
-  try {
-    const remotes = await git.getRemotes(true);
-    for (const remote of remotes) {
-      const fetchUrl = remote.refs?.fetch?.trim();
-      if (fetchUrl) return fetchUrl;
-
-      const pushUrl = remote.refs?.push?.trim();
-      if (pushUrl) return pushUrl;
-    }
-  } catch {
-    // Ignore and fallback to null.
-  }
-
-  return null;
-}
-
 function resolveAgentCliFromSession(agentCli: string | undefined): SupportedAgentCli | null {
   if (!agentCli) return null;
 
@@ -760,90 +689,8 @@ function toAgentTerminalSessionEnvironments(
   ];
 }
 
-async function resolveGitTerminalSessionEnvironmentForRepo(
-  repoPath: string,
-): Promise<ResolvedGitTerminalSessionEnvironment | null> {
-  const remoteUrl = await getPrimaryRemoteUrl(repoPath);
-  if (!remoteUrl) return null;
-
-  const allCredentials = await getAllCredentials();
-  const provider = detectGitRemoteProvider(remoteUrl, {
-    gitlabHosts: allCredentials.flatMap((credential) => {
-      if (credential.type !== 'gitlab') return [];
-      const host = getGitLabCredentialHost(credential);
-      return host ? [host] : [];
-    }),
-  });
-  if (!provider) return null;
-
-  const remoteHost = parseGitRemoteHost(remoteUrl);
-  const credentialId = await getGitRepoCredential(repoPath);
-  if (credentialId) {
-    const selectedCredential = await getCredentialById(credentialId);
-    if (!selectedCredential) {
-      console.warn(`Selected credential ${credentialId} for ${repoPath} was not found.`);
-      return null;
-    }
-
-    if (provider === 'github' && selectedCredential.type !== 'github') {
-      console.warn(`Selected credential ${selectedCredential.id} does not match GitHub remote for ${repoPath}.`);
-      return null;
-    }
-
-    if (provider === 'gitlab' && selectedCredential.type !== 'gitlab') {
-      console.warn(`Selected credential ${selectedCredential.id} does not match GitLab remote for ${repoPath}.`);
-      return null;
-    }
-
-    if (selectedCredential.type === 'gitlab' && remoteHost) {
-      const credentialHost = getGitLabCredentialHost(selectedCredential);
-      if (credentialHost && credentialHost !== remoteHost) {
-        console.warn(
-          `Selected GitLab credential ${selectedCredential.id} targets ${credentialHost}, but ${repoPath} uses ${remoteHost}.`,
-        );
-        return null;
-      }
-    }
-
-    const token = await getCredentialToken(selectedCredential.id);
-    if (!token) {
-      console.warn(`Could not load token for selected credential ${selectedCredential.id} on ${repoPath}.`);
-      return null;
-    }
-
-    return {
-      sourceRepoPath: repoPath,
-      environment: toTerminalSessionEnvironment(selectedCredential, token),
-      credentialId: selectedCredential.id,
-      explicit: true,
-    };
-  }
-
-  const credential = pickCandidateCredential(allCredentials, provider, remoteHost);
-  if (!credential) return null;
-
-  const token = await getCredentialToken(credential.id);
-  if (!token) return null;
-
-  return {
-    sourceRepoPath: repoPath,
-    environment: toTerminalSessionEnvironment(credential, token),
-    credentialId: credential.id,
-    explicit: false,
-  };
-}
-
 async function resolveGitTerminalSessionEnvironments(repoPaths: string[]): Promise<TerminalSessionEnvironment[]> {
-  const uniqueRepoPaths = Array.from(new Set(repoPaths.map((repoPath) => repoPath.trim()).filter(Boolean)));
-  if (uniqueRepoPaths.length === 0) return [];
-
-  const candidates = (await Promise.all(
-    uniqueRepoPaths.map((repoPath) => resolveGitTerminalSessionEnvironmentForRepo(repoPath)),
-  )).filter((candidate): candidate is ResolvedGitTerminalSessionEnvironment => candidate !== null);
-
-  return mergeGitTerminalSessionEnvironments(candidates, {
-    onConflict: (message) => console.warn(message),
-  });
+  return await resolveGitSessionEnvironments(repoPaths);
 }
 
 async function resolveAgentApiTerminalSessionEnvironments(agentCli: string | undefined): Promise<TerminalSessionEnvironment[]> {

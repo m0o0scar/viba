@@ -45,6 +45,7 @@ import {
   stringifyCompact,
   waitForReplayIdle,
 } from "@/lib/agent/common";
+import { buildAcpSpawnEnv } from "@/lib/agent/spawn-env";
 
 type AcpProviderId = "gemini" | "cursor";
 
@@ -580,9 +581,10 @@ async function createAcpConnection(
   } = {},
   options: {
     model?: string | null;
+    extraEnv?: Record<string, string> | null;
   } = {},
 ): Promise<AcpConnection> {
-  const env = defaultSpawnEnv();
+  const env = buildAcpSpawnEnv(options.extraEnv);
   const binaryPath = resolveExecutable(config.acp.binaryNames, env);
   const args = config.acp.buildArgs ? config.acp.buildArgs(options.model) : config.acp.args;
 
@@ -1525,6 +1527,7 @@ export async function streamAcpChat(
     },
     {
       model: input.model,
+      extraEnv: input.extraEnv,
     },
   );
 

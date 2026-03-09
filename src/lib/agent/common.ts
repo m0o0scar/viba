@@ -12,7 +12,7 @@ const COMMON_BIN_DIRS = [
   "/usr/local/sbin",
 ];
 
-export function defaultSpawnEnv() {
+export function defaultSpawnEnv(overrides: Record<string, string> | null | undefined = undefined) {
   const pathEntries = new Set((process.env.PATH ?? "").split(path.delimiter).filter(Boolean));
   for (const dir of COMMON_BIN_DIRS) {
     pathEntries.add(dir);
@@ -20,6 +20,7 @@ export function defaultSpawnEnv() {
 
   return {
     ...process.env,
+    ...(overrides ?? {}),
     PATH: Array.from(pathEntries).join(path.delimiter),
   };
 }

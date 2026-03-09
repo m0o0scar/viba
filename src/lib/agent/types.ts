@@ -53,6 +53,7 @@ export type AgentChatInput = {
   message: string;
   model?: string | null;
   reasoningEffort?: import("@/lib/types").ReasoningEffort | null;
+  extraEnv?: Record<string, string> | null;
 };
 
 export type ChatInput = AgentChatInput;

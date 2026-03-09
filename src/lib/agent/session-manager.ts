@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  discoverProjectGitRepos,
+} from '@/app/actions/project';
+import {
   getSessionAgentSnapshot,
   getSessionMetadata,
   markSessionInitialized,
 } from '@/app/actions/session';
 import { getAgentAdapter } from '@/lib/agent/providers';
+import { resolveGitSessionEnvironments } from '@/lib/git-session-auth';
 import {
   listSessionHistory,
   readSessionRuntime,
@@ -13,6 +17,7 @@ import {
   upsertSessionHistoryEntries,
 } from '@/lib/agent/store';
 import { resolveSessionRuntimeUpdate } from '@/lib/agent/session-runtime-updates';
+import { resolveSessionTerminalRepoPaths } from '@/lib/session-terminal-repos';
 import { deriveSessionNotificationFromRuntime } from '@/lib/session-agent-notifications';
 import {
   publishSessionAgentEvent,
@@ -62,6 +67,19 @@ function getManagerState(): ManagerState {
 function normalizeText(value: string | null | undefined) {
   const normalized = value?.trim();
   return normalized ? normalized : '';
+}
+
+async function resolveSessionGitAuthEnv(metadata: NonNullable<Awaited<ReturnType<typeof getSessionMetadata>>>): Promise<Record<string, string>> {
+  const discoveryResult = await discoverProjectGitRepos(metadata.projectPath).catch(() => null);
+  const repoPaths = resolveSessionTerminalRepoPaths({
+    sessionRepoPaths: metadata.gitRepos.map((repo) => repo.sourceRepoPath),
+    discoveredProjectRepoPaths: discoveryResult?.repos.map((repo) => repo.repoPath) ?? null,
+    activeRepoPath: metadata.activeRepoPath,
+    projectPath: metadata.projectPath,
+  });
+  const environments = await resolveGitSessionEnvironments(repoPaths);
+
+  return Object.fromEntries(environments.map((entry) => [entry.name, entry.value]));
 }
 
 function resolveItemStatus(
@@ -459,6 +477,7 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
   if (!provider) {
     return { success: false, error: 'Session agent provider is missing.' };
   }
+  const extraEnv = await resolveSessionGitAuthEnv(metadata);
 
   const adapter = getAgentAdapter(provider as AgentProvider);
   const existingHistory = listSessionHistory(sessionId);
@@ -487,6 +506,7 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
         message,
         model: metadata.model || null,
         reasoningEffort: metadata.reasoningEffort ?? null,
+        extraEnv,
       }, async (event) => {
         projector.applyEvent(event as ChatStreamEvent);
 
