@@ -52,6 +52,15 @@ type AgentSessionPaneProps = {
   onFeedback?: (message: string) => void;
 };
 
+type VirtualHistoryMetrics = {
+  end: number;
+  size: number;
+  start: number;
+};
+
+const HISTORY_ITEM_GAP_PX = 12;
+const HISTORY_ITEM_OVERSCAN_PX = 600;
+
 const PROVIDER_LABELS: Record<string, string> = {
   codex: 'Codex CLI',
   gemini: 'Gemini CLI',
@@ -61,6 +70,27 @@ const PROVIDER_LABELS: Record<string, string> = {
 function providerLabel(provider: string | null | undefined) {
   if (!provider) return 'Agent';
   return PROVIDER_LABELS[provider] || provider;
+}
+
+function estimateHistoryItemHeight(item: SessionAgentHistoryItem) {
+  switch (item.kind) {
+    case 'user':
+      return 88;
+    case 'assistant':
+      return 164;
+    case 'reasoning':
+      return 116;
+    case 'plan':
+      return 112;
+    case 'command':
+      return 132;
+    case 'tool':
+      return 124;
+    case 'fileChange':
+      return 148;
+    default:
+      return 120;
+  }
 }
 
 function runStateTone(runState: SessionAgentRunState | null | undefined) {
@@ -401,6 +431,42 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
   }
 }
 
+type VirtualHistoryRowProps = {
+  item: SessionAgentHistoryItem;
+  onMeasure: (key: string, height: number) => void;
+};
+
+function VirtualHistoryRow({ item, onMeasure }: VirtualHistoryRowProps) {
+  const itemKey = `${item.id}-${item.updatedAt}`;
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const element = rowRef.current;
+    if (!element) return;
+
+    const reportSize = () => {
+      onMeasure(itemKey, element.getBoundingClientRect().height);
+    };
+
+    reportSize();
+
+    const observer = new ResizeObserver(() => {
+      reportSize();
+    });
+
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, [itemKey, onMeasure]);
+
+  return (
+    <div ref={rowRef}>
+      {renderHistoryItem(item)}
+    </div>
+  );
+}
+
 const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProps>(function AgentSessionPane(
   { sessionId, workspacePath, onFeedback },
   ref,
@@ -418,6 +484,10 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   const pendingSelectionRef = useRef<number | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const refreshTimerRef = useRef<number | null>(null);
+  const historySizeMapRef = useRef<Record<string, number>>({});
+  const [historySizeVersion, setHistorySizeVersion] = useState(0);
+  const [timelineScrollTop, setTimelineScrollTop] = useState(0);
+  const [timelineViewportHeight, setTimelineViewportHeight] = useState(0);
 
   const scheduleRefresh = useCallback((delay = 120) => {
     if (refreshTimerRef.current !== null) {
@@ -514,7 +584,28 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
     if (!shouldStickToBottomRef.current) return;
 
     timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
-  }, [history, loading]);
+  }, [history, historySizeVersion, loading]);
+
+  useEffect(() => {
+    const element = timelineRef.current;
+    if (!element) return;
+
+    const updateViewport = () => {
+      setTimelineViewportHeight(element.clientHeight);
+      setTimelineScrollTop(element.scrollTop);
+    };
+
+    updateViewport();
+
+    const observer = new ResizeObserver(() => {
+      updateViewport();
+    });
+
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -608,6 +699,95 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
   const activeRunState = runtime?.runState ?? 'idle';
   const isTurnActive = activeRunState === 'queued' || activeRunState === 'running';
   const canSend = !loading && !isSending && !isTurnActive && composerValue.trim().length > 0;
+  const historyMetrics = useMemo(() => {
+    void historySizeVersion;
+    const metrics: VirtualHistoryMetrics[] = [];
+    let offset = 0;
+
+    history.forEach((item, index) => {
+      const itemKey = `${item.id}-${item.updatedAt}`;
+      const size = historySizeMapRef.current[itemKey] ?? estimateHistoryItemHeight(item);
+      metrics.push({
+        start: offset,
+        size,
+        end: offset + size,
+      });
+      offset += size;
+      if (index < history.length - 1) {
+        offset += HISTORY_ITEM_GAP_PX;
+      }
+    });
+
+    return {
+      items: metrics,
+      totalHeight: offset,
+    };
+  }, [history, historySizeVersion]);
+  const visibleHistoryRange = useMemo(() => {
+    if (history.length === 0) {
+      return { startIndex: 0, endIndex: -1 };
+    }
+
+    const viewportTop = Math.max(0, timelineScrollTop - HISTORY_ITEM_OVERSCAN_PX);
+    const viewportBottom = timelineScrollTop + timelineViewportHeight + HISTORY_ITEM_OVERSCAN_PX;
+    const metrics = historyMetrics.items;
+
+    let startIndex = 0;
+    while (startIndex < metrics.length && metrics[startIndex].end < viewportTop) {
+      startIndex += 1;
+    }
+
+    let endIndex = startIndex;
+    while (endIndex < metrics.length && metrics[endIndex].start <= viewportBottom) {
+      endIndex += 1;
+    }
+
+    return {
+      startIndex,
+      endIndex: Math.min(metrics.length - 1, Math.max(startIndex, endIndex - 1)),
+    };
+  }, [history.length, historyMetrics.items, timelineScrollTop, timelineViewportHeight]);
+  const visibleHistoryItems = useMemo(() => {
+    if (visibleHistoryRange.endIndex < visibleHistoryRange.startIndex) return [];
+
+    return history
+      .slice(visibleHistoryRange.startIndex, visibleHistoryRange.endIndex + 1)
+      .map((item, index) => {
+        const actualIndex = visibleHistoryRange.startIndex + index;
+        return {
+          item,
+          itemKey: `${item.id}-${item.updatedAt}`,
+          top: historyMetrics.items[actualIndex]?.start ?? 0,
+        };
+      });
+  }, [history, historyMetrics.items, visibleHistoryRange.endIndex, visibleHistoryRange.startIndex]);
+  const handleMeasureHistoryItem = useCallback((key: string, height: number) => {
+    const nextHeight = Math.ceil(height);
+    if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
+    if (historySizeMapRef.current[key] === nextHeight) return;
+
+    historySizeMapRef.current = {
+      ...historySizeMapRef.current,
+      [key]: nextHeight,
+    };
+    setHistorySizeVersion((current) => current + 1);
+  }, []);
+
+  useEffect(() => {
+    const activeKeys = new Set(history.map((item) => `${item.id}-${item.updatedAt}`));
+    const currentKeys = Object.keys(historySizeMapRef.current);
+    if (currentKeys.every((key) => activeKeys.has(key))) return;
+
+    const nextSizeMap: Record<string, number> = {};
+    activeKeys.forEach((key) => {
+      const existing = historySizeMapRef.current[key];
+      if (typeof existing === 'number') {
+        nextSizeMap[key] = existing;
+      }
+    });
+    historySizeMapRef.current = nextSizeMap;
+    setHistorySizeVersion((current) => current + 1);
+  }, [history]);
 
   const providerName = providerLabel(runtime?.agentProvider || null);
   const runtimeDetails = useMemo(() => {
@@ -738,9 +918,11 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
 
       <div
         ref={timelineRef}
-        className="custom-scrollbar flex-1 space-y-3 overflow-y-auto px-4 py-4"
+        className="custom-scrollbar flex-1 overflow-y-auto px-4 py-4"
         onScroll={(event) => {
           const target = event.currentTarget;
+          setTimelineScrollTop(target.scrollTop);
+          setTimelineViewportHeight(target.clientHeight);
           shouldStickToBottomRef.current = target.scrollHeight - target.scrollTop - target.clientHeight < 48;
         }}
       >
@@ -758,11 +940,17 @@ const AgentSessionPane = forwardRef<AgentSessionPaneHandle, AgentSessionPaneProp
             </div>
           </div>
         ) : (
-          history.map((item) => (
-            <div key={`${item.id}-${item.updatedAt}`}>
-              {renderHistoryItem(item)}
-            </div>
-          ))
+          <div style={{ height: historyMetrics.totalHeight, position: 'relative' }}>
+            {visibleHistoryItems.map(({ item, itemKey, top }) => (
+              <div
+                key={itemKey}
+                className="absolute left-0 right-0"
+                style={{ top }}
+              >
+                <VirtualHistoryRow item={item} onMeasure={handleMeasureHistoryItem} />
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
