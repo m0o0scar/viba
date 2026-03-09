@@ -1714,7 +1714,7 @@ export default function GitRepoSelector({
             body: JSON.stringify({
               sessionId: wtResult.sessionName,
               message: initialAgentPrompt,
-              displayMessage: trimmedInitialMessage,
+              displayMessage: initialAgentPrompt,
               markInitialized: true,
             }),
           });

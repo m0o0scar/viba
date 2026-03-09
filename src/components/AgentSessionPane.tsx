@@ -10,6 +10,8 @@ import React, {
   useState,
 } from 'react';
 import { AlertCircle, Clock3, Loader2, PlayCircle, Send, Square } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type {
   AgentProvider,
   ChatStreamEvent,
@@ -107,6 +109,124 @@ function codeBlock(value: string | null | undefined) {
   );
 }
 
+function firstLinePreview(value: string | null | undefined) {
+  const text = trimEmpty(value);
+  if (!text) return '';
+
+  const firstLine = text
+    .split('\n')
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  return firstLine || '';
+}
+
+function MarkdownMessage({ value }: { value: string | null | undefined }) {
+  const text = trimEmpty(value);
+  if (!text) return null;
+
+  return (
+    <div className="markdown-message overflow-x-auto text-sm leading-7">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: ({ children }) => <h1 className="mb-3 text-lg font-semibold last:mb-0">{children}</h1>,
+          h2: ({ children }) => <h2 className="mb-3 text-base font-semibold last:mb-0">{children}</h2>,
+          h3: ({ children }) => <h3 className="mb-2 text-sm font-semibold last:mb-0">{children}</h3>,
+          p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+          ul: ({ children }) => <ul className="mb-3 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>,
+          ol: ({ children }) => <ol className="mb-3 list-decimal space-y-1 pl-5 last:mb-0">{children}</ol>,
+          li: ({ children }) => <li className="pl-1">{children}</li>,
+          blockquote: ({ children }) => (
+            <blockquote className="mb-3 border-l-2 border-slate-300 pl-4 italic text-slate-600 last:mb-0 dark:border-slate-600 dark:text-slate-300">
+              {children}
+            </blockquote>
+          ),
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              className="text-blue-600 underline underline-offset-2 dark:text-blue-300"
+              target={href?.startsWith('#') ? undefined : '_blank'}
+              rel={href?.startsWith('#') ? undefined : 'noreferrer'}
+            >
+              {children}
+            </a>
+          ),
+          table: ({ children }) => (
+            <div className="mb-3 overflow-x-auto last:mb-0">
+              <table className="min-w-full border-collapse text-left text-xs">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => <thead className="border-b border-slate-300 dark:border-slate-600">{children}</thead>,
+          th: ({ children }) => <th className="px-3 py-2 font-semibold">{children}</th>,
+          td: ({ children }) => <td className="border-b border-slate-200 px-3 py-2 align-top dark:border-slate-700">{children}</td>,
+          hr: () => <hr className="my-4 border-slate-300 dark:border-slate-600" />,
+          code: ({ className, children }) => {
+            const textContent = String(children).replace(/\n$/, '');
+            const isBlock = Boolean(className) || textContent.includes('\n');
+
+            if (isBlock) {
+              return (
+                <code className="block overflow-x-auto whitespace-pre rounded-lg bg-slate-950/95 px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-100 dark:bg-black">
+                  {textContent}
+                </code>
+              );
+            }
+
+            return (
+              <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+                {textContent}
+              </code>
+            );
+          },
+          pre: ({ children }) => <div className="mb-3 last:mb-0">{children}</div>,
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+type CollapsibleHistoryItemProps = {
+  label: string;
+  title?: string;
+  className: string;
+  summaryClassName: string;
+  labelClassName: string;
+  titleClassName: string;
+  timestamp?: string;
+  timestampClassName: string;
+  children: React.ReactNode;
+};
+
+function renderCollapsibleHistoryItem({
+  label,
+  title,
+  className,
+  summaryClassName,
+  labelClassName,
+  titleClassName,
+  timestamp,
+  timestampClassName,
+  children,
+}: CollapsibleHistoryItemProps) {
+  const summaryTitle = title ? `${label}: ${title}` : label;
+
+  return (
+    <details className={className}>
+      <summary className={summaryClassName} title={summaryTitle}>
+        <span className={labelClassName}>{label}</span>
+        {title ? <span className={titleClassName}>{title}</span> : null}
+      </summary>
+      <div className="mt-3 space-y-3">
+        {children}
+      </div>
+      {timestamp ? <div className={timestampClassName}>{timestamp}</div> : null}
+    </details>
+  );
+}
+
 function renderHistoryItem(item: SessionAgentHistoryItem) {
   const timestamp = formatTimestamp(item.updatedAt || item.createdAt);
 
@@ -128,25 +248,31 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
               {item.phase}
             </div>
           ) : null}
-          <div className="whitespace-pre-wrap break-words">{item.text || ' '}</div>
+          <MarkdownMessage value={item.text || ' '} />
           {timestamp ? <div className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">{timestamp}</div> : null}
         </div>
       );
     case 'reasoning':
-      return (
-        <details className="rounded-2xl border border-violet-200 bg-violet-50/60 px-4 py-3 text-sm text-violet-950 shadow-sm dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-100">
-          <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-200">
-            Reasoning
-          </summary>
-          {trimEmpty(item.summary) ? (
-            <div className="mt-3 whitespace-pre-wrap break-words text-sm font-medium">{item.summary}</div>
-          ) : null}
-          {trimEmpty(item.text) ? (
-            <div className="mt-2 whitespace-pre-wrap break-words text-sm opacity-90">{item.text}</div>
-          ) : null}
-          {timestamp ? <div className="mt-3 text-[10px] text-violet-700/70 dark:text-violet-200/70">{timestamp}</div> : null}
-        </details>
-      );
+      return renderCollapsibleHistoryItem({
+        label: 'Reasoning',
+        title: firstLinePreview(item.summary) || firstLinePreview(item.text) || undefined,
+        className: 'rounded-2xl border border-violet-200 bg-violet-50/60 px-4 py-3 text-sm text-violet-950 shadow-sm dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-100',
+        summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
+        labelClassName: 'shrink-0 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-200',
+        titleClassName: 'min-w-0 truncate whitespace-nowrap text-xs font-normal text-violet-700/75 dark:text-violet-200/75',
+        timestamp,
+        timestampClassName: 'mt-3 text-[10px] text-violet-700/70 dark:text-violet-200/70',
+        children: (
+          <>
+            {trimEmpty(item.summary) ? (
+              <div className="whitespace-pre-wrap break-words text-sm font-medium">{item.summary}</div>
+            ) : null}
+            {trimEmpty(item.text) ? (
+              <div className="whitespace-pre-wrap break-words text-sm opacity-90">{item.text}</div>
+            ) : null}
+          </>
+        ),
+      });
     case 'plan':
       return (
         <div className="rounded-2xl border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm text-sky-900 shadow-sm dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
@@ -156,44 +282,50 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
         </div>
       );
     case 'command':
-      return (
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-              Command
-            </span>
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${runStateTone(item.status)}`}>
-              {formatRunState(item.status)}
-            </span>
-            {item.exitCode !== null ? (
-              <span className="text-[10px] text-slate-500 dark:text-slate-400">exit {item.exitCode}</span>
-            ) : null}
-          </div>
-          <div className="mt-3 space-y-2">
+      return renderCollapsibleHistoryItem({
+        label: 'Command',
+        title: firstLinePreview(item.command) || undefined,
+        className: 'rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]',
+        summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
+        labelClassName: 'shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300',
+        titleClassName: 'min-w-0 truncate whitespace-nowrap font-mono text-xs font-normal text-slate-500 dark:text-slate-400',
+        timestamp,
+        timestampClassName: 'mt-3 text-[10px] text-slate-400 dark:text-slate-500',
+        children: (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${runStateTone(item.status)}`}>
+                {formatRunState(item.status)}
+              </span>
+              {item.exitCode !== null ? (
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">exit {item.exitCode}</span>
+              ) : null}
+            </div>
             <div className="rounded-lg bg-slate-100 px-3 py-2 font-mono text-[11px] text-slate-800 dark:bg-slate-900 dark:text-slate-100">
               {item.command}
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">cwd: {item.cwd || '.'}</div>
             {codeBlock(item.output)}
-          </div>
-          {timestamp ? <div className="mt-3 text-[10px] text-slate-400 dark:text-slate-500">{timestamp}</div> : null}
-        </div>
-      );
+          </>
+        ),
+      });
     case 'tool':
-      return (
-        <details className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]">
-          <summary className="cursor-pointer list-none">
+      return renderCollapsibleHistoryItem({
+        label: `Tool: ${item.tool}`,
+        title: firstLinePreview(item.message) || firstLinePreview(item.input) || firstLinePreview(item.result) || undefined,
+        className: 'rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]',
+        summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
+        labelClassName: 'shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300',
+        titleClassName: 'min-w-0 truncate whitespace-nowrap text-xs font-normal text-slate-500 dark:text-slate-400',
+        timestamp,
+        timestampClassName: 'mt-3 text-[10px] text-slate-400 dark:text-slate-500',
+        children: (
+          <>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                Tool
-              </span>
-              <span className="font-medium text-slate-800 dark:text-slate-100">{item.tool}</span>
               <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${runStateTone(item.status)}`}>
                 {formatRunState(item.status)}
               </span>
             </div>
-          </summary>
-          <div className="mt-3 space-y-3">
             <div className="grid gap-2 text-[11px] text-slate-500 dark:text-slate-400 sm:grid-cols-2">
               <div>source: {item.source}</div>
               <div>{item.server ? `server: ${item.server}` : 'server: n/a'}</div>
@@ -202,18 +334,26 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
             {item.input ? <div><div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Input</div>{codeBlock(item.input)}</div> : null}
             {item.result ? <div><div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Result</div>{codeBlock(item.result)}</div> : null}
             {item.error ? <div><div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-red-500 dark:text-red-300">Error</div>{codeBlock(item.error)}</div> : null}
-          </div>
-          {timestamp ? <div className="mt-3 text-[10px] text-slate-400 dark:text-slate-500">{timestamp}</div> : null}
-        </details>
-      );
+          </>
+        ),
+      });
     case 'fileChange':
-      return (
-        <details className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
-          <summary className="cursor-pointer list-none">
+      return renderCollapsibleHistoryItem({
+        label: 'File Changes',
+        title: item.changes[0]?.path?.trim()
+          ? (item.changes.length > 1
+            ? `${item.changes[0].path.trim()} +${item.changes.length - 1} more`
+            : item.changes[0].path.trim())
+          : (item.changes.length > 0 ? `${item.changes.length} files` : undefined),
+        className: 'rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100',
+        summaryClassName: 'flex min-w-0 items-baseline gap-2 cursor-pointer list-none',
+        labelClassName: 'shrink-0 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-200',
+        titleClassName: 'min-w-0 truncate whitespace-nowrap text-xs font-normal text-emerald-700/75 dark:text-emerald-200/75',
+        timestamp,
+        timestampClassName: 'mt-3 text-[10px] text-emerald-700/70 dark:text-emerald-200/70',
+        children: (
+          <>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-white/80 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200">
-                File Changes
-              </span>
               <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${runStateTone(item.status)}`}>
                 {formatRunState(item.status)}
               </span>
@@ -221,8 +361,6 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
                 {item.changes.length} file{item.changes.length === 1 ? '' : 's'}
               </span>
             </div>
-          </summary>
-          <div className="mt-3 space-y-3">
             {item.changes.length > 0 ? (
               <div className="space-y-2">
                 {item.changes.map((change) => (
@@ -235,10 +373,9 @@ function renderHistoryItem(item: SessionAgentHistoryItem) {
               </div>
             ) : null}
             {trimEmpty(item.output) ? codeBlock(item.output) : null}
-          </div>
-          {timestamp ? <div className="mt-3 text-[10px] text-emerald-700/70 dark:text-emerald-200/70">{timestamp}</div> : null}
-        </details>
-      );
+          </>
+        ),
+      });
     default:
       return null;
   }
