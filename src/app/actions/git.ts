@@ -1118,7 +1118,8 @@ export async function listRepoFiles(repoPath: string, query: string = ''): Promi
 
 export async function saveAttachments(worktreePath: string, formData: FormData): Promise<string[]> {
   try {
-    const attachmentsDir = `${worktreePath}-attachments`;
+    const worktreeLabel = path.basename(worktreePath.trim() || 'workspace').replace(/[^a-zA-Z0-9._-]/g, '_') || 'workspace';
+    const attachmentsDir = path.join(os.tmpdir(), 'viba-attachments', worktreeLabel);
     await fs.mkdir(attachmentsDir, { recursive: true });
 
     const files = Array.from(formData.entries());
