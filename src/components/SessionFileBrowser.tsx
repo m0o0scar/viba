@@ -1,7 +1,6 @@
 'use client';
 
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
 import { getHomeDirectory, listPathEntries, saveAttachments } from '@/app/actions/git';
 import { getConfig, updateConfig } from '@/app/actions/config';
 import { ArrowLeft, Clipboard, FileText, Folder, Grid2x2, House, List, Pin, PinOff } from 'lucide-react';
@@ -35,17 +34,28 @@ const ThumbnailPreview = memo(function ThumbnailPreview({
   isThumbnailBroken,
   onThumbnailError,
 }: Pick<GridFileTileProps, 'item' | 'isImage' | 'isThumbnailBroken' | 'onThumbnailError'>) {
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  useEffect(() => {
+    setHasLoaded(false);
+  }, [item.path]);
+
   if (isImage && !isThumbnailBroken) {
     return (
-      <Image
-        src={`/api/file-thumbnail?path=${encodeURIComponent(item.path)}`}
-        alt={item.name}
-        fill
-        sizes="(max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
-        className="object-contain"
-        unoptimized
-        onError={onThumbnailError}
-      />
+      <>
+        <FileText className={`w-10 h-10 opacity-40 transition-opacity ${hasLoaded ? 'opacity-0' : 'opacity-40'}`} />
+        {/* Keep the image absolutely bounded to the tile and hidden until it has loaded to avoid full-size first paint. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`/api/file-thumbnail?path=${encodeURIComponent(item.path)}`}
+          alt={item.name}
+          loading="lazy"
+          decoding="async"
+          className={`absolute inset-0 h-full w-full object-contain p-2 transition-opacity ${hasLoaded ? 'opacity-100' : 'opacity-0'}`}
+          onLoad={() => setHasLoaded(true)}
+          onError={onThumbnailError}
+        />
+      </>
     );
   }
 
