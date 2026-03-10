@@ -935,7 +935,7 @@ export async function startSessionTurn(input: StartTurnInput): Promise<{
         void publishDiagnosticEvent(sessionId, update);
       }, (runtimeUpdate) => {
         const runtimePid = runtimeUpdate.runtimePid;
-        if (!Number.isInteger(runtimePid) || runtimePid <= 0) {
+        if (runtimePid === null || !Number.isInteger(runtimePid) || runtimePid <= 0) {
           return;
         }
         activeRun.runtimePid = runtimePid;
