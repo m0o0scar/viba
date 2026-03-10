@@ -652,6 +652,7 @@ export function SessionView({
     const [cleanupError, setCleanupError] = useState<string | null>(null);
     const [isStartingDevServer, setIsStartingDevServer] = useState(false);
     const [isStoppingDevServer, setIsStoppingDevServer] = useState(false);
+    const [isAwaitingDevServerPreview, setIsAwaitingDevServerPreview] = useState(false);
     const [devServerState, setDevServerState] = useState<SessionDevServerState>({ running: false, previewUrl: null });
     const [isTerminalForegroundProcessRunning, setIsTerminalForegroundProcessRunning] = useState(false);
     const [isMerging, setIsMerging] = useState(false);
@@ -1712,6 +1713,7 @@ export function SessionView({
 
         if (pendingDevServerPreviewLoadRef.current && nextState.previewUrl) {
             pendingDevServerPreviewLoadRef.current = false;
+            setIsAwaitingDevServerPreview(false);
             void loadPreview(nextState.previewUrl, true);
         }
 
@@ -1722,6 +1724,7 @@ export function SessionView({
         if (!devServerScript?.trim()) {
             setDevServerState({ running: false, previewUrl: null });
             pendingDevServerPreviewLoadRef.current = false;
+            setIsAwaitingDevServerPreview(false);
             return;
         }
 
@@ -1748,18 +1751,21 @@ export function SessionView({
 
         setIsStartingDevServer(true);
         pendingDevServerPreviewLoadRef.current = true;
+        setIsAwaitingDevServerPreview(true);
         setFeedback('Starting dev server...');
 
         try {
             const result = await startSessionDevServer(sessionName);
             if (!result.success) {
                 pendingDevServerPreviewLoadRef.current = false;
+                setIsAwaitingDevServerPreview(false);
                 setFeedback(result.error || 'Failed to start dev server');
                 return;
             }
 
             if (result.previewUrl) {
                 pendingDevServerPreviewLoadRef.current = false;
+                setIsAwaitingDevServerPreview(false);
                 await loadPreview(result.previewUrl, true);
             } else {
                 await refreshDevServerState({ quiet: true });
@@ -1774,6 +1780,7 @@ export function SessionView({
             }
         } catch (error) {
             pendingDevServerPreviewLoadRef.current = false;
+            setIsAwaitingDevServerPreview(false);
             console.error('Failed to start dev server:', error);
             setFeedback(error instanceof Error ? error.message : 'Failed to start dev server');
         } finally {
@@ -1786,6 +1793,7 @@ export function SessionView({
 
         setIsStoppingDevServer(true);
         pendingDevServerPreviewLoadRef.current = false;
+        setIsAwaitingDevServerPreview(false);
         setFeedback('Stopping dev server...');
 
         try {
@@ -1967,7 +1975,8 @@ export function SessionView({
     const gitControlsDisabled = isFolderMode;
     const gitControlsDisabledReason = FOLDER_MODE_GIT_DISABLED_REASON;
     const hasDevServerScript = Boolean(devServerScript?.trim());
-    const isDevButtonDisabled = !hasDevServerScript || isStartingDevServer || isStoppingDevServer;
+    const isDevServerButtonLoading = isStartingDevServer || isStoppingDevServer || isAwaitingDevServerPreview;
+    const isDevButtonDisabled = !hasDevServerScript || isDevServerButtonLoading;
     const devButtonTitle = !hasDevServerScript
         ? 'Set a dev server script to enable this button'
         : devServerState.running
@@ -2551,7 +2560,7 @@ export function SessionView({
                                                     title={devButtonTitle}
                                                     type="button"
                                                 >
-                                                    {isStartingDevServer || isStoppingDevServer
+                                                    {isDevServerButtonLoading
                                                         ? <span className="loading loading-spinner loading-xs"></span>
                                                         : (devServerState.running ? <X className="h-3 w-3" /> : <Play className="h-3 w-3" />)}
                                                     <span className="hidden min-[1700px]:inline">{devServerState.running ? 'Stop' : 'Dev'}</span>
