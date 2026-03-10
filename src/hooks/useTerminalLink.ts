@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import type { MutableRefObject } from 'react';
+import { createTerminalWindowOpenModifierTracker } from '@/lib/terminal-link-open-intent';
 import { normalizePreviewUrl } from '@/lib/url';
 
 export type TerminalWindow = Window & {
@@ -94,33 +95,32 @@ export function useTerminalLink({ onLoadPreview }: UseTerminalLinkProps) {
         const restorers: Array<() => void> = [];
 
         const frameDocument = iframe.contentDocument;
-        let lastModifierState = {
-            metaKey: false,
-            ctrlKey: false,
-            at: 0,
-        };
+        const windowOpenModifierTracker = createTerminalWindowOpenModifierTracker();
 
         if (frameDocument) {
-            const recordModifierState = (event: MouseEvent) => {
-                lastModifierState = {
-                    metaKey: event.metaKey,
-                    ctrlKey: event.ctrlKey,
-                    at: Date.now(),
-                };
+            const recordPointerOpenIntent = (event: MouseEvent) => {
+                windowOpenModifierTracker.recordPointerOpenIntent(event);
             };
 
-            frameDocument.addEventListener('mousedown', recordModifierState, true);
-            frameDocument.addEventListener('click', recordModifierState, true);
+            // Capture the physical pointer-down modifier state once, before xterm/ttyd
+            // performs its own link activation handling.
+            frameDocument.addEventListener('mousedown', recordPointerOpenIntent, true);
             restorers.push(() => {
-                frameDocument.removeEventListener('mousedown', recordModifierState, true);
-                frameDocument.removeEventListener('click', recordModifierState, true);
+                frameDocument.removeEventListener('mousedown', recordPointerOpenIntent, true);
             });
         }
 
+        const clearPendingModifierOpenIntent = () => {
+            windowOpenModifierTracker.clear();
+        };
+        frameWindow.addEventListener('blur', clearPendingModifierOpenIntent);
+        restorers.push(() => {
+            frameWindow.removeEventListener('blur', clearPendingModifierOpenIntent);
+        });
+
         const originalOpen = frameWindow.open.bind(frameWindow);
         const patchedOpen: Window['open'] = (...args) => {
-            const openWithModifier = Date.now() - lastModifierState.at < 1000;
-            const shouldTreatAsModifierOpen = openWithModifier && (lastModifierState.metaKey || lastModifierState.ctrlKey);
+            const shouldTreatAsModifierOpen = windowOpenModifierTracker.consumeModifierOpenIntent();
             const openBehavior = resolveOpenBehavior(shouldTreatAsModifierOpen);
 
             if (typeof args[0] === 'string' && args[0].trim()) {
