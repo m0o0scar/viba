@@ -930,9 +930,10 @@ export async function setTmuxSessionMouseMode(
   try {
     const { spawnSync } = await import('child_process');
     const tmuxSession = getTmuxSessionName(sessionName, role);
+    const terminalEnv = buildTerminalProcessEnv();
     const hasSessionResult = spawnSync('tmux', ['has-session', '-t', tmuxSession], {
       stdio: 'ignore',
-      env: process.env,
+      env: terminalEnv as NodeJS.ProcessEnv,
     });
 
     // Session might not be created yet (e.g. hidden terminal iframe not initialized).
@@ -943,7 +944,7 @@ export async function setTmuxSessionMouseMode(
 
     const result = spawnSync('tmux', ['set-option', '-t', tmuxSession, 'mouse', enabled ? 'on' : 'off'], {
       stdio: 'ignore',
-      env: process.env,
+      env: terminalEnv as NodeJS.ProcessEnv,
     });
 
     if (typeof result.status === 'number' && result.status !== 0) {
@@ -969,9 +970,10 @@ export async function setTmuxSessionStatusVisibility(
   try {
     const { spawnSync } = await import('child_process');
     const tmuxSession = getTmuxSessionName(sessionName, role);
+    const terminalEnv = buildTerminalProcessEnv();
     const hasSessionResult = spawnSync('tmux', ['has-session', '-t', tmuxSession], {
       stdio: 'ignore',
-      env: process.env,
+      env: terminalEnv as NodeJS.ProcessEnv,
     });
 
     // Session might not be created yet (e.g. hidden terminal iframe not initialized).
@@ -982,7 +984,7 @@ export async function setTmuxSessionStatusVisibility(
 
     const result = spawnSync('tmux', ['set-option', '-t', tmuxSession, 'status', visible ? 'on' : 'off'], {
       stdio: 'ignore',
-      env: process.env,
+      env: terminalEnv as NodeJS.ProcessEnv,
     });
 
     if (typeof result.status === 'number' && result.status !== 0) {
@@ -1007,9 +1009,10 @@ export async function terminateTmuxSessionRole(
   try {
     const { spawnSync } = await import('child_process');
     const tmuxSession = getTmuxSessionName(sessionName, role);
+    const terminalEnv = buildTerminalProcessEnv();
     const hasSessionResult = spawnSync('tmux', ['has-session', '-t', tmuxSession], {
       stdio: 'ignore',
-      env: process.env,
+      env: terminalEnv as NodeJS.ProcessEnv,
     });
 
     if (typeof hasSessionResult.status === 'number' && hasSessionResult.status !== 0) {
@@ -1018,7 +1021,7 @@ export async function terminateTmuxSessionRole(
 
     const result = spawnSync('tmux', ['kill-session', '-t', tmuxSession], {
       stdio: 'ignore',
-      env: process.env,
+      env: terminalEnv as NodeJS.ProcessEnv,
     });
 
     if (typeof result.status === 'number' && result.status !== 0) {
@@ -1039,12 +1042,13 @@ export async function terminateSessionTerminalSessions(sessionName: string): Pro
 
   try {
     const { spawnSync } = await import('child_process');
+    const terminalEnv = buildTerminalProcessEnv();
 
     const prefixRole = '__viba_session_role__';
     const prefix = getTmuxSessionName(sessionName, prefixRole).replace(prefixRole, '');
     const listedSessions = spawnSync('tmux', ['list-sessions', '-F', '#S'], {
       stdio: ['ignore', 'pipe', 'ignore'],
-      env: process.env,
+      env: terminalEnv as NodeJS.ProcessEnv,
       encoding: 'utf-8',
     });
 
@@ -1056,7 +1060,7 @@ export async function terminateSessionTerminalSessions(sessionName: string): Pro
       if (!tmuxSession.startsWith(prefix)) continue;
       spawnSync('tmux', ['kill-session', '-t', tmuxSession], {
         stdio: 'ignore',
-        env: process.env,
+        env: terminalEnv as NodeJS.ProcessEnv,
       });
     }
   } catch (error) {

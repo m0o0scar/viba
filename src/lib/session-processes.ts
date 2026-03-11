@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { spawn } from 'child_process';
+import { buildTerminalProcessEnv } from './terminal-process-env';
 
 export type SessionTrackedProcessRole = 'startup-script' | 'dev-server';
 export type SessionTrackedProcessSource = 'startup-script' | 'ui-dev-button';
@@ -394,10 +395,10 @@ export async function launchTrackedSessionProcess(
     : [...shellCommand.args, '-lc', command];
   const child = spawn(shellCommand.command, shellArgs, {
     cwd: normalizePath(workspacePath),
-    env: {
+    env: buildTerminalProcessEnv({
       ...process.env,
       ...env,
-    },
+    }),
     stdio: ['ignore', logFd, logFd],
     detached: process.platform !== 'win32',
   });

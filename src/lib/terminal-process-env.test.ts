@@ -4,13 +4,17 @@ import { describe, it } from 'node:test';
 import { buildTerminalProcessEnv } from './terminal-process-env.ts';
 
 describe('buildTerminalProcessEnv', () => {
-  it('removes NODE_ENV while preserving unrelated variables', () => {
+  it('removes terminal host env vars while preserving unrelated variables', () => {
     const env = buildTerminalProcessEnv({
       PATH: '/usr/bin',
       HOME: '/Users/tester',
       NODE_ENV: 'staging',
       PORT: '3000',
       TURBOPACK: '1',
+      AUTH0_DOMAIN: 'tenant.us.auth0.com',
+      AUTH0_CLIENT_ID: 'client-id',
+      AUTH0_CLIENT_SECRET: 'client-secret',
+      AUTH0_SECRET: 'secret',
       COLORTERM: 'truecolor',
       FORCE_COLOR: '1',
       CLICOLOR: '1',
@@ -21,6 +25,10 @@ describe('buildTerminalProcessEnv', () => {
     assert.strictEqual(env.NODE_ENV, undefined);
     assert.strictEqual(env.PORT, undefined);
     assert.strictEqual(env.TURBOPACK, undefined);
+    assert.strictEqual(env.AUTH0_DOMAIN, undefined);
+    assert.strictEqual(env.AUTH0_CLIENT_ID, undefined);
+    assert.strictEqual(env.AUTH0_CLIENT_SECRET, undefined);
+    assert.strictEqual(env.AUTH0_SECRET, undefined);
     assert.strictEqual(env.COLORTERM, undefined);
     assert.strictEqual(env.PATH, '/usr/bin');
     assert.strictEqual(env.HOME, '/Users/tester');
