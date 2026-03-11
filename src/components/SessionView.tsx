@@ -684,7 +684,7 @@ export function SessionView({
         [MAIN_TERMINAL_TAB_ID]: false,
     });
 
-    const [isTerminalMinimized, setIsTerminalMinimized] = useState(false);
+    const [isTerminalMinimized, setIsTerminalMinimized] = useState(true);
     const [terminalTabIds, setTerminalTabIds] = useState<string[]>([MAIN_TERMINAL_TAB_ID]);
     const [activeTerminalTabId, setActiveTerminalTabId] = useState<string>(MAIN_TERMINAL_TAB_ID);
     const activeTerminalTabIdRef = useRef(activeTerminalTabId);
