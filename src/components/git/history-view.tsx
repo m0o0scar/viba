@@ -3,7 +3,8 @@
 import dynamic from 'next/dynamic';
 import { useGitLog, useGitBranches, useGitStatus, useGitAction, useCommitDiff, useCommitFileDiff, CommitFile, useRepository, useUpdateRepository, useSettings, useUpdateSettings } from '@/hooks/use-git';
 import { useQueryClient } from '@tanstack/react-query';
-import { Repository, Commit } from '@/lib/types';
+import { Repository, Commit, type AgentProvider } from '@/lib/types';
+import AdHocAgentTerminalModal from '@/components/AdHocAgentTerminalModal';
 import { GitGraph, GitGraphHandle } from './git-graph';
 import {
   useDeferredValue,
@@ -13,13 +14,11 @@ import {
   useCallback,
   useRef,
 } from 'react';
-import { useTheme } from 'next-themes';
 import { cn, sanitizeBranchName, isFileBinary, isImageFile, getChangedLineCountFromDiff } from '@/lib/utils';
 import { ContextMenu, ContextMenuItem } from '@/components/context-menu';
 import { GroupedDiffViewer } from './grouped-diff-viewer';
 import { ImageDiffView } from './image-diff-view';
 import { useEscapeDismiss } from '@/hooks/use-escape-dismiss';
-import type { TerminalWindow } from '@/hooks/useTerminalLink';
 import { toast } from '@/hooks/use-toast';
 import { BranchTreeNode, VisibilityMap, buildBranchTree, buildRemoteBranchTree, getEffectiveVisibility, collectAllBranchRefs, collectVisibleBranchRefs } from './branch-tree-utils';
 import { GroupHeader } from './group-header';
@@ -27,17 +26,10 @@ import { BranchMenuOptions, BranchOperation, buildBranchContextMenuItems } from 
 import { BranchRowSelectModifiers, BranchTreeItem } from './branch-tree-item';
 import { CommitRowSelectModifiers } from './commit-row-select-modifiers';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { startTtydProcess } from '@/app/actions/git';
 import { listSessions, SessionMetadata } from '@/app/actions/session';
 import { subscribeToSessionsUpdated } from '@/lib/session-updates';
 import { buildShellSetDirectoryCommand, joinShellStatements, quoteShellArg } from '@/lib/shell';
-import { buildTtydTerminalSrc, type TerminalShellKind } from '@/lib/terminal-session';
-import {
-  applyThemeToTerminalWindow,
-  resolveShouldUseDarkTheme,
-  TERMINAL_THEME_DARK,
-  TERMINAL_THEME_LIGHT,
-} from '@/lib/ttyd-theme';
+import { type TerminalShellKind } from '@/lib/terminal-session';
 import { buildPullAllPlan, buildPullAllToastPayload, parseTrackingUpstream } from './pull-all-utils';
 
 const LazyCommitChangesView = dynamic(
@@ -129,24 +121,53 @@ function buildConflictAgentPrompt(operation: ConflictAgentOperation): string {
 function buildConflictAgentCommand(
   repoPath: string,
   operation: ConflictAgentOperation,
+  provider: AgentProvider,
+  model: string,
   shellKind: TerminalShellKind,
 ): string {
   const prompt = buildConflictAgentPrompt(operation);
+  const normalizedModel = model.trim();
+  const promptArg = quoteShellArg(prompt, shellKind);
+  const codexCommand = [
+    'NO_COLOR=1 FORCE_COLOR=0 TERM=xterm codex',
+    CONFLICT_AGENT_CODEX_FLAGS,
+    normalizedModel ? `--model ${quoteShellArg(normalizedModel, shellKind)}` : null,
+    promptArg,
+  ].filter(Boolean).join(' ');
+
+  const providerCommand = provider === 'gemini'
+    ? [
+      'gemini --yolo',
+      normalizedModel ? `--model ${quoteShellArg(normalizedModel, shellKind)}` : null,
+      `-p ${promptArg}`,
+    ].filter(Boolean).join(' ')
+    : provider === 'cursor'
+      ? [
+        'cursor-agent -f',
+        normalizedModel ? `--model ${quoteShellArg(normalizedModel, shellKind)}` : null,
+        `-p ${promptArg}`,
+      ].filter(Boolean).join(' ')
+      : codexCommand;
+
   if (shellKind === 'powershell') {
     return joinShellStatements([
       buildShellSetDirectoryCommand(repoPath, shellKind),
       "$env:NO_COLOR = '1'",
       "$env:FORCE_COLOR = '0'",
       "$env:TERM = 'xterm'",
-      "if ($env:OPENAI_API_KEY) { $env:OPENAI_API_KEY | codex login --with-api-key; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }",
-      `codex ${CONFLICT_AGENT_CODEX_FLAGS} ${quoteShellArg(prompt, shellKind)}`,
+      provider === 'codex'
+        ? "if ($env:OPENAI_API_KEY) { $env:OPENAI_API_KEY | codex login --with-api-key; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }"
+        : null,
+      providerCommand,
     ], shellKind);
   }
 
   return joinShellStatements([
     buildShellSetDirectoryCommand(repoPath, shellKind),
-    'if [ -n "$OPENAI_API_KEY" ]; then printenv OPENAI_API_KEY | codex login --with-api-key || exit 1; fi',
-    `NO_COLOR=1 FORCE_COLOR=0 TERM=xterm codex ${CONFLICT_AGENT_CODEX_FLAGS} ${quoteShellArg(prompt, shellKind)}`,
+    provider === 'codex'
+      ? 'if [ -n "$OPENAI_API_KEY" ]; then printenv OPENAI_API_KEY | codex login --with-api-key || exit 1; fi'
+      : null,
+    providerCommand,
   ], shellKind);
 }
 
@@ -255,7 +276,6 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
   const { data: settings } = useSettings();
   const updateSettings = useUpdateSettings();
   const router = useRouter();
-  const { resolvedTheme } = useTheme();
   const searchParams = useSearchParams();
   const requestedBranchFromQuery = (searchParams.get('branch') ?? '').trim();
   const initialBranchCheckoutAttemptKeyRef = useRef<string | null>(null);
@@ -458,13 +478,7 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
   const [isMerging, setIsMerging] = useState(false);
   const [mergeConflictStatus, setMergeConflictStatus] = useState<MergeConflictStatus>('checking');
   const [isConflictAgentModalOpen, setIsConflictAgentModalOpen] = useState(false);
-  const [isPreparingConflictAgent, setIsPreparingConflictAgent] = useState(false);
   const [conflictAgentOperation, setConflictAgentOperation] = useState<ConflictAgentOperation | null>(null);
-  const [conflictAgentTerminalSrc, setConflictAgentTerminalSrc] = useState('/terminal');
-  const [conflictAgentCommand, setConflictAgentCommand] = useState('');
-  const [conflictAgentError, setConflictAgentError] = useState<string | null>(null);
-  const [isConflictAgentCommandInjected, setIsConflictAgentCommandInjected] = useState(false);
-  const conflictAgentTerminalRef = useRef<HTMLIFrameElement | null>(null);
 
   const closeMergeDialog = useCallback(() => {
     setIsMergeOpen(false);
@@ -476,10 +490,6 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
   const closeConflictAgentDialog = useCallback(() => {
     setIsConflictAgentModalOpen(false);
     setConflictAgentOperation(null);
-    setConflictAgentTerminalSrc('/terminal');
-    setConflictAgentCommand('');
-    setConflictAgentError(null);
-    setIsConflictAgentCommandInjected(false);
   }, []);
 
   // Push to remote dialog state
@@ -2074,80 +2084,10 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
     }
   }
 
-  const openConflictResolutionWithAgent = useCallback(async (operation: ConflictAgentOperation) => {
-    if (isPreparingConflictAgent) return;
-
-    setIsPreparingConflictAgent(true);
-    setConflictAgentError(null);
-    setIsConflictAgentCommandInjected(false);
-
-    try {
-      const ttydResult = await startTtydProcess();
-      if (!ttydResult.success) {
-        throw new Error(ttydResult.error || 'Failed to start ttyd');
-      }
-
-      const sessionName = `git-conflict-${Date.now()}`;
-      const shellKind = ttydResult.shellKind === 'powershell' ? 'powershell' : 'posix';
-      const persistenceMode = ttydResult.persistenceMode === 'tmux' ? 'tmux' : 'shell';
-      setConflictAgentTerminalSrc(buildTtydTerminalSrc(sessionName, 'terminal', undefined, {
-        persistenceMode,
-        shellKind,
-        workingDirectory: repoPath,
-      }));
-      setConflictAgentCommand(buildConflictAgentCommand(repoPath, operation, shellKind));
-      setConflictAgentOperation(operation);
-      setIsConflictAgentModalOpen(true);
-    } catch (error) {
-      toast({
-        type: 'error',
-        title: 'Failed to Start Conflict Agent',
-        description: error instanceof Error ? error.message : 'Unknown error',
-      });
-    } finally {
-      setIsPreparingConflictAgent(false);
-    }
-  }, [isPreparingConflictAgent, repoPath]);
-
-  const handleConflictAgentTerminalLoad = useCallback(() => {
-    if (!isConflictAgentModalOpen || !conflictAgentCommand || !conflictAgentTerminalRef.current || isConflictAgentCommandInjected) {
-      return;
-    }
-
-    const iframe = conflictAgentTerminalRef.current;
-    const checkAndInject = (attempts = 0) => {
-      if (attempts > 40) {
-        setConflictAgentError('Timed out while waiting for terminal to initialize.');
-        return;
-      }
-
-      try {
-        const win = iframe.contentWindow as TerminalWindow | null;
-        if (win?.term) {
-          const shouldUseDark = resolveShouldUseDarkTheme(
-            resolvedTheme === 'light' || resolvedTheme === 'dark' ? resolvedTheme : 'auto',
-            window.matchMedia('(prefers-color-scheme: dark)').matches,
-          );
-          applyThemeToTerminalWindow(
-            win,
-            shouldUseDark ? TERMINAL_THEME_DARK : TERMINAL_THEME_LIGHT,
-          );
-          win.term.paste(`${conflictAgentCommand}\r`);
-          setIsConflictAgentCommandInjected(true);
-          setConflictAgentError(null);
-          win.focus();
-          return;
-        }
-
-        setTimeout(() => checkAndInject(attempts + 1), 300);
-      } catch (error) {
-        console.error('Failed to inject conflict resolution command into terminal iframe:', error);
-        setConflictAgentError('Could not access ttyd terminal. Ensure ttyd is running and try again.');
-      }
-    };
-
-    setTimeout(() => checkAndInject(), 500);
-  }, [conflictAgentCommand, isConflictAgentCommandInjected, isConflictAgentModalOpen, resolvedTheme]);
+  const openConflictResolutionWithAgent = useCallback((operation: ConflictAgentOperation) => {
+    setConflictAgentOperation(operation);
+    setIsConflictAgentModalOpen(true);
+  }, []);
 
   const confirmRebase = ({ sourceBranch, targetBranch }: BranchOperation) => {
     setRebaseSourceBranch(sourceBranch);
@@ -4262,9 +4202,8 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                 <button
                   className="btn btn-outline"
                   onClick={handleResolveRebaseConflictsWithAgent}
-                  disabled={isRebasing || isPreparingConflictAgent}
+                  disabled={isRebasing}
                 >
-                  {isPreparingConflictAgent && <span className="loading loading-spinner loading-xs"></span>}
                   Resolve conflicts with agent
                 </button>
               )}
@@ -4338,9 +4277,8 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
                 <button
                   className="btn btn-outline"
                   onClick={handleResolveMergeConflictsWithAgent}
-                  disabled={isMerging || isPreparingConflictAgent}
+                  disabled={isMerging}
                 >
-                  {isPreparingConflictAgent && <span className="loading loading-spinner loading-xs"></span>}
                   Resolve conflicts with agent
                 </button>
               )}
@@ -4356,52 +4294,21 @@ export function HistoryView({ repoPath }: { repoPath: string }) {
         </dialog>
       )}
 
-      {isConflictAgentModalOpen && (
-        <dialog className="modal modal-open">
-          <div className="modal-box max-w-5xl">
-            <h3 className="font-bold text-lg">Resolve Conflicts with Agent</h3>
-            <p className="py-3 text-sm break-words">
-              {conflictAgentOperation?.kind === 'merge'
-                ? <>Running agent-guided merge of <span className="font-bold break-all">{conflictAgentOperation.sourceBranch}</span> into <span className="font-bold break-all">{conflictAgentOperation.targetBranch}</span>.</>
-                : conflictAgentOperation?.kind === 'rebase'
-                  ? <>Running agent-guided rebase of <span className="font-bold break-all">{conflictAgentOperation.sourceBranch}</span> onto <span className="font-bold break-all">{conflictAgentOperation.targetBranch}</span>.</>
-                  : 'Preparing conflict resolution task.'}
-            </p>
-            <p className="text-xs opacity-70 pb-3 break-all">
-              Repository: {repoPath}
-            </p>
-
-            <div className="h-[420px] overflow-hidden rounded-lg border border-base-300 bg-base-200">
-              <iframe
-                key={conflictAgentTerminalSrc}
-                ref={conflictAgentTerminalRef}
-                src={conflictAgentTerminalSrc}
-                className="h-full w-full border-none"
-                allow="clipboard-read; clipboard-write"
-                onLoad={handleConflictAgentTerminalLoad}
-              />
-            </div>
-
-            {conflictAgentError ? (
-              <div className="alert alert-error text-sm mt-4 py-2">
-                {conflictAgentError}
-              </div>
-            ) : (
-              <div className="text-xs opacity-70 mt-4">
-                {isConflictAgentCommandInjected
-                  ? 'Agent command was sent to the terminal automatically.'
-                  : 'Waiting for terminal to initialize...'}
-              </div>
-            )}
-
-            <div className="modal-action">
-              <button className="btn" onClick={closeConflictAgentDialog}>Close</button>
-            </div>
-          </div>
-          <form method="dialog" className="modal-backdrop">
-            <button onClick={closeConflictAgentDialog}>close</button>
-          </form>
-        </dialog>
+      {isConflictAgentModalOpen && conflictAgentOperation && (
+        <AdHocAgentTerminalModal
+          isOpen={isConflictAgentModalOpen}
+          scenarioKey="git-conflict-resolution"
+          title="Resolve Conflicts with Agent"
+          description={conflictAgentOperation.kind === 'merge'
+            ? <>Run an agent-guided merge of <span className="font-bold break-all">{conflictAgentOperation.sourceBranch}</span> into <span className="font-bold break-all">{conflictAgentOperation.targetBranch}</span>.</>
+            : <>Run an agent-guided rebase of <span className="font-bold break-all">{conflictAgentOperation.sourceBranch}</span> onto <span className="font-bold break-all">{conflictAgentOperation.targetBranch}</span>.</>}
+          workingDirectory={repoPath}
+          confirmLabel="Start conflict agent"
+          onClose={closeConflictAgentDialog}
+          buildCommand={({ provider, model, shellKind }) => (
+            buildConflictAgentCommand(repoPath, conflictAgentOperation, provider, model, shellKind)
+          )}
+        />
       )}
 
       {isPushOpen && (
