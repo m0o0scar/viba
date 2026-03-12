@@ -152,7 +152,7 @@ export function HomeRepoCard({
                     }
                     setIsGitRepoMenuOpen((previous) => !previous);
                   }}
-                  className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-600 opacity-0 shadow-none backdrop-blur-sm transition-opacity hover:bg-white/80 hover:text-slate-900 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-80 disabled:hover:bg-white/50 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20 dark:hover:text-white dark:disabled:hover:bg-white/10"
+                  className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-600 opacity-100 shadow-none backdrop-blur-sm transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white/80 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-80 disabled:hover:bg-white/50 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20 dark:hover:text-white dark:disabled:hover:bg-white/10"
                   title={isDiscoveringProjectGitRepos
                     ? 'Discovering repositories...'
                     : hasDiscoveredGitRepos && !hasGitRepos
@@ -191,14 +191,14 @@ export function HomeRepoCard({
                 onClick={(event) => {
                   void onOpenProjectSettings(event, project);
                 }}
-                className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-600 opacity-0 shadow-none backdrop-blur-sm transition-opacity hover:bg-white/80 hover:text-slate-900 group-hover:opacity-100 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20 dark:hover:text-white"
+                className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-600 opacity-100 shadow-none backdrop-blur-sm transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white/80 hover:text-slate-900 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20 dark:hover:text-white"
                 title="Project settings"
               >
                 <Settings className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={(event) => onRemoveRecent(event, project)}
-                className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-500 opacity-0 shadow-none backdrop-blur-sm transition-opacity hover:bg-white/80 hover:text-rose-600 group-hover:opacity-100 dark:bg-white/10 dark:text-slate-400 dark:hover:bg-white/20 dark:hover:text-rose-300"
+                className="btn btn-circle btn-xs border-0 bg-white/50 text-slate-500 opacity-100 shadow-none backdrop-blur-sm transition-opacity md:opacity-0 md:group-hover:opacity-100 hover:bg-white/80 hover:text-rose-600 dark:bg-white/10 dark:text-slate-400 dark:hover:bg-white/20 dark:hover:text-rose-300"
                 title="Remove from history"
               >
                 <X className="h-3.5 w-3.5" />
