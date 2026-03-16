@@ -164,6 +164,11 @@ export type FileChange = {
   diff: string;
 };
 
+export type PlanStep = {
+  title: string;
+  status: string;
+};
+
 export type AppStatus = {
   provider: AgentProvider;
   installed: boolean;
@@ -227,6 +232,7 @@ export type HistoryEntry =
       kind: 'plan';
       id: string;
       text: string;
+      steps?: PlanStep[];
     };
 
 export type ThreadHistoryResponse = {
@@ -340,10 +346,7 @@ export type ChatStreamEvent =
       type: 'plan_updated';
       threadId: string;
       turnId: string;
-      steps: Array<{
-        title: string;
-        status: string;
-      }>;
+      steps: PlanStep[];
     }
   | {
       type: 'tool_progress';
