@@ -79,6 +79,7 @@ const SESSION_MODE_STORAGE_KEY = 'viba:new-session-mode';
 const AGENT_PROVIDER_MODEL_CACHE_STORAGE_KEY_PREFIX = 'viba:agent-provider-models:';
 const SESSION_TITLE_MAX_LENGTH = 120;
 const COMPACT_TASK_HEADER_THRESHOLD_PX = 1024;
+const STACKED_TASK_HEADER_THRESHOLD_PX = 960;
 const SUPPORTED_AGENT_PROVIDERS = ['codex', 'gemini', 'cursor'] as const;
 const AGENT_PROVIDER_FALLBACK_LABELS: Record<string, string> = {
   codex: 'Codex CLI',
@@ -409,6 +410,7 @@ export default function GitRepoSelector({
   const [isWaitingForLogin, setIsWaitingForLogin] = useState(false);
   const [waitingForLoginProvider, setWaitingForLoginProvider] = useState<AgentProvider | null>(null);
   const [isCompactTaskHeader, setIsCompactTaskHeader] = useState(false);
+  const [isStackedTaskHeader, setIsStackedTaskHeader] = useState(false);
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
   const [repoSettingsError, setRepoSettingsError] = useState<string | null>(null);
   const [isUploadingProjectIcon, setIsUploadingProjectIcon] = useState(false);
@@ -1105,9 +1107,14 @@ export default function GitRepoSelector({
     if (!panelElement) return;
 
     const updateCompactState = () => {
-      const nextIsCompact = panelElement.getBoundingClientRect().width < COMPACT_TASK_HEADER_THRESHOLD_PX;
+      const panelWidth = panelElement.getBoundingClientRect().width;
+      const nextIsCompact = panelWidth < COMPACT_TASK_HEADER_THRESHOLD_PX;
+      const nextIsStacked = panelWidth < STACKED_TASK_HEADER_THRESHOLD_PX;
       setIsCompactTaskHeader((previous) => (
         previous === nextIsCompact ? previous : nextIsCompact
+      ));
+      setIsStackedTaskHeader((previous) => (
+        previous === nextIsStacked ? previous : nextIsStacked
       ));
     };
 
@@ -3383,12 +3390,12 @@ export default function GitRepoSelector({
                 className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#30363d] dark:bg-[#161b22] dark:shadow-[0_16px_36px_-24px_rgba(2,6,23,0.95)]"
               >
                 <div className="mb-4 space-y-3">
-                  <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                  <div className={`flex gap-2 ${isStackedTaskHeader ? 'flex-col' : 'flex-row items-center justify-between'}`}>
                     <label className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white" htmlFor="task-description">
                       <Bot className="h-5 w-5 text-primary" />
                       Task Description
                     </label>
-                    <div className="flex flex-1 flex-wrap items-center gap-1.5 lg:justify-end">
+                    <div className={`flex flex-1 flex-wrap items-center gap-1.5 ${isStackedTaskHeader ? '' : 'justify-end'}`}>
                       <div
                         className="inline-flex h-9 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm dark:border-[#30363d] dark:bg-[#0d1117]"
                         role="group"
