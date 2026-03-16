@@ -1128,7 +1128,7 @@ export default function GitRepoSelector({
     return () => {
       observer.disconnect();
     };
-  }, []);
+  }, [mode, selectedRepo]);
 
   useEffect(() => {
     if (mode !== 'new') return;
