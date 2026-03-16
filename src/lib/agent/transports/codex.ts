@@ -16,6 +16,7 @@ import type {
   ToolTraceSource,
 } from "@/lib/agent/types";
 import { normalizeProviderReasoningEffort } from "@/lib/agent/reasoning";
+import { normalizePlanSteps } from "@/lib/agent/plan";
 import {
   createDeferred,
   defaultSpawnEnv,
@@ -1053,15 +1054,7 @@ export async function streamChat(
             type: "plan_updated",
             threadId: normalizeText(params.threadId),
             turnId: normalizeText(params.turnId),
-            steps: Array.isArray(params.steps)
-              ? params.steps.map((step) => {
-                  const current = step as Record<string, unknown>;
-                  return {
-                    title: normalizeText(current.title),
-                    status: normalizeText(current.status),
-                  };
-                })
-              : [],
+            steps: normalizePlanSteps(params.steps),
           });
           break;
         case "item/mcpToolCall/progress":
